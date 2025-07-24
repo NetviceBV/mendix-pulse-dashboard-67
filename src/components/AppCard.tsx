@@ -73,12 +73,12 @@ const AppCard = ({ app, onOpenApp }: AppCardProps) => {
       "border-border hover:shadow-glow transition-all duration-300 cursor-pointer group",
       // Background gradients based on status
       app.status === "healthy" && "bg-gradient-card",
-      app.status === "warning" && "bg-gradient-warning/10 border-warning/30 shadow-lg shadow-warning/20",
-      app.status === "error" && "bg-gradient-error/15 border-error/40 shadow-lg shadow-error/25",
+      app.status === "warning" && "bg-gradient-error/10 border-error/30 shadow-lg shadow-error/20",
+      app.status === "error" && "bg-gradient-error/30 border-error/60 shadow-xl shadow-error/40",
       app.status === "offline" && "bg-muted/50 border-muted-foreground/20",
       // Enhanced hover effects for problematic apps
-      app.status === "error" && "hover:shadow-xl hover:shadow-error/30 hover:border-error/50",
-      app.status === "warning" && "hover:shadow-xl hover:shadow-warning/25 hover:border-warning/40"
+      app.status === "error" && "hover:shadow-2xl hover:shadow-error/50 hover:border-error/80",
+      app.status === "warning" && "hover:shadow-xl hover:shadow-error/30 hover:border-error/50"
     )}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
