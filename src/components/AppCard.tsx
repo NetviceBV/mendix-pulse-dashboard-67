@@ -71,13 +71,13 @@ const AppCard = ({ app, onOpenApp }: AppCardProps) => {
   return (
     <Card className={cn(
       "border-border hover:shadow-glow transition-all duration-300 cursor-pointer group",
-      // Background gradients based on status
+      // Solid colored backgrounds based on status
       app.status === "healthy" && "bg-gradient-card",
-      app.status === "warning" && "bg-gradient-error/10 border-error/30 shadow-lg shadow-error/20",
-      app.status === "error" && "bg-gradient-error/30 border-error/60 shadow-xl shadow-error/40",
+      app.status === "warning" && "bg-error/15 border-error/30 shadow-lg shadow-error/20",
+      app.status === "error" && "bg-error/25 border-error/50 shadow-xl shadow-error/40",
       app.status === "offline" && "bg-muted/50 border-muted-foreground/20",
       // Enhanced hover effects for problematic apps
-      app.status === "error" && "hover:shadow-2xl hover:shadow-error/50 hover:border-error/80",
+      app.status === "error" && "hover:shadow-2xl hover:shadow-error/50 hover:border-error/70",
       app.status === "warning" && "hover:shadow-xl hover:shadow-error/30 hover:border-error/50"
     )}>
       <CardHeader className="pb-3">
