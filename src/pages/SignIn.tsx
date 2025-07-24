@@ -4,17 +4,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Key, User, Shield } from "lucide-react";
+import { User, Lock, Shield } from "lucide-react";
 
 interface SignInProps {
-  onSignIn: (credentials: { username: string; apiKey: string; pat: string }) => void;
+  onSignIn: (credentials: { username: string; password: string }) => void;
 }
 
 const SignIn = ({ onSignIn }: SignInProps) => {
   const [credentials, setCredentials] = useState({
     username: "",
-    apiKey: "",
-    pat: ""
+    password: ""
   });
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
@@ -22,7 +21,7 @@ const SignIn = ({ onSignIn }: SignInProps) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!credentials.username || !credentials.apiKey || !credentials.pat) {
+    if (!credentials.username || !credentials.password) {
       toast({
         title: "Missing credentials",
         description: "Please fill in all required fields",
@@ -53,7 +52,7 @@ const SignIn = ({ onSignIn }: SignInProps) => {
           </div>
           <CardTitle className="text-2xl font-bold">Sign In</CardTitle>
           <CardDescription>
-            Enter your Mendix credentials to access your applications
+            Sign in to manage your Mendix applications
           </CardDescription>
         </CardHeader>
         
@@ -78,35 +77,17 @@ const SignIn = ({ onSignIn }: SignInProps) => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="apikey" className="text-sm font-medium">
-                API Key
+              <Label htmlFor="password" className="text-sm font-medium">
+                Password
               </Label>
               <div className="relative">
-                <Key className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                <Lock className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                 <Input
-                  id="apikey"
+                  id="password"
                   type="password"
-                  placeholder="Enter your API key"
-                  value={credentials.apiKey}
-                  onChange={(e) => setCredentials({ ...credentials, apiKey: e.target.value })}
-                  className="pl-10"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="pat" className="text-sm font-medium">
-                Personal Access Token (PAT)
-              </Label>
-              <div className="relative">
-                <Shield className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="pat"
-                  type="password"
-                  placeholder="Enter your PAT"
-                  value={credentials.pat}
-                  onChange={(e) => setCredentials({ ...credentials, pat: e.target.value })}
+                  placeholder="Enter your password"
+                  value={credentials.password}
+                  onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
                   className="pl-10"
                   required
                 />
