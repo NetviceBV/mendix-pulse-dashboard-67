@@ -1,14 +1,12 @@
 import { useState, useEffect } from "react";
 import SignIn from "./SignIn";
 import Dashboard from "./Dashboard";
-import { MendixCredential } from "@/components/MendixCredentials";
 import { supabase } from "@/integrations/supabase/client";
 import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 
 const Index = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [mendixCredentials, setMendixCredentials] = useState<MendixCredential[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -38,7 +36,6 @@ const Index = () => {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    setMendixCredentials([]);
   };
 
   if (loading) {
@@ -59,8 +56,6 @@ const Index = () => {
   return (
     <Dashboard 
       onSignOut={handleSignOut} 
-      mendixCredentials={mendixCredentials}
-      onMendixCredentialsChange={setMendixCredentials}
     />
   );
 };

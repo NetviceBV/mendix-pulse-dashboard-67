@@ -2,9 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import AppCard, { MendixApp } from "@/components/AppCard";
-import MendixCredentials, { MendixCredential } from "@/components/MendixCredentials";
 import { 
   Search, 
   Filter, 
@@ -16,20 +14,20 @@ import {
   Activity
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
 
 interface DashboardProps {
   onSignOut: () => void;
-  mendixCredentials: MendixCredential[];
-  onMendixCredentialsChange: (credentials: MendixCredential[]) => void;
 }
 
-const Dashboard = ({ onSignOut, mendixCredentials, onMendixCredentialsChange }: DashboardProps) => {
+const Dashboard = ({ onSignOut }: DashboardProps) => {
   const [apps, setApps] = useState<MendixApp[]>([]);
   const [filteredApps, setFilteredApps] = useState<MendixApp[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   // Mock data - In real app, this would come from Mendix SDK
   const mockApps: MendixApp[] = [
@@ -192,7 +190,11 @@ const Dashboard = ({ onSignOut, mendixCredentials, onMendixCredentialsChange }: 
                 <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
-              <Button variant="outline" size="sm">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => navigate("/settings")}
+              >
                 <Settings className="w-4 h-4 mr-2" />
                 Settings
               </Button>
@@ -206,131 +208,117 @@ const Dashboard = ({ onSignOut, mendixCredentials, onMendixCredentialsChange }: 
       </header>
 
       <div className="container mx-auto px-4 py-6">
-        <Tabs defaultValue="applications" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-6">
-            <TabsTrigger value="applications">Applications</TabsTrigger>
-            <TabsTrigger value="credentials">Credentials</TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="applications" className="space-y-6">
-            {/* Status Overview */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-gradient-card rounded-lg p-4 border border-border">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Total Apps</p>
-                    <p className="text-2xl font-bold">{statusCounts.total}</p>
-                  </div>
-                  <Activity className="w-8 h-8 text-primary" />
+        <div className="space-y-6">
+          {/* Status Overview */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-gradient-card rounded-lg p-4 border border-border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Apps</p>
+                  <p className="text-2xl font-bold">{statusCounts.total}</p>
                 </div>
-              </div>
-              
-              <div className="bg-gradient-card rounded-lg p-4 border border-border">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Healthy</p>
-                    <p className="text-2xl font-bold text-success">{statusCounts.healthy}</p>
-                  </div>
-                  <CheckCircle className="w-8 h-8 text-success" />
-                </div>
-              </div>
-              
-              <div className="bg-gradient-card rounded-lg p-4 border border-border">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Warnings</p>
-                    <p className="text-2xl font-bold text-warning">{statusCounts.warning}</p>
-                  </div>
-                  <AlertTriangle className="w-8 h-8 text-warning" />
-                </div>
-              </div>
-              
-              <div className="bg-gradient-card rounded-lg p-4 border border-border">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Critical</p>
-                    <p className="text-2xl font-bold text-error">{statusCounts.error}</p>
-                  </div>
-                  <AlertTriangle className="w-8 h-8 text-error" />
-                </div>
+                <Activity className="w-8 h-8 text-primary" />
               </div>
             </div>
-
-            {/* Filters */}
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search applications..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              
-              <div className="flex gap-2 flex-wrap">
-                <Badge
-                  variant={statusFilter === "all" ? "default" : "outline"}
-                  className="cursor-pointer px-3 py-1"
-                  onClick={() => setStatusFilter("all")}
-                >
-                  All
-                </Badge>
-                <Badge
-                  variant={statusFilter === "healthy" ? "default" : "outline"}
-                  className="cursor-pointer px-3 py-1"
-                  onClick={() => setStatusFilter("healthy")}
-                >
-                  Healthy
-                </Badge>
-                <Badge
-                  variant={statusFilter === "warning" ? "default" : "outline"}
-                  className="cursor-pointer px-3 py-1"
-                  onClick={() => setStatusFilter("warning")}
-                >
-                  Warning
-                </Badge>
-                <Badge
-                  variant={statusFilter === "error" ? "default" : "outline"}
-                  className="cursor-pointer px-3 py-1"
-                  onClick={() => setStatusFilter("error")}
-                >
-                  Error
-                </Badge>
-              </div>
-            </div>
-
-            {/* Applications Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-              {filteredApps.map((app) => (
-                <AppCard
-                  key={app.id}
-                  app={app}
-                  onOpenApp={handleOpenApp}
-                />
-              ))}
-            </div>
-
-            {filteredApps.length === 0 && (
-              <div className="text-center py-12">
-                <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Search className="w-8 h-8 text-muted-foreground" />
+            
+            <div className="bg-gradient-card rounded-lg p-4 border border-border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Healthy</p>
+                  <p className="text-2xl font-bold text-success">{statusCounts.healthy}</p>
                 </div>
-                <h3 className="text-lg font-medium mb-2">No applications found</h3>
-                <p className="text-muted-foreground">
-                  Try adjusting your search or filter criteria
-                </p>
+                <CheckCircle className="w-8 h-8 text-success" />
               </div>
-            )}
-          </TabsContent>
-          
-          <TabsContent value="credentials" className="space-y-6">
-            <MendixCredentials 
-              credentials={mendixCredentials}
-              onCredentialsChange={onMendixCredentialsChange}
-            />
-          </TabsContent>
-        </Tabs>
+            </div>
+            
+            <div className="bg-gradient-card rounded-lg p-4 border border-border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Warnings</p>
+                  <p className="text-2xl font-bold text-warning">{statusCounts.warning}</p>
+                </div>
+                <AlertTriangle className="w-8 h-8 text-warning" />
+              </div>
+            </div>
+            
+            <div className="bg-gradient-card rounded-lg p-4 border border-border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Critical</p>
+                  <p className="text-2xl font-bold text-error">{statusCounts.error}</p>
+                </div>
+                <AlertTriangle className="w-8 h-8 text-error" />
+              </div>
+            </div>
+          </div>
+
+          {/* Filters */}
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Search applications..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            
+            <div className="flex gap-2 flex-wrap">
+              <Badge
+                variant={statusFilter === "all" ? "default" : "outline"}
+                className="cursor-pointer px-3 py-1"
+                onClick={() => setStatusFilter("all")}
+              >
+                All
+              </Badge>
+              <Badge
+                variant={statusFilter === "healthy" ? "default" : "outline"}
+                className="cursor-pointer px-3 py-1"
+                onClick={() => setStatusFilter("healthy")}
+              >
+                Healthy
+              </Badge>
+              <Badge
+                variant={statusFilter === "warning" ? "default" : "outline"}
+                className="cursor-pointer px-3 py-1"
+                onClick={() => setStatusFilter("warning")}
+              >
+                Warning
+              </Badge>
+              <Badge
+                variant={statusFilter === "error" ? "default" : "outline"}
+                className="cursor-pointer px-3 py-1"
+                onClick={() => setStatusFilter("error")}
+              >
+                Error
+              </Badge>
+            </div>
+          </div>
+
+          {/* Applications Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+            {filteredApps.map((app) => (
+              <AppCard
+                key={app.id}
+                app={app}
+                onOpenApp={handleOpenApp}
+              />
+            ))}
+          </div>
+
+          {filteredApps.length === 0 && (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                <Search className="w-8 h-8 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-medium mb-2">No applications found</h3>
+              <p className="text-muted-foreground">
+                Try adjusting your search or filter criteria
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
