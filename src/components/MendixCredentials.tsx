@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, Key, User, Shield, Edit2, Save, X } from "lucide-react";
+import { Plus, Trash2, Key, User, Shield, Edit2, Save, X, Download } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface MendixCredential {
@@ -25,6 +25,7 @@ interface MendixCredentialsProps {
 
 const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentialsProps) => {
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [fetchingApps, setFetchingApps] = useState<string | null>(null);
   const [editCredential, setEditCredential] = useState({
     name: "",
     username: "",
@@ -218,6 +219,31 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFetchApps = async (credentialId: string) => {
+    setFetchingApps(credentialId);
+    try {
+      const { data, error } = await supabase.functions.invoke('fetch-mendix-apps', {
+        body: { credentialId }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Apps fetched successfully",
+        description: data?.message || "Applications have been retrieved and saved",
+      });
+    } catch (error) {
+      console.error('Error fetching apps:', error);
+      toast({
+        title: "Error fetching apps",
+        description: "Failed to retrieve applications from Mendix",
+        variant: "destructive"
+      });
+    } finally {
+      setFetchingApps(null);
     }
   };
 
@@ -471,6 +497,19 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
                   <Button
                     variant="ghost"
                     size="sm"
+                    onClick={() => handleFetchApps(credential.id)}
+                    disabled={loading || editingId !== null || fetchingApps !== null}
+                    title="Fetch Applications"
+                  >
+                    {fetchingApps === credential.id ? (
+                      <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Download className="w-4 h-4" />
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => {
                       setEditingId(credential.id);
                       setEditCredential({
@@ -480,7 +519,7 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
                         pat: credential.pat || ""
                       });
                     }}
-                    disabled={loading || editingId !== null}
+                    disabled={loading || editingId !== null || fetchingApps !== null}
                   >
                     <Edit2 className="w-4 h-4" />
                   </Button>
@@ -489,7 +528,7 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
                     size="sm"
                     onClick={() => handleDeleteCredential(credential.id)}
                     className="text-destructive hover:text-destructive"
-                    disabled={loading || editingId !== null}
+                    disabled={loading || editingId !== null || fetchingApps !== null}
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 
 interface DashboardProps {
   onSignOut: () => void;
@@ -29,75 +30,43 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Mock data - In real app, this would come from Mendix SDK
-  const mockApps: MendixApp[] = [
-    {
-      id: "1",
-      name: "Customer Portal",
-      description: "Main customer-facing application for order management and support",
-      status: "healthy",
-      environment: "production",
-      lastDeployed: "2h ago",
-      version: "2.1.3",
-      activeUsers: 234,
-      errorCount: 0,
-      url: "https://customer-portal.mendix.com"
-    },
-    {
-      id: "2", 
-      name: "Inventory System",
-      description: "Internal inventory management and tracking system",
-      status: "warning",
-      environment: "production",
-      lastDeployed: "1d ago",
-      version: "1.8.2",
-      activeUsers: 45,
-      errorCount: 3,
-      url: "https://inventory.mendix.com"
-    },
-    {
-      id: "3",
-      name: "HR Dashboard",
-      description: "Employee management and HR processes automation",
-      status: "error",
-      environment: "production", 
-      lastDeployed: "3d ago",
-      version: "3.0.1",
-      activeUsers: 12,
-      errorCount: 15,
-      url: "https://hr.mendix.com"
-    },
-    {
-      id: "4",
-      name: "Analytics Platform",
-      description: "Business intelligence and reporting platform",
-      status: "healthy",
-      environment: "acceptance",
-      lastDeployed: "4h ago",
-      version: "1.5.0",
-      activeUsers: 8,
-      errorCount: 0
-    },
-    {
-      id: "5",
-      name: "Mobile App Backend",
-      description: "API backend for mobile applications",
-      status: "offline",
-      environment: "test",
-      lastDeployed: "1w ago",
-      version: "0.9.5",
-      activeUsers: 0,
-      errorCount: 0
-    }
-  ];
-
+  // Fetch real apps from Supabase
   useEffect(() => {
-    // Simulate loading apps from Mendix SDK
-    setTimeout(() => {
-      setApps(mockApps);
-      setFilteredApps(mockApps);
-      setLoading(false);
-    }, 1500);
+    const fetchApps = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('mendix_apps')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        const mappedApps: MendixApp[] = (data || []).map(app => ({
+          id: app.id,
+          name: app.app_name,
+          description: `Application retrieved from Mendix`,
+          status: app.status as "healthy" | "warning" | "error" | "offline",
+          environment: app.environment as "production" | "acceptance" | "test",
+          lastDeployed: new Date(app.last_deployed).toISOString(),
+          version: app.version || "1.0.0",
+          activeUsers: app.active_users,
+          errorCount: app.error_count,
+          url: app.app_url
+        }));
+
+        setApps(mappedApps);
+        setFilteredApps(mappedApps);
+      } catch (error) {
+        console.error('Error fetching apps:', error);
+        // Keep empty state if there's an error
+        setApps([]);
+        setFilteredApps([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchApps();
   }, []);
 
   useEffect(() => {

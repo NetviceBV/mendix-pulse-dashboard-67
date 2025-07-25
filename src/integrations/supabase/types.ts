@@ -14,6 +14,68 @@ export type Database = {
   }
   public: {
     Tables: {
+      mendix_apps: {
+        Row: {
+          active_users: number | null
+          app_id: string | null
+          app_name: string
+          app_url: string | null
+          created_at: string
+          credential_id: string
+          environment: string | null
+          error_count: number | null
+          id: string
+          last_deployed: string | null
+          project_id: string | null
+          status: string | null
+          updated_at: string
+          user_id: string
+          version: string | null
+        }
+        Insert: {
+          active_users?: number | null
+          app_id?: string | null
+          app_name: string
+          app_url?: string | null
+          created_at?: string
+          credential_id: string
+          environment?: string | null
+          error_count?: number | null
+          id?: string
+          last_deployed?: string | null
+          project_id?: string | null
+          status?: string | null
+          updated_at?: string
+          user_id: string
+          version?: string | null
+        }
+        Update: {
+          active_users?: number | null
+          app_id?: string | null
+          app_name?: string
+          app_url?: string | null
+          created_at?: string
+          credential_id?: string
+          environment?: string | null
+          error_count?: number | null
+          id?: string
+          last_deployed?: string | null
+          project_id?: string | null
+          status?: string | null
+          updated_at?: string
+          user_id?: string
+          version?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mendix_apps_credential_id_fkey"
+            columns: ["credential_id"]
+            isOneToOne: false
+            referencedRelation: "mendix_credentials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mendix_credentials: {
         Row: {
           api_key: string | null
