@@ -76,7 +76,7 @@ serve(async (req) => {
       headers['Authorization'] = `MxToken ${credential.pat}`;
     }
 
-    const mendixResponse = await fetch('https://deploy.mendix.com/api/1/apps', {
+    const mendixResponse = await fetch('https://deploy.mendix.com/api/4/apps', {
       method: 'GET',
       headers
     });
@@ -150,7 +150,7 @@ serve(async (req) => {
 
       for (const app of apps) {
         try {
-          const envResponse = await fetch(`https://deploy.mendix.com/api/1/apps/${app.AppId}/environments`, {
+          const envResponse = await fetch(`https://deploy.mendix.com/api/4/apps/${app.AppId}/environments`, {
             method: 'GET',
             headers
           });
@@ -158,18 +158,22 @@ serve(async (req) => {
           if (envResponse.ok) {
             const environments = await envResponse.json();
             console.log(`Found ${environments.length} environments for app ${app.Name}`);
+            console.log('Environment structure sample:', JSON.stringify(environments[0], null, 2));
             
             for (const env of environments) {
+              // API v4 likely has better field structure - try multiple field names
+              const envName = env.name || env.environmentName || env.type || env.environmentType || env.mode || 'production';
+              
               environmentResults.push({
                 user_id: user.id,
                 credential_id: credentialId,
                 app_id: app.AppId,
-                environment_id: env.EnvironmentId || env.Id,
-                environment_name: env.Name || env.Type || 'unknown',
-                status: env.Status || 'unknown',
-                url: env.Url,
-                model_version: env.ModelVersion,
-                runtime_version: env.RuntimeVersion
+                environment_id: env.environmentId || env.id,
+                environment_name: envName,
+                status: env.status || 'unknown',
+                url: env.url,
+                model_version: env.modelVersion,
+                runtime_version: env.runtimeVersion
               });
             }
           } else {
