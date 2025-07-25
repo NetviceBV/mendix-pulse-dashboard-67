@@ -25,6 +25,12 @@ interface MendixCredentialsProps {
 
 const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentialsProps) => {
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editCredential, setEditCredential] = useState({
+    name: "",
+    username: "",
+    api_key: "",
+    pat: ""
+  });
   const [newCredential, setNewCredential] = useState({
     name: "",
     username: "",
@@ -358,36 +364,138 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
       {credentials.map((credential) => (
         <Card key={credential.id} className="bg-gradient-card border-border">
           <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <Shield className="w-4 h-4 text-primary" />
-                  <h4 className="font-semibold">{credential.name}</h4>
+            {editingId === credential.id ? (
+              // Edit form
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor={`edit-name-${credential.id}`} className="text-sm font-medium">
+                    Credential Name
+                  </Label>
+                  <Input
+                    id={`edit-name-${credential.id}`}
+                    placeholder="e.g., Production Account"
+                    value={editCredential.name}
+                    onChange={(e) => setEditCredential({ ...editCredential, name: e.target.value })}
+                    disabled={loading}
+                  />
                 </div>
-                <p className="text-sm text-muted-foreground">
-                  Username: {credential.username}
-                </p>
+
+                <div className="space-y-2">
+                  <Label htmlFor={`edit-username-${credential.id}`} className="text-sm font-medium">
+                    Mendix Username
+                  </Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id={`edit-username-${credential.id}`}
+                      placeholder="Enter your Mendix username"
+                      value={editCredential.username}
+                      onChange={(e) => setEditCredential({ ...editCredential, username: e.target.value })}
+                      className="pl-10"
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor={`edit-apikey-${credential.id}`} className="text-sm font-medium">
+                    API Key
+                  </Label>
+                  <div className="relative">
+                    <Key className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id={`edit-apikey-${credential.id}`}
+                      type="password"
+                      placeholder="Enter your API key"
+                      value={editCredential.api_key}
+                      onChange={(e) => setEditCredential({ ...editCredential, api_key: e.target.value })}
+                      className="pl-10"
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor={`edit-pat-${credential.id}`} className="text-sm font-medium">
+                    Personal Access Token (PAT)
+                  </Label>
+                  <div className="relative">
+                    <Shield className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id={`edit-pat-${credential.id}`}
+                      type="password"
+                      placeholder="Enter your PAT"
+                      value={editCredential.pat}
+                      onChange={(e) => setEditCredential({ ...editCredential, pat: e.target.value })}
+                      className="pl-10"
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={() => handleEditCredential(credential.id, editCredential)} 
+                    className="bg-gradient-primary hover:opacity-90"
+                    disabled={loading}
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    Save Changes
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      setEditingId(null);
+                      setEditCredential({ name: "", username: "", api_key: "", pat: "" });
+                    }}
+                    disabled={loading}
+                  >
+                    <X className="w-4 h-4 mr-2" />
+                    Cancel
+                  </Button>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setEditingId(credential.id)}
-                  disabled={loading}
-                >
-                  <Edit2 className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDeleteCredential(credential.id)}
-                  className="text-destructive hover:text-destructive"
-                  disabled={loading}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
+            ) : (
+              // Display view
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Shield className="w-4 h-4 text-primary" />
+                    <h4 className="font-semibold">{credential.name}</h4>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Username: {credential.username}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditingId(credential.id);
+                      setEditCredential({
+                        name: credential.name,
+                        username: credential.username,
+                        api_key: credential.api_key || "",
+                        pat: credential.pat || ""
+                      });
+                    }}
+                    disabled={loading || editingId !== null}
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDeleteCredential(credential.id)}
+                    className="text-destructive hover:text-destructive"
+                    disabled={loading || editingId !== null}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       ))}
