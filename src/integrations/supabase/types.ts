@@ -109,6 +109,59 @@ export type Database = {
         }
         Relationships: []
       }
+      mendix_environments: {
+        Row: {
+          app_id: string
+          created_at: string
+          credential_id: string
+          environment_id: string | null
+          environment_name: string
+          id: string
+          model_version: string | null
+          runtime_version: string | null
+          status: string | null
+          updated_at: string
+          url: string | null
+          user_id: string
+        }
+        Insert: {
+          app_id: string
+          created_at?: string
+          credential_id: string
+          environment_id?: string | null
+          environment_name: string
+          id?: string
+          model_version?: string | null
+          runtime_version?: string | null
+          status?: string | null
+          updated_at?: string
+          url?: string | null
+          user_id: string
+        }
+        Update: {
+          app_id?: string
+          created_at?: string
+          credential_id?: string
+          environment_id?: string | null
+          environment_name?: string
+          id?: string
+          model_version?: string | null
+          runtime_version?: string | null
+          status?: string | null
+          updated_at?: string
+          url?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mendix_environments_credential_id_fkey"
+            columns: ["credential_id"]
+            isOneToOne: false
+            referencedRelation: "mendix_credentials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

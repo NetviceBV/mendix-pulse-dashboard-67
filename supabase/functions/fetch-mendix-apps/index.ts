@@ -95,17 +95,27 @@ serve(async (req) => {
     console.log(`Successfully fetched ${apps.length} apps from Mendix`);
 
     // Clear previous results for this credential
-    const { error: deleteError } = await supabase
+    const { error: deleteAppsError } = await supabase
       .from('mendix_apps')
       .delete()
       .eq('credential_id', credentialId)
       .eq('user_id', user.id);
 
-    if (deleteError) {
-      console.error('Error deleting previous results:', deleteError);
+    if (deleteAppsError) {
+      console.error('Error deleting previous app results:', deleteAppsError);
     }
 
-    // Store the new results
+    const { error: deleteEnvsError } = await supabase
+      .from('mendix_environments')
+      .delete()
+      .eq('credential_id', credentialId)
+      .eq('user_id', user.id);
+
+    if (deleteEnvsError) {
+      console.error('Error deleting previous environment results:', deleteEnvsError);
+    }
+
+    // Store the new app results and fetch environments
     if (apps.length > 0) {
       const appResults = apps.map((app: any) => ({
         user_id: user.id,
@@ -114,12 +124,12 @@ serve(async (req) => {
         app_url: app.Url,
         project_id: app.ProjectId,
         app_id: app.AppId,
-        status: 'healthy', // Default status, could be enhanced with actual health checks
-        environment: 'production', // Default environment, could be determined from app data
-        version: '1.0.0', // Default version, could be enhanced with actual version info
-        active_users: Math.floor(Math.random() * 100), // Mock data for now
-        error_count: Math.floor(Math.random() * 5), // Mock data for now
-        last_deployed: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString() // Random date within last 30 days
+        status: 'healthy',
+        environment: 'production',
+        version: '1.0.0',
+        active_users: Math.floor(Math.random() * 100),
+        error_count: Math.floor(Math.random() * 5),
+        last_deployed: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString()
       }));
 
       const { error: insertError } = await supabase
@@ -132,6 +142,55 @@ serve(async (req) => {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
+      }
+
+      // Fetch environments for each app
+      console.log('Fetching environments for apps...');
+      const environmentResults = [];
+
+      for (const app of apps) {
+        try {
+          const envResponse = await fetch(`https://deploy.mendix.com/api/1/apps/${app.AppId}/environments`, {
+            method: 'GET',
+            headers
+          });
+
+          if (envResponse.ok) {
+            const environments = await envResponse.json();
+            console.log(`Found ${environments.length} environments for app ${app.Name}`);
+            
+            for (const env of environments) {
+              environmentResults.push({
+                user_id: user.id,
+                credential_id: credentialId,
+                app_id: app.AppId,
+                environment_id: env.EnvironmentId || env.Id,
+                environment_name: env.Name || env.Type || 'unknown',
+                status: env.Status || 'unknown',
+                url: env.Url,
+                model_version: env.ModelVersion,
+                runtime_version: env.RuntimeVersion
+              });
+            }
+          } else {
+            console.log(`No environments found for app ${app.Name}: ${envResponse.status}`);
+          }
+        } catch (envError) {
+          console.error(`Error fetching environments for app ${app.Name}:`, envError);
+        }
+      }
+
+      // Store environment results
+      if (environmentResults.length > 0) {
+        const { error: envInsertError } = await supabase
+          .from('mendix_environments')
+          .insert(environmentResults);
+
+        if (envInsertError) {
+          console.error('Error storing environment results:', envInsertError);
+        } else {
+          console.log(`Successfully stored ${environmentResults.length} environments`);
+        }
       }
     }
 

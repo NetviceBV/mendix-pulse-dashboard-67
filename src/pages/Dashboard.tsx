@@ -30,29 +30,53 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Fetch real apps from Supabase
+  // Fetch real apps from Supabase with environments
   useEffect(() => {
     const fetchApps = async () => {
       try {
-        const { data, error } = await supabase
+        const { data: appsData, error: appsError } = await supabase
           .from('mendix_apps')
           .select('*')
           .order('created_at', { ascending: false });
 
-        if (error) throw error;
+        if (appsError) throw appsError;
 
-        const mappedApps: MendixApp[] = (data || []).map(app => ({
-          id: app.id,
-          name: app.app_name,
-          description: `Application retrieved from Mendix`,
-          status: app.status as "healthy" | "warning" | "error" | "offline",
-          environment: app.environment as "production" | "acceptance" | "test",
-          lastDeployed: new Date(app.last_deployed).toISOString(),
-          version: app.version || "1.0.0",
-          activeUsers: app.active_users,
-          errorCount: app.error_count,
-          url: app.app_url
+        // Fetch environments separately for each app
+        const appsWithEnvironments = await Promise.all((appsData || []).map(async (app) => {
+          const { data: environments, error: envError } = await supabase
+            .from('mendix_environments')
+            .select('*')
+            .eq('app_id', app.app_id);
+
+          return {
+            ...app,
+            environments: envError ? [] : (environments || [])
+          };
         }));
+
+        const mappedApps: MendixApp[] = appsWithEnvironments.map(app => {
+          // Determine primary environment (prefer production, then acceptance, then any)
+          const environments = app.environments || [];
+          const prodEnv = environments.find((e: any) => e.environment_name?.toLowerCase().includes('production'));
+          const accEnv = environments.find((e: any) => e.environment_name?.toLowerCase().includes('acceptance'));
+          const primaryEnv = prodEnv || accEnv || environments[0];
+
+          return {
+            id: app.id,
+            name: app.app_name,
+            description: environments.length > 0 ? 
+              `${environments.length} environment${environments.length !== 1 ? 's' : ''} available` :
+              `Application retrieved from Mendix`,
+            status: primaryEnv?.status as "healthy" | "warning" | "error" | "offline" || app.status as "healthy" | "warning" | "error" | "offline",
+            environment: primaryEnv?.environment_name as "production" | "acceptance" | "test" || app.environment as "production" | "acceptance" | "test",
+            lastDeployed: new Date(app.last_deployed).toISOString(),
+            version: primaryEnv?.model_version || app.version || "1.0.0",
+            activeUsers: app.active_users,
+            errorCount: app.error_count,
+            url: primaryEnv?.url || app.app_url,
+            environments: environments
+          };
+        });
 
         setApps(mappedApps);
         setFilteredApps(mappedApps);

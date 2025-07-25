@@ -13,6 +13,15 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+export interface MendixEnvironment {
+  id: string;
+  environment_name: string;
+  status: string;
+  url?: string;
+  model_version?: string;
+  runtime_version?: string;
+}
+
 export interface MendixApp {
   id: string;
   name: string;
@@ -24,6 +33,7 @@ export interface MendixApp {
   activeUsers: number;
   errorCount: number;
   url?: string;
+  environments?: MendixEnvironment[];
 }
 
 interface AppCardProps {
@@ -92,12 +102,19 @@ const AppCard = ({ app, onOpenApp }: AppCardProps) => {
           </div>
           
           <div className="flex items-center gap-2 ml-4">
-            <Badge 
-              variant="secondary" 
-              className={cn("capitalize", environmentColors[app.environment])}
-            >
-              {app.environment}
-            </Badge>
+            <div className="flex items-center gap-1">
+              <Badge 
+                variant="secondary" 
+                className={cn("capitalize", environmentColors[app.environment])}
+              >
+                {app.environment}
+              </Badge>
+              {app.environments && app.environments.length > 1 && (
+                <span className="text-xs text-muted-foreground">
+                  +{app.environments.length - 1}
+                </span>
+              )}
+            </div>
             
             <div className={cn(
               "flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium",
@@ -135,6 +152,43 @@ const AppCard = ({ app, onOpenApp }: AppCardProps) => {
             </div>
           )}
         </div>
+
+        {app.environments && app.environments.length > 0 && (
+          <div className="space-y-2 mb-4">
+            <h4 className="text-sm font-medium text-muted-foreground">Environments</h4>
+            <div className="grid gap-2">
+              {app.environments.slice(0, 3).map((env) => (
+                <div key={env.id} className="flex items-center justify-between p-2 rounded-md bg-muted/50">
+                  <div className="flex items-center gap-2">
+                    <div className={cn(
+                      "w-2 h-2 rounded-full",
+                      env.status === 'running' ? 'bg-success' : 
+                      env.status === 'stopped' ? 'bg-error' : 'bg-warning'
+                    )} />
+                    <span className="text-sm font-medium">{env.environment_name}</span>
+                    {env.model_version && (
+                      <span className="text-xs text-muted-foreground">v{env.model_version}</span>
+                    )}
+                  </div>
+                  {env.url && (
+                    <ExternalLink 
+                      className="h-3 w-3 text-muted-foreground cursor-pointer hover:text-primary"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.open(env.url, '_blank');
+                      }}
+                    />
+                  )}
+                </div>
+              ))}
+              {app.environments.length > 3 && (
+                <div className="text-xs text-muted-foreground text-center">
+                  +{app.environments.length - 3} more environments
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="flex gap-2">
           <Button
