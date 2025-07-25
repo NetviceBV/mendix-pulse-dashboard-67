@@ -75,7 +75,7 @@ const environmentColors = {
 };
 
 const AppCard = ({ app, onOpenApp }: AppCardProps) => {
-  const statusInfo = statusConfig[app.status];
+  const statusInfo = statusConfig[app.status] || statusConfig.offline;
   const StatusIcon = statusInfo.icon;
 
   return (
