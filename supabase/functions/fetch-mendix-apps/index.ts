@@ -182,7 +182,25 @@ serve(async (req) => {
             
             for (const env of environments) {
               // Try multiple field names for environment name (v4 vs v1 API differences)
-              const envName = env.name || env.environmentName || env.Name || env.Type || env.mode || 'production';
+              let envName = env.name || env.environmentName || env.Name || env.Mode || env.Type || env.mode;
+              
+              // If no environment name found, use intelligent fallback
+              if (!envName) {
+                if (env.Production === true) {
+                  envName = 'production';
+                } else if (env.url && env.url.includes('sandbox')) {
+                  envName = 'sandbox';
+                } else if (env.url && env.url.includes('accp')) {
+                  envName = 'acceptance';
+                } else if (env.url && env.url.includes('test')) {
+                  envName = 'test';
+                } else {
+                  envName = 'unknown';
+                }
+              }
+              
+              // Convert to lowercase and normalize
+              envName = envName.toLowerCase().trim();
               
               environmentResults.push({
                 user_id: user.id,
