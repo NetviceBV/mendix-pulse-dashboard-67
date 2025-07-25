@@ -14,7 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      mendix_credentials: {
+        Row: {
+          api_key: string | null
+          created_at: string
+          id: string
+          name: string
+          pat: string | null
+          updated_at: string
+          user_id: string
+          username: string
+        }
+        Insert: {
+          api_key?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          pat?: string | null
+          updated_at?: string
+          user_id: string
+          username: string
+        }
+        Update: {
+          api_key?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          pat?: string | null
+          updated_at?: string
+          user_id?: string
+          username?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
