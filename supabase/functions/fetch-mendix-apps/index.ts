@@ -76,10 +76,20 @@ serve(async (req) => {
       headers['Authorization'] = `MxToken ${credential.pat}`;
     }
 
-    const mendixResponse = await fetch('https://deploy.mendix.com/api/4/apps', {
+    // Try v4 API first, fall back to v1 if needed
+    let mendixResponse = await fetch('https://deploy.mendix.com/api/4/apps', {
       method: 'GET',
       headers
     });
+
+    // If v4 fails, try v1 API
+    if (!mendixResponse.ok) {
+      console.log(`V4 API failed with ${mendixResponse.status}, trying V1 API`);
+      mendixResponse = await fetch('https://deploy.mendix.com/api/1/apps', {
+        method: 'GET',
+        headers
+      });
+    }
 
     if (!mendixResponse.ok) {
       console.error(`Mendix API error: ${mendixResponse.status} ${mendixResponse.statusText}`);
@@ -150,10 +160,20 @@ serve(async (req) => {
 
       for (const app of apps) {
         try {
-          const envResponse = await fetch(`https://deploy.mendix.com/api/4/apps/${app.AppId}/environments`, {
+          // Try v4 API first for environments
+          let envResponse = await fetch(`https://deploy.mendix.com/api/4/apps/${app.AppId}/environments`, {
             method: 'GET',
             headers
           });
+
+          // If v4 fails, try v1 API for environments
+          if (!envResponse.ok) {
+            console.log(`V4 environments API failed for app ${app.Name}, trying V1`);
+            envResponse = await fetch(`https://deploy.mendix.com/api/1/apps/${app.AppId}/environments`, {
+              method: 'GET',
+              headers
+            });
+          }
 
           if (envResponse.ok) {
             const environments = await envResponse.json();
@@ -161,19 +181,19 @@ serve(async (req) => {
             console.log('Environment structure sample:', JSON.stringify(environments[0], null, 2));
             
             for (const env of environments) {
-              // API v4 likely has better field structure - try multiple field names
-              const envName = env.name || env.environmentName || env.type || env.environmentType || env.mode || 'production';
+              // Try multiple field names for environment name (v4 vs v1 API differences)
+              const envName = env.name || env.environmentName || env.Name || env.Type || env.mode || 'production';
               
               environmentResults.push({
                 user_id: user.id,
                 credential_id: credentialId,
                 app_id: app.AppId,
-                environment_id: env.environmentId || env.id,
+                environment_id: env.environmentId || env.EnvironmentId || env.id || env.Id,
                 environment_name: envName,
-                status: env.status || 'unknown',
-                url: env.url,
-                model_version: env.modelVersion,
-                runtime_version: env.runtimeVersion
+                status: env.status || env.Status || 'unknown',
+                url: env.url || env.Url,
+                model_version: env.modelVersion || env.ModelVersion,
+                runtime_version: env.runtimeVersion || env.RuntimeVersion
               });
             }
           } else {
