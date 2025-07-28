@@ -52,12 +52,15 @@ serve(async (req) => {
     // Download logs using Mendix Deploy API v1
     // Use environment ID if available, otherwise fall back to environment name
     const envIdentifier = environmentId || environmentName;
-    let logsUrl = `https://deploy.mendix.com/api/1/apps/${appName}/environments/${envIdentifier}/logs`;
     
-    // Add date parameter if provided
-    if (date) {
-      logsUrl += `?date=${encodeURIComponent(date)}`;
-    }
+    // Generate today's date in YYYY-MM-DD format
+    const today = new Date();
+    const todayDate = today.getFullYear() + '-' + 
+      String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+      String(today.getDate()).padStart(2, '0');
+    
+    // Use today's date in the URL path as required by Mendix API v1
+    const logsUrl = `https://deploy.mendix.com/api/1/apps/${appName}/environments/${envIdentifier}/logs/${todayDate}`;
     
     console.log(`Downloading logs for environment ${envIdentifier} for app ${appName}${date ? ` on ${date}` : ''}`);
     
