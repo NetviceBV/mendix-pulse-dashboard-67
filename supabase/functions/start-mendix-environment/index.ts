@@ -75,7 +75,8 @@ serve(async (req) => {
         'Mendix-Username': credentials.username,
         'Mendix-ApiKey': credentials.api_key || credentials.pat || '',
         'Content-Type': 'application/json'
-      }
+      },
+      body: JSON.stringify({ "AutoSyncDb": true })
     });
 
     if (!response.ok) {
