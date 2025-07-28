@@ -31,9 +31,9 @@ serve(async (req) => {
       throw new Error('Invalid authentication');
     }
 
-    const { credentialId, appId, environmentId, environmentName } = await req.json();
+    const { credentialId, appName, environmentName } = await req.json();
 
-    if (!credentialId || !appId || !environmentId) {
+    if (!credentialId || !appName || !environmentName) {
       throw new Error('Missing required parameters');
     }
 
@@ -64,9 +64,9 @@ serve(async (req) => {
     }
 
     // Start environment using Mendix Deploy API v1
-    const startUrl = `https://deploy.mendix.com/api/1/apps/${appId}/environments/${environmentId}/start`;
+    const startUrl = `https://deploy.mendix.com/api/1/apps/${appName}/environments/${environmentName}/start`;
     
-    console.log(`Starting environment ${environmentId} for app ${appId}`);
+    console.log(`Starting environment ${environmentName} for app ${appName}`);
     
     const response = await fetch(startUrl, {
       method: 'POST',
@@ -85,7 +85,7 @@ serve(async (req) => {
     }
 
     const result = await response.json();
-    console.log(`Environment ${environmentId} start initiated successfully`);
+    console.log(`Environment ${environmentName} start initiated successfully`);
 
     return new Response(
       JSON.stringify({ 

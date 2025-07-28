@@ -20,7 +20,7 @@ export const useMendixOperations = () => {
     return credentials;
   };
 
-  const startEnvironment = async (appId: string, environmentId: string, environmentName: string) => {
+  const startEnvironment = async (appName: string, environmentName: string) => {
     setLoading(true);
     try {
       const credentials = await getCredentials();
@@ -31,8 +31,7 @@ export const useMendixOperations = () => {
       const { data, error } = await supabase.functions.invoke('start-mendix-environment', {
         body: {
           credentialId: credentials.id,
-          appId,
-          environmentId,
+          appName,
           environmentName
         },
         headers: {
@@ -61,7 +60,7 @@ export const useMendixOperations = () => {
     }
   };
 
-  const stopEnvironment = async (appId: string, environmentId: string, environmentName: string) => {
+  const stopEnvironment = async (appName: string, environmentName: string) => {
     setLoading(true);
     try {
       const credentials = await getCredentials();
@@ -72,8 +71,7 @@ export const useMendixOperations = () => {
       const { data, error } = await supabase.functions.invoke('stop-mendix-environment', {
         body: {
           credentialId: credentials.id,
-          appId,
-          environmentId,
+          appName,
           environmentName
         },
         headers: {
@@ -102,7 +100,7 @@ export const useMendixOperations = () => {
     }
   };
 
-  const downloadLogs = async (appId: string, environmentId: string, date?: string) => {
+  const downloadLogs = async (appName: string, environmentName: string, date?: string) => {
     setLoading(true);
     try {
       const credentials = await getCredentials();
@@ -113,8 +111,8 @@ export const useMendixOperations = () => {
       const { data, error } = await supabase.functions.invoke('download-mendix-logs', {
         body: {
           credentialId: credentials.id,
-          appId,
-          environmentId,
+          appName,
+          environmentName,
           date
         },
         headers: {

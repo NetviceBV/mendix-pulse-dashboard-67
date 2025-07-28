@@ -208,7 +208,7 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                             onClick={async (e) => {
                               e.stopPropagation();
                               try {
-                                await startEnvironment(app.project_id, env.environment_id, env.environment_name);
+                                await startEnvironment(app.app_id, env.environment_name);
                                 onRefresh?.();
                               } catch (error) {
                                 // Error already handled in hook
@@ -226,7 +226,7 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                             disabled={loading}
                             onClick={(e) => {
                               e.stopPropagation();
-                              setPendingStopEnv({ id: env.environment_id, name: env.environment_name, appId: app.project_id });
+                              setPendingStopEnv({ id: env.environment_id, name: env.environment_name, appId: app.app_id });
                               setStopDialogOpen(true);
                             }}
                           >
@@ -241,8 +241,8 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                           onClick={async (e) => {
                             e.stopPropagation();
                             try {
-                              setLogsEnvironment({ name: env.environment_name, id: env.environment_id, appId: app.project_id });
-                              const logData = await downloadLogs(app.project_id, env.environment_id);
+                              setLogsEnvironment({ name: env.environment_name, id: env.environment_id, appId: app.app_id });
+                              const logData = await downloadLogs(app.app_id, env.environment_name);
                               setLogs(logData || 'No logs available');
                               setLogsOpen(true);
                             } catch (error) {
@@ -316,7 +316,7 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
               onClick={async () => {
                 if (pendingStopEnv) {
                   try {
-                    await stopEnvironment(pendingStopEnv.appId, pendingStopEnv.id, pendingStopEnv.name);
+                    await stopEnvironment(pendingStopEnv.appId, pendingStopEnv.name);
                     onRefresh?.();
                   } catch (error) {
                     // Error already handled in hook
@@ -348,7 +348,7 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
           onDownloadDate={async (date) => {
             try {
               const dateStr = format(date, 'yyyy-MM-dd');
-              const logData = await downloadLogs(logsEnvironment.appId, logsEnvironment.id, dateStr);
+              const logData = await downloadLogs(logsEnvironment.appId, logsEnvironment.name, dateStr);
               setLogs(logData || 'No logs available for selected date');
             } catch (error) {
               // Error already handled in hook

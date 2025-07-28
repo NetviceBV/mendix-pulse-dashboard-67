@@ -31,9 +31,9 @@ serve(async (req) => {
       throw new Error('Invalid authentication');
     }
 
-    const { credentialId, appId, environmentId, date } = await req.json();
+    const { credentialId, appName, environmentName, date } = await req.json();
 
-    if (!credentialId || !appId || !environmentId) {
+    if (!credentialId || !appName || !environmentName) {
       throw new Error('Missing required parameters');
     }
 
@@ -50,14 +50,14 @@ serve(async (req) => {
     }
 
     // Download logs using Mendix Deploy API v1
-    let logsUrl = `https://deploy.mendix.com/api/1/apps/${appId}/environments/${environmentId}/logs`;
+    let logsUrl = `https://deploy.mendix.com/api/1/apps/${appName}/environments/${environmentName}/logs`;
     
     // Add date parameter if provided
     if (date) {
       logsUrl += `?date=${encodeURIComponent(date)}`;
     }
     
-    console.log(`Downloading logs for environment ${environmentId} for app ${appId}${date ? ` on ${date}` : ''}`);
+    console.log(`Downloading logs for environment ${environmentName} for app ${appName}${date ? ` on ${date}` : ''}`);
     
     const response = await fetch(logsUrl, {
       method: 'GET',
@@ -86,7 +86,7 @@ serve(async (req) => {
       result = { logs: logText };
     }
     
-    console.log(`Logs downloaded successfully for environment ${environmentId}`);
+    console.log(`Logs downloaded successfully for environment ${environmentName}`);
 
     return new Response(
       JSON.stringify({ 
