@@ -53,19 +53,20 @@ serve(async (req) => {
       throw new Error('Credentials not found or unauthorized');
     }
 
-    // Verify the app exists in our database (app_id is the V4 AppId we need)
+    // Get the project_id (UUID) from mendix_apps table - this is required for Mendix API v4
     const { data: appData, error: appError } = await supabase
       .from('mendix_apps')
-      .select('app_id')
+      .select('project_id')
       .eq('app_id', appId)
       .eq('user_id', user.id)
       .single();
 
-    if (appError || !appData) {
-      throw new Error(`App not found: ${appId}`);
+    if (appError || !appData || !appData.project_id) {
+      throw new Error(`App not found or missing project_id for app: ${appId}`);
     }
 
-    console.log(`Using V4 AppId: ${appId} for environment: ${environmentId}`);
+    const projectId = appData.project_id;
+    console.log(`Using project_id: ${projectId} for app: ${appId}, environment: ${environmentId}`);
 
     // Prepare headers for Mendix API call
     const headers: Record<string, string> = {
@@ -80,8 +81,8 @@ serve(async (req) => {
       headers['Authorization'] = `MxToken ${credential.pat}`;
     }
 
-    // Use V4 API exclusively for environment status retrieval with V4 AppId
-    const mendixResponse = await fetch(`https://deploy.mendix.com/api/4/apps/${appId}/environments/${environmentId}`, {
+    // Use V4 API exclusively for environment status retrieval with project_id (UUID)
+    const mendixResponse = await fetch(`https://cloud.home.mendix.com/api/v4/apps/${projectId}/environments/${environmentId}`, {
       method: 'GET',
       headers
     });
