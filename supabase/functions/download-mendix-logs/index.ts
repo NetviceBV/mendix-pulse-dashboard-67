@@ -62,8 +62,9 @@ serve(async (req) => {
     // Use today's date in the URL path as required by Mendix API v1
     const logsUrl = `https://deploy.mendix.com/api/1/apps/${appName}/environments/${envIdentifier}/logs/${todayDate}`;
     
-    console.log(`Downloading logs for environment ${envIdentifier} for app ${appName}${date ? ` on ${date}` : ''}`);
+    console.log(`Getting download URL for environment ${envIdentifier} for app ${appName} on ${todayDate}`);
     
+    // Step 1: Get the download URL from Mendix API
     const response = await fetch(logsUrl, {
       method: 'GET',
       headers: {
@@ -75,21 +76,38 @@ serve(async (req) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Failed to download logs: ${response.status} - ${errorText}`);
-      throw new Error(`Failed to download logs: ${response.status}`);
+      console.error(`Failed to get download URL: ${response.status} - ${errorText}`);
+      throw new Error(`Failed to get download URL: ${response.status}`);
     }
 
-    // Check if response is JSON or plain text
-    const contentType = response.headers.get('content-type');
-    let result;
+    // Parse the JSON response to get the DownloadUrl
+    const downloadResponse = await response.json();
+    console.log('Download response:', downloadResponse);
     
-    if (contentType && contentType.includes('application/json')) {
-      result = await response.json();
-    } else {
-      // Logs are likely plain text
-      const logText = await response.text();
-      result = { logs: logText };
+    if (!downloadResponse.DownloadUrl) {
+      throw new Error('No DownloadUrl found in response');
     }
+
+    console.log(`Downloading logs from: ${downloadResponse.DownloadUrl}`);
+    
+    // Step 2: Download the actual logs using the DownloadUrl
+    const logsResponse = await fetch(downloadResponse.DownloadUrl, {
+      method: 'GET',
+      headers: {
+        'Mendix-Username': credentials.username,
+        'Mendix-ApiKey': credentials.api_key || credentials.pat || ''
+      }
+    });
+
+    if (!logsResponse.ok) {
+      const errorText = await logsResponse.text();
+      console.error(`Failed to download logs from URL: ${logsResponse.status} - ${errorText}`);
+      throw new Error(`Failed to download logs from URL: ${logsResponse.status}`);
+    }
+
+    // Get the actual log content
+    const logText = await logsResponse.text();
+    const result = { logs: logText };
     
     console.log(`Logs downloaded successfully for environment ${envIdentifier}`);
 
