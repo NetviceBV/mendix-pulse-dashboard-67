@@ -76,20 +76,11 @@ serve(async (req) => {
       headers['Authorization'] = `MxToken ${credential.pat}`;
     }
 
-    // Try v4 API first, fall back to v1 if needed
-    let mendixResponse = await fetch('https://deploy.mendix.com/api/4/apps', {
+    // Use V4 API exclusively for data retrieval
+    const mendixResponse = await fetch('https://deploy.mendix.com/api/4/apps', {
       method: 'GET',
       headers
     });
-
-    // If v4 fails, try v1 API
-    if (!mendixResponse.ok) {
-      console.log(`V4 API failed with ${mendixResponse.status}, trying V1 API`);
-      mendixResponse = await fetch('https://deploy.mendix.com/api/1/apps', {
-        method: 'GET',
-        headers
-      });
-    }
 
     if (!mendixResponse.ok) {
       console.error(`Mendix API error: ${mendixResponse.status} ${mendixResponse.statusText}`);
@@ -191,20 +182,11 @@ serve(async (req) => {
 
       for (const app of apps) {
         try {
-          // Try v4 API first for environments
-          let envResponse = await fetch(`https://deploy.mendix.com/api/4/apps/${app.AppId}/environments`, {
+          // Use V4 API exclusively for environments data
+          const envResponse = await fetch(`https://deploy.mendix.com/api/4/apps/${app.AppId}/environments`, {
             method: 'GET',
             headers
           });
-
-          // If v4 fails, try v1 API for environments
-          if (!envResponse.ok) {
-            console.log(`V4 environments API failed for app ${app.Name}, trying V1`);
-            envResponse = await fetch(`https://deploy.mendix.com/api/1/apps/${app.AppId}/environments`, {
-              method: 'GET',
-              headers
-            });
-          }
 
           if (envResponse.ok) {
             const environments = await envResponse.json();

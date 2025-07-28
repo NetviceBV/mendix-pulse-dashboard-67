@@ -66,20 +66,11 @@ serve(async (req) => {
       headers['Authorization'] = `MxToken ${credential.pat}`;
     }
 
-    // Try v4 API first, fall back to v1 if needed
-    let mendixResponse = await fetch(`https://deploy.mendix.com/api/4/apps/${appId}/environments/${environmentId}`, {
+    // Use V4 API exclusively for environment status retrieval
+    const mendixResponse = await fetch(`https://deploy.mendix.com/api/4/apps/${appId}/environments/${environmentId}`, {
       method: 'GET',
       headers
     });
-
-    // If v4 fails, try v1 API
-    if (!mendixResponse.ok) {
-      console.log(`V4 API failed with ${mendixResponse.status}, trying V1 API`);
-      mendixResponse = await fetch(`https://deploy.mendix.com/api/1/apps/${appId}/environments/${environmentId}`, {
-        method: 'GET',
-        headers
-      });
-    }
 
     if (!mendixResponse.ok) {
       throw new Error(`Failed to fetch environment status: ${mendixResponse.status}`);
