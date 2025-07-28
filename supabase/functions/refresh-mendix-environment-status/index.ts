@@ -93,15 +93,15 @@ serve(async (req) => {
 
     const environmentData = await mendixResponse.json();
     console.log(`Successfully fetched environment status for ${environmentId}`);
+    console.log('Full API response:', JSON.stringify(environmentData));
 
     // Update the environment in the database with fresh data
     const { error: updateError } = await supabase
       .from('mendix_environments')
       .update({
-        status: environmentData.Status || environmentData.status || 'unknown',
-        model_version: environmentData.ModelVersion || environmentData.model_version,
-        runtime_version: environmentData.RuntimeVersion || environmentData.runtime_version,
-        url: environmentData.Url || environmentData.url,
+        status: environmentData.state || 'unknown',
+        environment_name: environmentData.name,
+        url: environmentData.url,
         updated_at: new Date().toISOString()
       })
       .eq('environment_id', environmentId)
@@ -116,12 +116,12 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         environment: {
-          id: environmentData.EnvironmentId || environmentData.environment_id || environmentId,
-          name: environmentData.Name || environmentData.name,
-          status: environmentData.Status || environmentData.status || 'unknown',
-          model_version: environmentData.ModelVersion || environmentData.model_version,
-          runtime_version: environmentData.RuntimeVersion || environmentData.runtime_version,
-          url: environmentData.Url || environmentData.url
+          id: environmentData.id || environmentId,
+          name: environmentData.name,
+          status: environmentData.state || 'unknown',
+          url: environmentData.url,
+          isProduction: environmentData.isProduction,
+          planName: environmentData.planName
         }
       }),
       {
