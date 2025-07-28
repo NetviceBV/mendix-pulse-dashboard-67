@@ -84,7 +84,27 @@ serve(async (req) => {
       throw new Error(`Failed to stop environment: ${response.status}`);
     }
 
-    const result = await response.json();
+    // Handle response - Mendix API may return empty body or non-JSON response
+    let result = null;
+    const contentType = response.headers.get('content-type');
+    console.log(`Response status: ${response.status}, Content-Type: ${contentType}`);
+    
+    if (contentType && contentType.includes('application/json')) {
+      const responseText = await response.text();
+      if (responseText.trim()) {
+        try {
+          result = JSON.parse(responseText);
+        } catch (parseError) {
+          console.log(`Could not parse JSON response: ${responseText}`);
+          result = { message: 'Environment stop initiated' };
+        }
+      } else {
+        result = { message: 'Environment stop initiated' };
+      }
+    } else {
+      result = { message: 'Environment stop initiated' };
+    }
+    
     console.log(`Environment ${environmentName} stop initiated successfully`);
 
     return new Response(
