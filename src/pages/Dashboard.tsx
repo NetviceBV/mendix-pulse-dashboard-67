@@ -87,16 +87,48 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
     setFilteredApps(filtered);
   }, [apps, searchTerm, statusFilter]);
 
-  const refreshApps = () => {
+  const refreshApps = async () => {
     setLoading(true);
-    // Simulate refresh
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const { data: appsData, error: appsError } = await supabase
+        .from('mendix_apps')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (appsError) throw appsError;
+
+      // Fetch environments separately for each app
+      const appsWithEnvironments = await Promise.all((appsData || []).map(async (app) => {
+        const { data: environments, error: envError } = await supabase
+          .from('mendix_environments')
+          .select('*')
+          .eq('app_id', app.app_id);
+
+        return {
+          ...app,
+          environments: envError ? [] : (environments || [])
+        };
+      }));
+
+      const mappedApps: MendixApp[] = appsWithEnvironments;
+
+      setApps(mappedApps);
+      setFilteredApps(mappedApps);
+      
       toast({
         title: "Applications refreshed",
         description: "Latest status updates have been loaded"
       });
-    }, 1000);
+    } catch (error) {
+      console.error('Error refreshing apps:', error);
+      toast({
+        title: "Refresh failed",
+        description: "Could not load latest application data",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleOpenApp = (app: MendixApp) => {
@@ -273,17 +305,7 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
                 key={app.id}
                 app={app}
                 onOpenApp={handleOpenApp}
-                onRefresh={() => {
-                  // Refresh the apps data when operations complete
-                  setLoading(true);
-                  setTimeout(() => {
-                    setLoading(false);
-                    toast({
-                      title: "Status Updated",
-                      description: "Environment status has been refreshed"
-                    });
-                  }, 2000);
-                }}
+                onRefresh={refreshApps}
               />
             ))}
           </div>
