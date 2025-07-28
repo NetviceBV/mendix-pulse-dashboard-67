@@ -43,3 +43,9 @@ enable_manual_linking = false
 enabled = true
 
 [functions.fetch-mendix-apps]
+
+[functions.start-mendix-environment]
+
+[functions.stop-mendix-environment]
+
+[functions.download-mendix-logs]

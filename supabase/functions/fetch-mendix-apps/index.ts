@@ -127,20 +127,51 @@ serve(async (req) => {
 
     // Store the new app results and fetch environments
     if (apps.length > 0) {
-      const appResults = apps.map((app: any) => ({
-        user_id: user.id,
-        credential_id: credentialId,
-        app_name: app.Name,
-        app_url: app.Url,
-        project_id: app.ProjectId,
-        app_id: app.AppId,
-        status: 'healthy',
-        environment: 'production',
-        version: '1.0.0',
-        active_users: Math.floor(Math.random() * 100),
-        error_count: Math.floor(Math.random() * 5),
-        last_deployed: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString()
-      }));
+      // Process each app individually to get real deployment data
+      const appResults = [];
+      
+      for (const app of apps) {
+        // Get deployment info from API if available
+        let deploymentInfo = null;
+        try {
+          const deployUrl = `https://deploy.mendix.com/api/1/apps/${app.AppId}/packages`;
+          const deployResponse = await fetch(deployUrl, {
+            headers: {
+              'Accept': 'application/json',
+              'Mendix-Username': credential.username,
+              'Mendix-ApiKey': credential.api_key || credential.pat || ''
+            }
+          });
+          
+          if (deployResponse.ok) {
+            const packages = await deployResponse.json();
+            if (packages && packages.length > 0) {
+              const latestPackage = packages[0];
+              deploymentInfo = {
+                version: latestPackage.Version || '1.0.0',
+                created: latestPackage.Created
+              };
+            }
+          }
+        } catch (deployError) {
+          console.log(`Could not fetch deployment info for ${app.Name}:`, deployError.message);
+        }
+
+        appResults.push({
+          user_id: user.id,
+          credential_id: credentialId,
+          app_name: app.Name,
+          app_url: app.Url,
+          project_id: app.ProjectId,
+          app_id: app.AppId,
+          status: 'healthy', // Will be determined from environments
+          environment: 'production', // Will be determined from environments
+          version: deploymentInfo?.version || '1.0.0',
+          active_users: 0, // Real monitoring data not available yet
+          error_count: 0, // Real monitoring data not available yet
+          last_deployed: deploymentInfo?.created || null
+        });
+      }
 
       const { error: insertError } = await supabase
         .from('mendix_apps')

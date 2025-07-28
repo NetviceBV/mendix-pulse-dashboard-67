@@ -170,15 +170,62 @@ const AppCard = ({ app, onOpenApp }: AppCardProps) => {
                       <span className="text-xs text-muted-foreground">v{env.model_version}</span>
                     )}
                   </div>
-                  {env.url && (
-                    <ExternalLink 
-                      className="h-3 w-3 text-muted-foreground cursor-pointer hover:text-primary"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        window.open(env.url, '_blank');
-                      }}
-                    />
-                  )}
+                  <div className="flex items-center gap-1">
+                    {/* Only show start/stop buttons for non-production environments */}
+                    {env.environment_name.toLowerCase() !== 'production' && (
+                      <div className="flex gap-1">
+                        {env.status === 'stopped' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-xs"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // TODO: Implement start environment functionality
+                              console.log('Start environment:', env.id);
+                            }}
+                          >
+                            Start
+                          </Button>
+                        )}
+                        {env.status === 'running' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-xs"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // TODO: Implement stop environment functionality
+                              console.log('Stop environment:', env.id);
+                            }}
+                          >
+                            Stop
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 px-2 text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // TODO: Implement download logs functionality
+                            console.log('Download logs for environment:', env.id);
+                          }}
+                        >
+                          Logs
+                        </Button>
+                      </div>
+                    )}
+                    {env.url && (
+                      <ExternalLink 
+                        className="h-3 w-3 text-muted-foreground cursor-pointer hover:text-primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(env.url, '_blank');
+                        }}
+                      />
+                    )}
+                  </div>
                 </div>
               ))}
               {app.environments.length > 3 && (
