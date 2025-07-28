@@ -315,7 +315,7 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                             e.stopPropagation();
                             try {
                               setLogsEnvironment({ name: env.environment_name, id: env.environment_id, appId: app.app_id });
-                              const logData = await downloadLogs(app.app_id, env.environment_name);
+                              const logData = await downloadLogs(app.app_name, env.environment_name);
                               setLogs(logData || 'No logs available');
                               setLogsOpen(true);
                             } catch (error) {

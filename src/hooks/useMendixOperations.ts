@@ -100,7 +100,7 @@ export const useMendixOperations = () => {
     }
   };
 
-  const downloadLogs = async (appName: string, environmentName: string, date?: string) => {
+  const downloadLogs = async (appName: string, environmentName: string, date?: string, environmentId?: string) => {
     setLoading(true);
     try {
       const credentials = await getCredentials();
@@ -113,6 +113,7 @@ export const useMendixOperations = () => {
           credentialId: credentials.id,
           appName,
           environmentName,
+          environmentId,
           date
         },
         headers: {
