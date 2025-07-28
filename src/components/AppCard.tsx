@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
 import { 
   Activity, 
   AlertTriangle, 
@@ -99,9 +100,56 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
   const [stopDialogOpen, setStopDialogOpen] = useState(false);
   const [pendingStopEnv, setPendingStopEnv] = useState<{ id: string; name: string; appId: string } | null>(null);
   
-  const { loading, startEnvironment, stopEnvironment, downloadLogs } = useMendixOperations();
+  const [environmentStatuses, setEnvironmentStatuses] = useState<Record<string, { status: string; loading: boolean }>>({});
+  const { loading, startEnvironment, stopEnvironment, downloadLogs, refreshEnvironmentStatus } = useMendixOperations();
   const statusInfo = statusConfig[app.status] || statusConfig.offline;
   const StatusIcon = statusInfo.icon;
+
+  const handleRefreshEnvironment = async (env: MendixEnvironment) => {
+    const envKey = env.environment_id || env.id;
+    setEnvironmentStatuses(prev => ({ ...prev, [envKey]: { ...prev[envKey], loading: true } }));
+    
+    try {
+      // Get credentials first to find the credential ID
+      const { data: credentials, error } = await supabase
+        .from('mendix_credentials')
+        .select('*')
+        .limit(1)
+        .single();
+
+      if (error || !credentials) {
+        throw new Error('No Mendix credentials found');
+      }
+
+      const updatedEnv = await refreshEnvironmentStatus(
+        credentials.id,
+        app.app_id || app.app_name,
+        env.environment_id || env.id
+      );
+      
+      setEnvironmentStatuses(prev => ({ 
+        ...prev, 
+        [envKey]: { status: updatedEnv.status, loading: false } 
+      }));
+      
+      // Refresh the full app data
+      onRefresh?.();
+    } catch (error) {
+      console.error('Failed to refresh environment status:', error);
+      setEnvironmentStatuses(prev => ({ ...prev, [envKey]: { ...prev[envKey], loading: false } }));
+    }
+  };
+
+  const getEnvironmentStatus = (env: MendixEnvironment) => {
+    const envKey = env.environment_id || env.id;
+    const statusOverride = environmentStatuses[envKey];
+    return statusOverride?.status || env.status;
+  };
+
+  const isEnvironmentLoading = (env: MendixEnvironment) => {
+    const envKey = env.environment_id || env.id;
+    return environmentStatuses[envKey]?.loading || false;
+  };
 
   return (
     <Card className={cn(
@@ -187,43 +235,58 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                   <div className="flex items-center gap-2">
                     <div className={cn(
                       "w-2 h-2 rounded-full",
-                      env.status?.toLowerCase() === 'running' ? 'bg-success' : 
-                      env.status?.toLowerCase() === 'stopped' ? 'bg-error' : 'bg-warning'
+                      getEnvironmentStatus(env)?.toLowerCase() === 'running' ? 'bg-success' : 
+                      getEnvironmentStatus(env)?.toLowerCase() === 'stopped' ? 'bg-error' : 'bg-warning'
                     )} />
                     <span className="text-sm font-medium">{env.environment_name}</span>
                     {env.model_version && (
                       <span className="text-xs text-muted-foreground">v{env.model_version}</span>
+                    )}
+                    {isEnvironmentLoading(env) && (
+                      <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
                     )}
                   </div>
                   <div className="flex items-center gap-1">
                     {/* Only show start/stop buttons for non-production environments */}
                     {env.environment_name.toLowerCase() !== 'production' && (
                       <div className="flex gap-1">
-                        {env.status?.toLowerCase() === 'stopped' && (
+                        {getEnvironmentStatus(env)?.toLowerCase() === 'stopped' && (
                           <Button
                             size="sm"
                             variant="outline"
                             className="h-6 px-2 text-xs"
-                            disabled={loading}
+                            disabled={loading || isEnvironmentLoading(env)}
                             onClick={async (e) => {
                               e.stopPropagation();
                               try {
+                                // Optimistic update
+                                const envKey = env.environment_id || env.id;
+                                setEnvironmentStatuses(prev => ({ 
+                                  ...prev, 
+                                  [envKey]: { status: 'starting...', loading: true } 
+                                }));
+                                
                                 await startEnvironment(app.app_id, env.environment_name);
-                                onRefresh?.();
+                                await handleRefreshEnvironment(env);
                               } catch (error) {
-                                // Error already handled in hook
+                                // Reset on error
+                                const envKey = env.environment_id || env.id;
+                                setEnvironmentStatuses(prev => ({ 
+                                  ...prev, 
+                                  [envKey]: { status: env.status, loading: false } 
+                                }));
                               }
                             }}
                           >
-                            {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Start'}
+                            {loading || isEnvironmentLoading(env) ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Start'}
                           </Button>
                         )}
-                        {env.status?.toLowerCase() === 'running' && (
+                        {getEnvironmentStatus(env)?.toLowerCase() === 'running' && (
                           <Button
                             size="sm"
                             variant="outline"
                             className="h-6 px-2 text-xs"
-                            disabled={loading}
+                            disabled={loading || isEnvironmentLoading(env)}
                             onClick={(e) => {
                               e.stopPropagation();
                               setPendingStopEnv({ id: env.environment_id, name: env.environment_name, appId: app.app_id });
@@ -233,6 +296,16 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                             Stop
                           </Button>
                         )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 px-2 text-xs"
+                          disabled={loading || isEnvironmentLoading(env)}
+                          onClick={() => handleRefreshEnvironment(env)}
+                          title="Refresh environment status"
+                        >
+                          🔄
+                        </Button>
                         <Button
                           size="sm"
                           variant="outline"
@@ -316,10 +389,28 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
               onClick={async () => {
                 if (pendingStopEnv) {
                   try {
+                    // Optimistic update
+                    setEnvironmentStatuses(prev => ({ 
+                      ...prev, 
+                      [pendingStopEnv.id]: { status: 'stopping...', loading: true } 
+                    }));
+                    
                     await stopEnvironment(pendingStopEnv.appId, pendingStopEnv.name);
-                    onRefresh?.();
+                    
+                    // Find the environment to refresh
+                    const env = app.environments?.find(e => e.environment_id === pendingStopEnv.id);
+                    if (env) {
+                      await handleRefreshEnvironment(env);
+                    }
                   } catch (error) {
-                    // Error already handled in hook
+                    // Reset on error
+                    const originalEnv = app.environments?.find(e => e.environment_id === pendingStopEnv.id);
+                    if (originalEnv) {
+                      setEnvironmentStatuses(prev => ({ 
+                        ...prev, 
+                        [pendingStopEnv.id]: { status: originalEnv.status, loading: false } 
+                      }));
+                    }
                   }
                   setPendingStopEnv(null);
                   setStopDialogOpen(false);

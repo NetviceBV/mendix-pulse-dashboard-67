@@ -136,10 +136,42 @@ export const useMendixOperations = () => {
     }
   };
 
+  const refreshEnvironmentStatus = async (credentialId: string, appId: string, environmentId: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase.functions.invoke('refresh-mendix-environment-status', {
+        body: {
+          credentialId,
+          appId,
+          environmentId,
+        },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to refresh environment status');
+      }
+
+      return data.environment;
+    } catch (error) {
+      console.error('Error refreshing environment status:', error);
+      throw error;
+    }
+  };
+
   return {
     loading,
     startEnvironment,
     stopEnvironment,
-    downloadLogs
+    downloadLogs,
+    refreshEnvironmentStatus,
   };
 };
