@@ -114,7 +114,7 @@ serve(async (req) => {
     const logText = await logsResponse.text();
     const result = { logs: logText };
     
-    console.log(`Logs downloaded successfully for environment ${envIdentifier}`);
+    console.log(`Logs downloaded successfully for environment ${normalizedEnvName}`);
 
     return new Response(
       JSON.stringify({ 
