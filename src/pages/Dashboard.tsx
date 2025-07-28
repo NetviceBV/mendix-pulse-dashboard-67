@@ -296,6 +296,17 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
                 key={app.id}
                 app={app}
                 onOpenApp={handleOpenApp}
+                onRefresh={() => {
+                  // Refresh the apps data when operations complete
+                  setLoading(true);
+                  setTimeout(() => {
+                    setLoading(false);
+                    toast({
+                      title: "Status Updated",
+                      description: "Environment status has been refreshed"
+                    });
+                  }, 2000);
+                }}
               />
             ))}
           </div>

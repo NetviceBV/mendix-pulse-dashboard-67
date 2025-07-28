@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,9 +10,23 @@ import {
   ExternalLink,
   Clock,
   Users,
-  Code
+  Code,
+  Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import LogsViewer from "./LogsViewer";
+import { useMendixOperations } from "@/hooks/useMendixOperations";
+import { format } from "date-fns";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export interface MendixEnvironment {
   id: string;
@@ -39,6 +54,7 @@ export interface MendixApp {
 interface AppCardProps {
   app: MendixApp;
   onOpenApp: (app: MendixApp) => void;
+  onRefresh?: () => void;
 }
 
 const statusConfig = {
@@ -74,7 +90,14 @@ const environmentColors = {
   test: "bg-gradient-success"
 };
 
-const AppCard = ({ app, onOpenApp }: AppCardProps) => {
+const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
+  const [logsOpen, setLogsOpen] = useState(false);
+  const [logs, setLogs] = useState("");
+  const [logsEnvironment, setLogsEnvironment] = useState<{ name: string; id: string; appId: string } | null>(null);
+  const [stopDialogOpen, setStopDialogOpen] = useState(false);
+  const [pendingStopEnv, setPendingStopEnv] = useState<{ id: string; name: string; appId: string } | null>(null);
+  
+  const { loading, startEnvironment, stopEnvironment, downloadLogs } = useMendixOperations();
   const statusInfo = statusConfig[app.status] || statusConfig.offline;
   const StatusIcon = statusInfo.icon;
 
@@ -179,13 +202,18 @@ const AppCard = ({ app, onOpenApp }: AppCardProps) => {
                             size="sm"
                             variant="outline"
                             className="h-6 px-2 text-xs"
-                            onClick={(e) => {
+                            disabled={loading}
+                            onClick={async (e) => {
                               e.stopPropagation();
-                              // TODO: Implement start environment functionality
-                              console.log('Start environment:', env.id);
+                              try {
+                                await startEnvironment(app.id, env.id, env.environment_name);
+                                onRefresh?.();
+                              } catch (error) {
+                                // Error already handled in hook
+                              }
                             }}
                           >
-                            Start
+                            {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Start'}
                           </Button>
                         )}
                         {env.status === 'running' && (
@@ -193,10 +221,11 @@ const AppCard = ({ app, onOpenApp }: AppCardProps) => {
                             size="sm"
                             variant="outline"
                             className="h-6 px-2 text-xs"
+                            disabled={loading}
                             onClick={(e) => {
                               e.stopPropagation();
-                              // TODO: Implement stop environment functionality
-                              console.log('Stop environment:', env.id);
+                              setPendingStopEnv({ id: env.id, name: env.environment_name, appId: app.id });
+                              setStopDialogOpen(true);
                             }}
                           >
                             Stop
@@ -206,13 +235,20 @@ const AppCard = ({ app, onOpenApp }: AppCardProps) => {
                           size="sm"
                           variant="outline"
                           className="h-6 px-2 text-xs"
-                          onClick={(e) => {
+                          disabled={loading}
+                          onClick={async (e) => {
                             e.stopPropagation();
-                            // TODO: Implement download logs functionality
-                            console.log('Download logs for environment:', env.id);
+                            try {
+                              setLogsEnvironment({ name: env.environment_name, id: env.id, appId: app.id });
+                              const logData = await downloadLogs(app.id, env.id);
+                              setLogs(logData || 'No logs available');
+                              setLogsOpen(true);
+                            } catch (error) {
+                              // Error already handled in hook
+                            }
                           }}
                         >
-                          Logs
+                          {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Logs'}
                         </Button>
                       </div>
                     )}
@@ -261,6 +297,63 @@ const AppCard = ({ app, onOpenApp }: AppCardProps) => {
           )}
         </div>
       </CardContent>
+
+      {/* Stop Environment Confirmation Dialog */}
+      <AlertDialog open={stopDialogOpen} onOpenChange={setStopDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Stop Environment</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to stop the "{pendingStopEnv?.name}" environment? 
+              This will make the application unavailable until it's started again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingStopEnv(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (pendingStopEnv) {
+                  try {
+                    await stopEnvironment(pendingStopEnv.appId, pendingStopEnv.id, pendingStopEnv.name);
+                    onRefresh?.();
+                  } catch (error) {
+                    // Error already handled in hook
+                  }
+                  setPendingStopEnv(null);
+                  setStopDialogOpen(false);
+                }
+              }}
+            >
+              Stop Environment
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Logs Viewer */}
+      {logsEnvironment && (
+        <LogsViewer
+          open={logsOpen}
+          onClose={() => {
+            setLogsOpen(false);
+            setLogsEnvironment(null);
+            setLogs("");
+          }}
+          logs={logs}
+          environmentName={logsEnvironment.name}
+          appName={app.name}
+          loading={loading}
+          onDownloadDate={async (date) => {
+            try {
+              const dateStr = format(date, 'yyyy-MM-dd');
+              const logData = await downloadLogs(logsEnvironment.appId, logsEnvironment.id, dateStr);
+              setLogs(logData || 'No logs available for selected date');
+            } catch (error) {
+              // Error already handled in hook
+            }
+          }}
+        />
+      )}
     </Card>
   );
 };
