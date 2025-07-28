@@ -124,7 +124,7 @@ export const useMendixOperations = () => {
       if (error) throw error;
       if (!data.success) throw new Error(data.error);
 
-      return data.logs;
+      return data.data.logs;
     } catch (error: any) {
       toast({
         title: "Failed to Download Logs",
