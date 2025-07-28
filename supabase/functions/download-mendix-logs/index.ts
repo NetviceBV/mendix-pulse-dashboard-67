@@ -57,14 +57,19 @@ serve(async (req) => {
     console.log(`Original app name: "${appName}" -> normalized: "${normalizedAppName}"`);
     console.log(`Original environment: "${environmentId || environmentName}" -> normalized: "${normalizedEnvName}"`);
     
-    // Generate today's date in YYYY-MM-DD format
-    const today = new Date();
-    const todayDate = today.getFullYear() + '-' + 
-      String(today.getMonth() + 1).padStart(2, '0') + '-' + 
-      String(today.getDate()).padStart(2, '0');
+    // Use provided date or generate today's date in YYYY-MM-DD format
+    let selectedDate = date;
+    if (!selectedDate) {
+      const today = new Date();
+      selectedDate = today.getFullYear() + '-' + 
+        String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+        String(today.getDate()).padStart(2, '0');
+    }
     
-    // Use today's date in the URL path as required by Mendix API v1
-    const logsUrl = `https://deploy.mendix.com/api/1/apps/${normalizedAppName}/environments/${normalizedEnvName}/logs/${todayDate}`;
+    console.log(`Using date: ${selectedDate} for logs download`);
+    
+    // Use selected date in the URL path as required by Mendix API v1
+    const logsUrl = `https://deploy.mendix.com/api/1/apps/${normalizedAppName}/environments/${normalizedEnvName}/logs/${selectedDate}`;
     
     console.log(`Constructed logs URL: ${logsUrl}`);
     
