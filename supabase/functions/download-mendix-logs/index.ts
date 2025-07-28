@@ -50,8 +50,12 @@ serve(async (req) => {
     }
 
     // Download logs using Mendix Deploy API v1
-    // Use environment ID if available, otherwise fall back to environment name
-    const envIdentifier = environmentId || environmentName;
+    // Normalize app name and environment name for Mendix API
+    const normalizedAppName = appName.toLowerCase().replace(/\s+/g, '-');
+    const normalizedEnvName = (environmentId || environmentName).toLowerCase();
+    
+    console.log(`Original app name: "${appName}" -> normalized: "${normalizedAppName}"`);
+    console.log(`Original environment: "${environmentId || environmentName}" -> normalized: "${normalizedEnvName}"`);
     
     // Generate today's date in YYYY-MM-DD format
     const today = new Date();
@@ -60,9 +64,9 @@ serve(async (req) => {
       String(today.getDate()).padStart(2, '0');
     
     // Use today's date in the URL path as required by Mendix API v1
-    const logsUrl = `https://deploy.mendix.com/api/1/apps/${appName}/environments/${envIdentifier}/logs/${todayDate}`;
+    const logsUrl = `https://deploy.mendix.com/api/1/apps/${normalizedAppName}/environments/${normalizedEnvName}/logs/${todayDate}`;
     
-    console.log(`Getting download URL for environment ${envIdentifier} for app ${appName} on ${todayDate}`);
+    console.log(`Constructed logs URL: ${logsUrl}`);
     
     // Step 1: Get the download URL from Mendix API
     const response = await fetch(logsUrl, {
@@ -77,7 +81,8 @@ serve(async (req) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`Failed to get download URL: ${response.status} - ${errorText}`);
-      throw new Error(`Failed to get download URL: ${response.status}`);
+      console.error(`URL that failed: ${logsUrl}`);
+      throw new Error(`Failed to get download URL: ${response.status} for URL: ${logsUrl}`);
     }
 
     // Parse the JSON response to get the DownloadUrl
