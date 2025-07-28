@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { format } from "date-fns";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,6 @@ import {
 import { cn } from "@/lib/utils";
 import LogsViewer from "./LogsViewer";
 import { useMendixOperations } from "@/hooks/useMendixOperations";
-import { format } from "date-fns";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,6 +30,7 @@ import {
 
 export interface MendixEnvironment {
   id: string;
+  environment_id: string | null;
   environment_name: string;
   status: string;
   url?: string;
@@ -39,15 +40,16 @@ export interface MendixEnvironment {
 
 export interface MendixApp {
   id: string;
-  name: string;
-  description: string;
-  status: "healthy" | "warning" | "error" | "offline";
-  environment: "production" | "acceptance" | "test";
-  lastDeployed: string;
-  version: string;
-  activeUsers: number;
-  errorCount: number;
-  url?: string;
+  project_id: string | null;
+  app_id: string | null;
+  app_name: string;
+  status: string;
+  environment: string;
+  last_deployed: string | null;
+  version: string | null;
+  active_users: number | null;
+  error_count: number | null;
+  app_url?: string;
   environments?: MendixEnvironment[];
 }
 
@@ -117,10 +119,10 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-lg truncate group-hover:text-primary transition-colors">
-              {app.name}
+              {app.app_name}
             </h3>
             <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-              {app.description}
+              Mendix Application
             </p>
           </div>
           
@@ -160,18 +162,18 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
           
           <div className="flex items-center gap-2 text-sm">
             <Users className="w-4 h-4 text-muted-foreground" />
-            <span className="text-muted-foreground">{app.activeUsers} users</span>
+            <span className="text-muted-foreground">{app.active_users || 0} users</span>
           </div>
           
           <div className="flex items-center gap-2 text-sm">
             <Clock className="w-4 h-4 text-muted-foreground" />
-            <span className="text-muted-foreground">{app.lastDeployed}</span>
+            <span className="text-muted-foreground">{app.last_deployed ? format(new Date(app.last_deployed), 'MMM dd') : 'Never'}</span>
           </div>
           
-          {app.errorCount > 0 && (
+          {(app.error_count || 0) > 0 && (
             <div className="flex items-center gap-2 text-sm">
               <AlertTriangle className="w-4 h-4 text-error" />
-              <span className="text-error font-medium">{app.errorCount} errors</span>
+              <span className="text-error font-medium">{app.error_count} errors</span>
             </div>
           )}
         </div>
@@ -206,7 +208,7 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                             onClick={async (e) => {
                               e.stopPropagation();
                               try {
-                                await startEnvironment(app.id, env.id, env.environment_name);
+                                await startEnvironment(app.project_id, env.environment_id, env.environment_name);
                                 onRefresh?.();
                               } catch (error) {
                                 // Error already handled in hook
@@ -224,7 +226,7 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                             disabled={loading}
                             onClick={(e) => {
                               e.stopPropagation();
-                              setPendingStopEnv({ id: env.id, name: env.environment_name, appId: app.id });
+                              setPendingStopEnv({ id: env.environment_id, name: env.environment_name, appId: app.project_id });
                               setStopDialogOpen(true);
                             }}
                           >
@@ -239,8 +241,8 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                           onClick={async (e) => {
                             e.stopPropagation();
                             try {
-                              setLogsEnvironment({ name: env.environment_name, id: env.id, appId: app.id });
-                              const logData = await downloadLogs(app.id, env.id);
+                              setLogsEnvironment({ name: env.environment_name, id: env.environment_id, appId: app.project_id });
+                              const logData = await downloadLogs(app.project_id, env.environment_id);
                               setLogs(logData || 'No logs available');
                               setLogsOpen(true);
                             } catch (error) {
@@ -283,13 +285,13 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
             View Details
           </Button>
           
-          {app.url && (
+          {app.app_url && (
             <Button
               variant="outline"
               size="sm"
               onClick={(e) => {
                 e.stopPropagation();
-                window.open(app.url, '_blank');
+                window.open(app.app_url, '_blank');
               }}
             >
               <ExternalLink className="w-4 h-4" />
@@ -341,7 +343,7 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
           }}
           logs={logs}
           environmentName={logsEnvironment.name}
-          appName={app.name}
+          appName={app.app_name}
           loading={loading}
           onDownloadDate={async (date) => {
             try {
