@@ -239,7 +239,7 @@ serve(async (req) => {
                 app_id: app.AppId,
                 environment_id: env.environmentId || env.EnvironmentId || env.id || env.Id,
                 environment_name: envName,
-                status: env.status || env.Status || 'unknown',
+                status: (env.status || env.Status || 'unknown').toLowerCase(),
                 url: env.url || env.Url,
                 model_version: env.modelVersion || env.ModelVersion,
                 runtime_version: env.runtimeVersion || env.RuntimeVersion

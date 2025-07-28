@@ -185,8 +185,8 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                   <div className="flex items-center gap-2">
                     <div className={cn(
                       "w-2 h-2 rounded-full",
-                      env.status === 'running' ? 'bg-success' : 
-                      env.status === 'stopped' ? 'bg-error' : 'bg-warning'
+                      env.status?.toLowerCase() === 'running' ? 'bg-success' : 
+                      env.status?.toLowerCase() === 'stopped' ? 'bg-error' : 'bg-warning'
                     )} />
                     <span className="text-sm font-medium">{env.environment_name}</span>
                     {env.model_version && (
@@ -197,7 +197,7 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                     {/* Only show start/stop buttons for non-production environments */}
                     {env.environment_name.toLowerCase() !== 'production' && (
                       <div className="flex gap-1">
-                        {env.status === 'stopped' && (
+                        {env.status?.toLowerCase() === 'stopped' && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -216,7 +216,7 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                             {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Start'}
                           </Button>
                         )}
-                        {env.status === 'running' && (
+                        {env.status?.toLowerCase() === 'running' && (
                           <Button
                             size="sm"
                             variant="outline"
