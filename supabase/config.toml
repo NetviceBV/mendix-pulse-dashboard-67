@@ -49,3 +49,6 @@ enabled = true
 [functions.stop-mendix-environment]
 
 [functions.download-mendix-logs]
+
+[functions.webhook-mendix-logs]
+verify_jwt = false
