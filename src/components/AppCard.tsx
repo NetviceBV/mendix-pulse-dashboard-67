@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -101,9 +101,53 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
   const [pendingStopEnv, setPendingStopEnv] = useState<{ id: string; name: string; appId: string } | null>(null);
   
   const [environmentStatuses, setEnvironmentStatuses] = useState<Record<string, { status: string; loading: boolean }>>({});
+  const [environmentErrorCounts, setEnvironmentErrorCounts] = useState<Record<string, number>>({});
   const { loading, startEnvironment, stopEnvironment, downloadLogs, refreshEnvironmentStatus } = useMendixOperations();
-  const statusInfo = statusConfig[app.status] || statusConfig.offline;
-  const StatusIcon = statusInfo.icon;
+
+  // Sort environments in the specified order
+  const sortEnvironments = (environments: MendixEnvironment[]) => {
+    const order = ['sandbox', 'test', 'acceptance', 'production'];
+    return [...environments].sort((a, b) => {
+      const aIndex = order.indexOf(a.environment_name.toLowerCase());
+      const bIndex = order.indexOf(b.environment_name.toLowerCase());
+      const aOrder = aIndex === -1 ? 999 : aIndex;
+      const bOrder = bIndex === -1 ? 999 : bIndex;
+      return aOrder - bOrder;
+    });
+  };
+
+  // Fetch error counts for each environment
+  useEffect(() => {
+    const fetchEnvironmentErrorCounts = async () => {
+      if (!app.environments || app.environments.length === 0) return;
+      
+      try {
+        const { data: errorCounts, error } = await supabase
+          .from('mendix_logs')
+          .select('environment, level')
+          .eq('app_id', app.app_id)
+          .in('level', ['Error', 'Critical']);
+
+        if (error) {
+          console.error('Error fetching environment error counts:', error);
+          return;
+        }
+
+        const counts: Record<string, number> = {};
+        errorCounts?.forEach(log => {
+          if (log.level === 'Error' || log.level === 'Critical') {
+            counts[log.environment] = (counts[log.environment] || 0) + 1;
+          }
+        });
+        
+        setEnvironmentErrorCounts(counts);
+      } catch (error) {
+        console.error('Failed to fetch environment error counts:', error);
+      }
+    };
+
+    fetchEnvironmentErrorCounts();
+  }, [app.app_id, app.environments]);
 
   const handleRefreshEnvironment = async (env: MendixEnvironment) => {
     const envKey = env.environment_id || env.id;
@@ -170,53 +214,47 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
               {app.app_name}
             </h3>
           </div>
-          
-          <div className="flex items-center gap-2 ml-4">
-            
-            <div className={cn(
-              "flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium",
-              statusInfo.gradient,
-              app.status === "warning" ? "text-warning-foreground" : "text-white"
-            )}>
-              <StatusIcon className="w-3 h-3" />
-              {statusInfo.text}
-            </div>
-          </div>
         </div>
       </CardHeader>
 
       <CardContent className="pt-0">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-          <div className="flex items-center gap-2 text-sm">
-            <Code className="w-4 h-4 text-muted-foreground" />
-            <span className="text-muted-foreground">v{app.version}</span>
-          </div>
-          
-          
-          {(app.error_count || 0) > 0 && (
-            <div className="flex items-center gap-2 text-sm">
-              <AlertTriangle className="w-4 h-4 text-error" />
-              <span className="text-error font-medium">{app.error_count} errors</span>
-            </div>
-          )}
-        </div>
-
         {app.environments && app.environments.length > 0 && (
           <div className="space-y-2 mb-4">
             <h4 className="text-sm font-medium text-muted-foreground">Environments</h4>
             <div className="grid gap-2">
-              {app.environments.slice(0, 3).map((env) => (
-                <div key={env.id} className="flex items-center justify-between p-2 rounded-md bg-muted/50">
-                  <div className="flex items-center gap-2">
-                    <div className={cn(
-                      "w-2 h-2 rounded-full",
-                      getEnvironmentStatus(env)?.toLowerCase() === 'running' ? 'bg-success' : 
-                      getEnvironmentStatus(env)?.toLowerCase() === 'stopped' ? 'bg-error' : 'bg-warning'
-                    )} />
-                    <span className="text-sm font-medium">{env.environment_name}</span>
-                    {env.model_version && (
-                      <span className="text-xs text-muted-foreground">v{env.model_version}</span>
+              {sortEnvironments(app.environments).map((env) => {
+                const envErrorCount = environmentErrorCounts[env.environment_name] || 0;
+                const statusInfo = statusConfig[getEnvironmentStatus(env)?.toLowerCase() === 'running' ? 'healthy' : getEnvironmentStatus(env)?.toLowerCase() === 'stopped' ? 'error' : 'warning'] || statusConfig.offline;
+                const StatusIcon = statusInfo.icon;
+                
+                return (
+                <div key={env.id} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">{env.environment_name}</span>
+                      {env.model_version && (
+                        <span className="text-xs text-muted-foreground">v{env.model_version}</span>
+                      )}
+                    </div>
+                    
+                    {/* Show either error count or health status */}
+                    {envErrorCount > 0 ? (
+                      <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-error/10 text-error">
+                        <AlertTriangle className="w-3 h-3" />
+                        <span className="text-xs font-medium">{envErrorCount} errors</span>
+                      </div>
+                    ) : (
+                      <div className={cn(
+                        "flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium",
+                        statusInfo.gradient,
+                        getEnvironmentStatus(env)?.toLowerCase() === 'running' ? "text-white" : "text-white"
+                      )}>
+                        <StatusIcon className="w-3 h-3" />
+                        {getEnvironmentStatus(env)?.toLowerCase() === 'running' ? 'Healthy' : 
+                         getEnvironmentStatus(env)?.toLowerCase() === 'stopped' ? 'Stopped' : 'Unknown'}
+                      </div>
                     )}
+                    
                     {isEnvironmentLoading(env) && (
                       <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
                     )}
@@ -313,39 +351,11 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                     )}
                   </div>
                 </div>
-              ))}
-              {app.environments.length > 3 && (
-                <div className="text-xs text-muted-foreground text-center">
-                  +{app.environments.length - 3} more environments
-                </div>
-              )}
+                );
+              })}
             </div>
           </div>
         )}
-
-        <div className="flex gap-2">
-          <Button
-            onClick={() => onOpenApp(app)}
-            className="flex-1 bg-gradient-primary hover:opacity-90 transition-opacity"
-            size="sm"
-          >
-            <Activity className="w-4 h-4 mr-2" />
-            View Details
-          </Button>
-          
-          {app.app_url && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation();
-                window.open(app.app_url, '_blank');
-              }}
-            >
-              <ExternalLink className="w-4 h-4" />
-            </Button>
-          )}
-        </div>
       </CardContent>
 
       {/* Stop Environment Confirmation Dialog */}
