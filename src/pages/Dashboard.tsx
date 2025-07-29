@@ -11,7 +11,9 @@ import {
   LogOut,
   AlertTriangle,
   CheckCircle,
-  Activity
+  Activity,
+  XCircle,
+  Zap
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
@@ -27,6 +29,11 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [loading, setLoading] = useState(true);
+  const [realtimeStats, setRealtimeStats] = useState({
+    totalWarnings: 0,
+    totalErrors: 0,
+    recentLogs: 0
+  });
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -58,6 +65,9 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
 
         setApps(mappedApps);
         setFilteredApps(mappedApps);
+        
+        // Fetch realtime stats
+        await fetchRealtimeStats();
       } catch (error) {
         console.error('Error fetching apps:', error);
         // Keep empty state if there's an error
@@ -70,6 +80,81 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
 
     fetchApps();
   }, []);
+
+  // Fetch realtime statistics
+  const fetchRealtimeStats = async () => {
+    try {
+      const { data: stats, error } = await supabase
+        .from('mendix_logs')
+        .select('level')
+        .gte('timestamp', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+
+      if (error) throw error;
+
+      const warnings = stats?.filter(log => log.level === 'Warning').length || 0;
+      const errors = stats?.filter(log => log.level === 'Error' || log.level === 'Critical').length || 0;
+      
+      setRealtimeStats({
+        totalWarnings: warnings,
+        totalErrors: errors,
+        recentLogs: stats?.length || 0
+      });
+    } catch (error) {
+      console.error('Error fetching realtime stats:', error);
+    }
+  };
+
+  // Set up real-time subscriptions
+  useEffect(() => {
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'mendix_apps'
+        },
+        (payload) => {
+          console.log('App update received:', payload);
+          // Refresh apps when there are changes
+          if (payload.eventType === 'UPDATE') {
+            setApps(prevApps => 
+              prevApps.map(app => 
+                app.id === payload.new.id ? { ...app, ...payload.new } : app
+              )
+            );
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'mendix_logs'
+        },
+        (payload) => {
+          console.log('New log received:', payload);
+          // Update realtime stats when new logs arrive
+          fetchRealtimeStats();
+          
+          // Show toast for critical errors
+          if (payload.new.level === 'Critical' || payload.new.level === 'Error') {
+            toast({
+              title: "Critical Error Detected",
+              description: `${payload.new.app_id} - ${payload.new.environment}: ${payload.new.message}`,
+              variant: "destructive"
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [toast]);
 
   useEffect(() => {
     let filtered = apps;
@@ -212,7 +297,7 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
       <div className="container mx-auto px-4 py-6">
         <div className="space-y-6">
           {/* Status Overview */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div className="bg-gradient-card rounded-lg p-4 border border-border">
               <div className="flex items-center justify-between">
                 <div>
@@ -236,8 +321,8 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
             <div className="bg-gradient-card rounded-lg p-4 border border-border">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Warnings</p>
-                  <p className="text-2xl font-bold text-warning">{statusCounts.warning}</p>
+                  <p className="text-sm text-muted-foreground">Warnings (24h)</p>
+                  <p className="text-2xl font-bold text-warning">{realtimeStats.totalWarnings}</p>
                 </div>
                 <AlertTriangle className="w-8 h-8 text-warning" />
               </div>
@@ -246,10 +331,20 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
             <div className="bg-gradient-card rounded-lg p-4 border border-border">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Critical</p>
-                  <p className="text-2xl font-bold text-error">{statusCounts.error}</p>
+                  <p className="text-sm text-muted-foreground">Errors (24h)</p>
+                  <p className="text-2xl font-bold text-error">{realtimeStats.totalErrors}</p>
                 </div>
-                <AlertTriangle className="w-8 h-8 text-error" />
+                <XCircle className="w-8 h-8 text-error" />
+              </div>
+            </div>
+            
+            <div className="bg-gradient-card rounded-lg p-4 border border-border">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Recent Logs</p>
+                  <p className="text-2xl font-bold text-accent">{realtimeStats.recentLogs}</p>
+                </div>
+                <Zap className="w-8 h-8 text-accent" />
               </div>
             </div>
           </div>

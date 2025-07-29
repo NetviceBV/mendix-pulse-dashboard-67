@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import MendixCredentials, { MendixCredential } from "@/components/MendixCredentials";
+import { WebhookManagement } from "@/components/WebhookManagement";
 import { ArrowLeft, Settings as SettingsIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -90,10 +92,23 @@ const Settings = () => {
 
       <div className="container mx-auto px-4 py-6">
         <div className="max-w-4xl mx-auto">
-          <MendixCredentials 
-            credentials={mendixCredentials}
-            onCredentialsChange={handleCredentialsChange}
-          />
+          <Tabs defaultValue="credentials" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="credentials">Mendix Credentials</TabsTrigger>
+              <TabsTrigger value="webhooks">Webhook Settings</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="credentials" className="mt-6">
+              <MendixCredentials 
+                credentials={mendixCredentials}
+                onCredentialsChange={handleCredentialsChange}
+              />
+            </TabsContent>
+            
+            <TabsContent value="webhooks" className="mt-6">
+              <WebhookManagement />
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     </div>

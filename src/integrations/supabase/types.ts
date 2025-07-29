@@ -245,7 +245,23 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      increment_app_error_count: {
+        Args: { target_app_id: string; target_user_id: string }
+        Returns: undefined
+      }
+      increment_app_warning_count: {
+        Args: { target_app_id: string; target_user_id: string }
+        Returns: undefined
+      }
+      increment_environment_counts: {
+        Args: {
+          target_app_id: string
+          target_environment: string
+          target_level: string
+          target_user_id: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
