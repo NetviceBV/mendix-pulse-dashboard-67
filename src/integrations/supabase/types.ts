@@ -31,6 +31,7 @@ export type Database = {
           updated_at: string
           user_id: string
           version: string | null
+          warning_count: number | null
         }
         Insert: {
           active_users?: number | null
@@ -48,6 +49,7 @@ export type Database = {
           updated_at?: string
           user_id: string
           version?: string | null
+          warning_count?: number | null
         }
         Update: {
           active_users?: number | null
@@ -65,6 +67,7 @@ export type Database = {
           updated_at?: string
           user_id?: string
           version?: string | null
+          warning_count?: number | null
         }
         Relationships: [
           {
@@ -123,6 +126,7 @@ export type Database = {
           updated_at: string
           url: string | null
           user_id: string
+          warning_count: number | null
         }
         Insert: {
           app_id: string
@@ -137,6 +141,7 @@ export type Database = {
           updated_at?: string
           url?: string | null
           user_id: string
+          warning_count?: number | null
         }
         Update: {
           app_id?: string
@@ -151,6 +156,7 @@ export type Database = {
           updated_at?: string
           url?: string | null
           user_id?: string
+          warning_count?: number | null
         }
         Relationships: [
           {
@@ -161,6 +167,78 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      mendix_logs: {
+        Row: {
+          app_id: string
+          created_at: string
+          environment: string
+          id: string
+          level: string
+          message: string
+          node: string | null
+          stacktrace: string | null
+          timestamp: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          app_id: string
+          created_at?: string
+          environment: string
+          id?: string
+          level: string
+          message: string
+          node?: string | null
+          stacktrace?: string | null
+          timestamp: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          app_id?: string
+          created_at?: string
+          environment?: string
+          id?: string
+          level?: string
+          message?: string
+          node?: string | null
+          stacktrace?: string | null
+          timestamp?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      webhook_api_keys: {
+        Row: {
+          api_key: string
+          created_at: string
+          id: string
+          is_active: boolean | null
+          key_name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          api_key: string
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          key_name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          api_key?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          key_name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
     }
     Views: {
