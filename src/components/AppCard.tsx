@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { supabase } from "@/integrations/supabase/client";
 import { 
   Activity, 
@@ -13,7 +14,10 @@ import {
   Clock,
   Users,
   Code,
-  Loader2
+  Loader2,
+  ChevronDown,
+  RefreshCw,
+  FileText
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import LogsViewer from "./LogsViewer";
@@ -88,9 +92,10 @@ const statusConfig = {
 };
 
 const environmentColors = {
-  production: "bg-gradient-error",
-  acceptance: "bg-gradient-warning", 
-  test: "bg-gradient-success"
+  production: "bg-red-500/10 border-red-500/30",
+  acceptance: "bg-yellow-500/10 border-yellow-500/30", 
+  test: "bg-green-500/10 border-green-500/30",
+  sandbox: "bg-blue-500/10 border-blue-500/30"
 };
 
 const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
@@ -99,6 +104,7 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
   const [logsEnvironment, setLogsEnvironment] = useState<{ name: string; id: string; appId: string } | null>(null);
   const [stopDialogOpen, setStopDialogOpen] = useState(false);
   const [pendingStopEnv, setPendingStopEnv] = useState<{ id: string; name: string; appId: string } | null>(null);
+  const [collapsedEnvironments, setCollapsedEnvironments] = useState<Record<string, boolean>>({});
   
   const [environmentStatuses, setEnvironmentStatuses] = useState<Record<string, { status: string; loading: boolean }>>({});
   const [environmentErrorCounts, setEnvironmentErrorCounts] = useState<Record<string, number>>({});
@@ -116,7 +122,7 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
     });
   };
 
-  // Fetch error counts for each environment
+  // Fetch error counts for each environment and set default collapse states
   useEffect(() => {
     const fetchEnvironmentErrorCounts = async () => {
       if (!app.environments || app.environments.length === 0) return;
@@ -141,6 +147,15 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
         });
         
         setEnvironmentErrorCounts(counts);
+
+        // Set default collapse states - expand environments with errors
+        const defaultCollapsed: Record<string, boolean> = {};
+        app.environments.forEach(env => {
+          const envErrorCount = counts[env.environment_name] || 0;
+          defaultCollapsed[env.id] = envErrorCount === 0; // Collapse if no errors
+        });
+        setCollapsedEnvironments(defaultCollapsed);
+        
       } catch (error) {
         console.error('Failed to fetch environment error counts:', error);
       }
@@ -219,141 +234,191 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
 
       <CardContent className="pt-0">
         {app.environments && app.environments.length > 0 && (
-          <div className="space-y-2 mb-4">
-            <h4 className="text-sm font-medium text-muted-foreground">Environments</h4>
-            <div className="grid gap-2">
-              {sortEnvironments(app.environments).map((env) => {
-                const envErrorCount = environmentErrorCounts[env.environment_name] || 0;
-                const statusInfo = statusConfig[getEnvironmentStatus(env)?.toLowerCase() === 'running' ? 'healthy' : getEnvironmentStatus(env)?.toLowerCase() === 'stopped' ? 'error' : 'warning'] || statusConfig.offline;
-                const StatusIcon = statusInfo.icon;
-                
-                return (
-                <div key={env.id} className="flex items-center justify-between p-3 rounded-md bg-muted/50">
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">{env.environment_name}</span>
-                      {env.model_version && (
-                        <span className="text-xs text-muted-foreground">v{env.model_version}</span>
-                      )}
-                    </div>
-                    
-                    {/* Show either error count or health status */}
-                    {envErrorCount > 0 ? (
-                      <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-error/10 text-error">
-                        <AlertTriangle className="w-3 h-3" />
-                        <span className="text-xs font-medium">{envErrorCount} errors</span>
+          <div className="space-y-2">
+            {sortEnvironments(app.environments).map((env) => {
+              const envErrorCount = environmentErrorCounts[env.environment_name] || 0;
+              const statusInfo = statusConfig[getEnvironmentStatus(env)?.toLowerCase() === 'running' ? 'healthy' : getEnvironmentStatus(env)?.toLowerCase() === 'stopped' ? 'error' : 'warning'] || statusConfig.offline;
+              const StatusIcon = statusInfo.icon;
+              const envColorClass = environmentColors[env.environment_name.toLowerCase() as keyof typeof environmentColors] || "bg-muted/50 border-muted/30";
+              const isCollapsed = collapsedEnvironments[env.id] !== false;
+              
+              return (
+                <Collapsible 
+                  key={env.id} 
+                  open={!isCollapsed}
+                  onOpenChange={(open) => setCollapsedEnvironments(prev => ({ ...prev, [env.id]: !open }))}
+                >
+                  <div className={cn("border rounded-lg overflow-hidden", envColorClass)}>
+                    <CollapsibleTrigger className="w-full">
+                      <div className="flex items-center justify-between p-3 hover:bg-muted/30 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold">{env.environment_name}</span>
+                            {env.model_version && (
+                              <Badge variant="secondary" className="text-xs px-2 py-0">
+                                v{env.model_version}
+                              </Badge>
+                            )}
+                          </div>
+                          
+                          {/* Show either error count or health status */}
+                          {envErrorCount > 0 ? (
+                            <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-destructive/20 text-destructive">
+                              <AlertTriangle className="w-3 h-3" />
+                              <span className="text-xs font-medium">{envErrorCount} errors</span>
+                            </div>
+                          ) : (
+                            <div className={cn(
+                              "flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium",
+                              getEnvironmentStatus(env)?.toLowerCase() === 'running' ? "bg-green-500/20 text-green-700" : 
+                              getEnvironmentStatus(env)?.toLowerCase() === 'stopped' ? "bg-red-500/20 text-red-700" : 
+                              "bg-yellow-500/20 text-yellow-700"
+                            )}>
+                              <StatusIcon className="w-3 h-3" />
+                              {getEnvironmentStatus(env)?.toLowerCase() === 'running' ? 'Running' : 
+                               getEnvironmentStatus(env)?.toLowerCase() === 'stopped' ? 'Stopped' : 'Unknown'}
+                            </div>
+                          )}
+                          
+                          {isEnvironmentLoading(env) && (
+                            <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+                          )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          {env.url && (
+                            <ExternalLink 
+                              className="h-4 w-4 text-muted-foreground hover:text-primary"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.open(env.url, '_blank');
+                              }}
+                            />
+                          )}
+                          <ChevronDown className={cn(
+                            "h-4 w-4 text-muted-foreground transition-transform", 
+                            isCollapsed && "rotate-180"
+                          )} />
+                        </div>
                       </div>
-                    ) : (
-                      <div className={cn(
-                        "flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium",
-                        statusInfo.gradient,
-                        getEnvironmentStatus(env)?.toLowerCase() === 'running' ? "text-white" : "text-white"
-                      )}>
-                        <StatusIcon className="w-3 h-3" />
-                        {getEnvironmentStatus(env)?.toLowerCase() === 'running' ? 'Healthy' : 
-                         getEnvironmentStatus(env)?.toLowerCase() === 'stopped' ? 'Stopped' : 'Unknown'}
-                      </div>
-                    )}
+                    </CollapsibleTrigger>
                     
-                    {isEnvironmentLoading(env) && (
-                      <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {/* Only show start/stop buttons for non-production environments */}
-                    {env.environment_name.toLowerCase() !== 'production' && (
-                      <div className="flex gap-1">
-                        {getEnvironmentStatus(env)?.toLowerCase() === 'stopped' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-6 px-2 text-xs"
-                            disabled={loading || isEnvironmentLoading(env)}
-                            onClick={async (e) => {
-                              e.stopPropagation();
-                              try {
-                                // Optimistic update
-                                const envKey = env.environment_id || env.id;
-                                setEnvironmentStatuses(prev => ({ 
-                                  ...prev, 
-                                  [envKey]: { status: 'starting...', loading: true } 
-                                }));
+                    <CollapsibleContent>
+                      <div className="px-3 pb-3 border-t bg-background/50">
+                        <div className="pt-3 space-y-2">
+                          {/* Environment details */}
+                          <div className="text-xs text-muted-foreground space-y-1">
+                            {env.runtime_version && (
+                              <p>Runtime: v{env.runtime_version}</p>
+                            )}
+                            <p>Status: {getEnvironmentStatus(env) || 'Unknown'}</p>
+                          </div>
+                          
+                          {/* Action buttons */}
+                          <div className="flex flex-wrap gap-2 pt-2">
+                            {/* Only show start/stop buttons for non-production environments */}
+                            {env.environment_name.toLowerCase() !== 'production' && (
+                              <>
+                                {getEnvironmentStatus(env)?.toLowerCase() === 'stopped' && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8"
+                                    disabled={loading || isEnvironmentLoading(env)}
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      try {
+                                        const envKey = env.environment_id || env.id;
+                                        setEnvironmentStatuses(prev => ({ 
+                                          ...prev, 
+                                          [envKey]: { status: 'starting...', loading: true } 
+                                        }));
+                                        
+                                        await startEnvironment(app.app_id, env.environment_name);
+                                        await handleRefreshEnvironment(env);
+                                      } catch (error) {
+                                        const envKey = env.environment_id || env.id;
+                                        setEnvironmentStatuses(prev => ({ 
+                                          ...prev, 
+                                          [envKey]: { status: env.status, loading: false } 
+                                        }));
+                                      }
+                                    }}
+                                  >
+                                    {loading || isEnvironmentLoading(env) ? (
+                                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                                    ) : (
+                                      <CheckCircle className="w-3 h-3 mr-1" />
+                                    )}
+                                    Start Environment
+                                  </Button>
+                                )}
                                 
-                                await startEnvironment(app.app_id, env.environment_name);
-                                await handleRefreshEnvironment(env);
-                              } catch (error) {
-                                // Reset on error
-                                const envKey = env.environment_id || env.id;
-                                setEnvironmentStatuses(prev => ({ 
-                                  ...prev, 
-                                  [envKey]: { status: env.status, loading: false } 
-                                }));
-                              }
-                            }}
-                          >
-                            {loading || isEnvironmentLoading(env) ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Start'}
-                          </Button>
-                        )}
-                        {getEnvironmentStatus(env)?.toLowerCase() === 'running' && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-6 px-2 text-xs"
-                            disabled={loading || isEnvironmentLoading(env)}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPendingStopEnv({ id: env.environment_id, name: env.environment_name, appId: app.app_id });
-                              setStopDialogOpen(true);
-                            }}
-                          >
-                            Stop
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-6 px-2 text-xs"
-                          disabled={loading || isEnvironmentLoading(env)}
-                          onClick={() => handleRefreshEnvironment(env)}
-                          title="Refresh environment status"
-                        >
-                          🔄
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-6 px-2 text-xs"
-                          disabled={loading}
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            try {
-                              setLogsEnvironment({ name: env.environment_name, id: env.environment_id, appId: app.app_id });
-                              const logData = await downloadLogs(app.app_name, env.environment_name);
-                              setLogs(logData || 'No logs available');
-                              setLogsOpen(true);
-                            } catch (error) {
-                              // Error already handled in hook
-                            }
-                          }}
-                        >
-                          {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Logs'}
-                        </Button>
+                                {getEnvironmentStatus(env)?.toLowerCase() === 'running' && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8"
+                                    disabled={loading || isEnvironmentLoading(env)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPendingStopEnv({ id: env.environment_id, name: env.environment_name, appId: app.app_id });
+                                      setStopDialogOpen(true);
+                                    }}
+                                  >
+                                    <XCircle className="w-3 h-3 mr-1" />
+                                    Stop Environment
+                                  </Button>
+                                )}
+                              </>
+                            )}
+                            
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8"
+                              disabled={loading || isEnvironmentLoading(env)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRefreshEnvironment(env);
+                              }}
+                            >
+                              <RefreshCw className="w-3 h-3 mr-1" />
+                              Refresh Status
+                            </Button>
+                            
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8"
+                              disabled={loading}
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  setLogsEnvironment({ name: env.environment_name, id: env.environment_id, appId: app.app_id });
+                                  const logData = await downloadLogs(app.app_name, env.environment_name);
+                                  setLogs(logData || 'No logs available');
+                                  setLogsOpen(true);
+                                } catch (error) {
+                                  // Error already handled in hook
+                                }
+                              }}
+                            >
+                              {loading ? (
+                                <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                              ) : (
+                                <FileText className="w-3 h-3 mr-1" />
+                              )}
+                              View Logs
+                            </Button>
+                          </div>
+                        </div>
                       </div>
-                    )}
-                    {env.url && (
-                      <ExternalLink 
-                        className="h-3 w-3 text-muted-foreground cursor-pointer hover:text-primary"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          window.open(env.url, '_blank');
-                        }}
-                      />
-                    )}
+                    </CollapsibleContent>
                   </div>
-                </div>
-                );
-              })}
-            </div>
+                </Collapsible>
+              );
+            })}
           </div>
         )}
       </CardContent>
