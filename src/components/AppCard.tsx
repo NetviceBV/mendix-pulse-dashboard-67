@@ -169,25 +169,9 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
             <h3 className="font-semibold text-lg truncate group-hover:text-primary transition-colors">
               {app.app_name}
             </h3>
-            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-              Mendix Application
-            </p>
           </div>
           
           <div className="flex items-center gap-2 ml-4">
-            <div className="flex items-center gap-1">
-              <Badge 
-                variant="secondary" 
-                className={cn("capitalize", environmentColors[app.environment])}
-              >
-                {app.environment}
-              </Badge>
-              {app.environments && app.environments.length > 1 && (
-                <span className="text-xs text-muted-foreground">
-                  +{app.environments.length - 1}
-                </span>
-              )}
-            </div>
             
             <div className={cn(
               "flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium",
@@ -208,15 +192,6 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
             <span className="text-muted-foreground">v{app.version}</span>
           </div>
           
-          <div className="flex items-center gap-2 text-sm">
-            <Users className="w-4 h-4 text-muted-foreground" />
-            <span className="text-muted-foreground">{app.active_users || 0} users</span>
-          </div>
-          
-          <div className="flex items-center gap-2 text-sm">
-            <Clock className="w-4 h-4 text-muted-foreground" />
-            <span className="text-muted-foreground">{app.last_deployed ? format(new Date(app.last_deployed), 'MMM dd') : 'Never'}</span>
-          </div>
           
           {(app.error_count || 0) > 0 && (
             <div className="flex items-center gap-2 text-sm">
