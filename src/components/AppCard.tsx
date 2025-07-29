@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
 import { supabase } from "@/integrations/supabase/client";
 import { 
   Activity, 
@@ -17,11 +18,14 @@ import {
   Loader2,
   ChevronDown,
   RefreshCw,
-  FileText
+  FileText,
+  Copy,
+  Check
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import LogsViewer from "./LogsViewer";
 import { useMendixOperations } from "@/hooks/useMendixOperations";
+import { toast } from "@/hooks/use-toast";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -105,10 +109,29 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
   const [stopDialogOpen, setStopDialogOpen] = useState(false);
   const [pendingStopEnv, setPendingStopEnv] = useState<{ id: string; name: string; appId: string } | null>(null);
   const [collapsedEnvironments, setCollapsedEnvironments] = useState<Record<string, boolean>>({});
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   
   const [environmentStatuses, setEnvironmentStatuses] = useState<Record<string, { status: string; loading: boolean }>>({});
   const [environmentErrorCounts, setEnvironmentErrorCounts] = useState<Record<string, number>>({});
   const { loading, startEnvironment, stopEnvironment, downloadLogs, refreshEnvironmentStatus } = useMendixOperations();
+
+  const handleCopy = async (text: string, fieldName: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedField(fieldName);
+      toast({
+        title: "Copied to clipboard",
+        description: `${fieldName} has been copied successfully.`,
+      });
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch (error) {
+      toast({
+        title: "Copy failed",
+        description: "Unable to copy to clipboard.",
+        variant: "destructive",
+      });
+    }
+  };
 
   // Sort environments in the specified order
   const sortEnvironments = (environments: MendixEnvironment[]) => {
@@ -225,9 +248,62 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-lg truncate group-hover:text-primary transition-colors">
-              {app.app_name}
-            </h3>
+            <HoverCard>
+              <HoverCardTrigger asChild>
+                <h3 className="font-semibold text-lg truncate group-hover:text-primary transition-colors cursor-pointer">
+                  {app.app_name}
+                </h3>
+              </HoverCardTrigger>
+              <HoverCardContent className="w-80">
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold">Application Details</h4>
+                  
+                  {/* App ID */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">App ID</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        onClick={() => handleCopy(app.app_id || 'N/A', 'App ID')}
+                      >
+                        {copiedField === 'App ID' ? (
+                          <Check className="w-3 h-3 text-green-600" />
+                        ) : (
+                          <Copy className="w-3 h-3" />
+                        )}
+                      </Button>
+                    </div>
+                    <p className="text-sm font-mono bg-muted px-2 py-1 rounded text-wrap break-all">
+                      {app.app_id || 'Not available'}
+                    </p>
+                  </div>
+
+                  {/* Project ID */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Project ID</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0"
+                        onClick={() => handleCopy(app.project_id || 'N/A', 'Project ID')}
+                      >
+                        {copiedField === 'Project ID' ? (
+                          <Check className="w-3 h-3 text-green-600" />
+                        ) : (
+                          <Copy className="w-3 h-3" />
+                        )}
+                      </Button>
+                    </div>
+                    <p className="text-sm font-mono bg-muted px-2 py-1 rounded text-wrap break-all">
+                      {app.project_id || 'Not available'}
+                    </p>
+                  </div>
+                </div>
+              </HoverCardContent>
+            </HoverCard>
           </div>
         </div>
       </CardHeader>
