@@ -59,7 +59,10 @@ serve(async (req) => {
     console.log('Received webhook payload:', JSON.stringify(body, null, 2));
 
     // Validate required fields
-    const { appId, environment, timestamp, level, node, message, stacktrace } = body;
+    const { appId, environment, timestamp, level: rawLevel, node, message, stacktrace } = body;
+    
+    // Normalize level to be case-insensitive (capitalize first letter, lowercase rest)
+    const level = rawLevel ? rawLevel.toLowerCase().charAt(0).toUpperCase() + rawLevel.toLowerCase().slice(1) : '';
 
     if (!appId || !environment || !timestamp || !level || !message) {
       return new Response(
