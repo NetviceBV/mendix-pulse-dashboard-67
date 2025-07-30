@@ -191,8 +191,14 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
   useEffect(() => {
     if (!app.app_id) return;
 
+    console.log('Setting up real-time subscription for app:', app.app_id);
+    console.log('Available environments:', app.environments.map(env => ({ 
+      id: env.environment_id || env.id, 
+      name: env.environment_name 
+    })));
+
     const channel = supabase
-      .channel('app-logs')
+      .channel(`app-logs-${app.app_id}`)
       .on(
         'postgres_changes',
         {
@@ -203,20 +209,53 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
         },
         (payload) => {
           const newLog = payload.new as any;
+          console.log('Received new log:', { 
+            environment: newLog.environment, 
+            level: newLog.level,
+            app_id: newLog.app_id 
+          });
+          
           if (newLog.level === 'Error' || newLog.level === 'Critical') {
-            setEnvironmentErrorCounts(prev => ({
-              ...prev,
-              [newLog.environment]: (prev[newLog.environment] || 0) + 1
-            }));
+            // Find the matching environment by name to ensure we use the correct key
+            const matchingEnv = app.environments.find(env => 
+              env.environment_name === newLog.environment
+            );
+            
+            if (matchingEnv) {
+              const envKey = matchingEnv.environment_name;
+              console.log('Updating error count for environment:', envKey);
+              
+              setEnvironmentErrorCounts(prev => {
+                const newCounts = {
+                  ...prev,
+                  [envKey]: (prev[envKey] || 0) + 1
+                };
+                console.log('Updated environment error counts:', newCounts);
+                return newCounts;
+              });
+              
+              // Auto-expand the environment if it has new errors
+              const envCollapseKey = matchingEnv.environment_id || matchingEnv.id;
+              setCollapsedEnvironments(prev => ({
+                ...prev,
+                [envCollapseKey]: false
+              }));
+            } else {
+              console.warn('No matching environment found for log environment:', newLog.environment);
+              console.warn('Available environment names:', app.environments.map(env => env.environment_name));
+            }
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('Subscription status:', status);
+      });
 
     return () => {
+      console.log('Cleaning up subscription for app:', app.app_id);
       supabase.removeChannel(channel);
     };
-  }, [app.app_id]);
+  }, [app.app_id, app.environments]);
 
   const handleRefreshEnvironment = async (env: MendixEnvironment) => {
     const envKey = env.environment_id || env.id;
