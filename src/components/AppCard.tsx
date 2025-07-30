@@ -187,6 +187,37 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
     fetchEnvironmentErrorCounts();
   }, [app.app_id, app.environments]);
 
+  // Real-time subscription for environment error counts
+  useEffect(() => {
+    if (!app.app_id) return;
+
+    const channel = supabase
+      .channel('app-logs')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'mendix_logs',
+          filter: `app_id=eq.${app.app_id}`
+        },
+        (payload) => {
+          const newLog = payload.new as any;
+          if (newLog.level === 'Error' || newLog.level === 'Critical') {
+            setEnvironmentErrorCounts(prev => ({
+              ...prev,
+              [newLog.environment]: (prev[newLog.environment] || 0) + 1
+            }));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [app.app_id]);
+
   const handleRefreshEnvironment = async (env: MendixEnvironment) => {
     const envKey = env.environment_id || env.id;
     setEnvironmentStatuses(prev => ({ ...prev, [envKey]: { ...prev[envKey], loading: true } }));
