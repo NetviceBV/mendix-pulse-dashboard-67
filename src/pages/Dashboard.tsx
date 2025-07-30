@@ -1,19 +1,14 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+
 import AppCard, { MendixApp } from "@/components/AppCard";
 import { 
   Search, 
-  Filter, 
   RefreshCw, 
   Settings, 
   LogOut,
-  AlertTriangle,
-  CheckCircle,
-  Activity,
-  XCircle,
-  Zap
+  Activity
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
@@ -27,13 +22,7 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
   const [apps, setApps] = useState<MendixApp[]>([]);
   const [filteredApps, setFilteredApps] = useState<MendixApp[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [loading, setLoading] = useState(true);
-  const [realtimeStats, setRealtimeStats] = useState({
-    totalWarnings: 0,
-    totalErrors: 0,
-    recentLogs: 0
-  });
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -65,9 +54,6 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
 
         setApps(mappedApps);
         setFilteredApps(mappedApps);
-        
-        // Fetch realtime stats
-        await fetchRealtimeStats();
       } catch (error) {
         console.error('Error fetching apps:', error);
         // Keep empty state if there's an error
@@ -81,28 +67,6 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
     fetchApps();
   }, []);
 
-  // Fetch realtime statistics
-  const fetchRealtimeStats = async () => {
-    try {
-      const { data: stats, error } = await supabase
-        .from('mendix_logs')
-        .select('level')
-        .gte('timestamp', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
-
-      if (error) throw error;
-
-      const warnings = stats?.filter(log => log.level === 'Warning').length || 0;
-      const errors = stats?.filter(log => log.level === 'Error' || log.level === 'Critical').length || 0;
-      
-      setRealtimeStats({
-        totalWarnings: warnings,
-        totalErrors: errors,
-        recentLogs: stats?.length || 0
-      });
-    } catch (error) {
-      console.error('Error fetching realtime stats:', error);
-    }
-  };
 
   // Set up real-time subscriptions
   useEffect(() => {
@@ -136,8 +100,6 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
         },
         (payload) => {
           console.log('New log received:', payload);
-          // Update realtime stats when new logs arrive
-          fetchRealtimeStats();
           
           // Show toast for critical errors
           if (payload.new.level === 'Critical' || payload.new.level === 'Error') {
@@ -165,12 +127,8 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
       );
     }
 
-    if (statusFilter !== "all") {
-      filtered = filtered.filter(app => app.status === statusFilter);
-    }
-
     setFilteredApps(filtered);
-  }, [apps, searchTerm, statusFilter]);
+  }, [apps, searchTerm]);
 
   const refreshApps = async () => {
     setLoading(true);
@@ -223,17 +181,6 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
     });
   };
 
-  const getStatusCounts = () => {
-    return {
-      total: apps.length,
-      healthy: apps.filter(app => app.status === "healthy").length,
-      warning: apps.filter(app => app.status === "warning").length,
-      error: apps.filter(app => app.status === "error").length,
-      offline: apps.filter(app => app.status === "offline").length
-    };
-  };
-
-  const statusCounts = getStatusCounts();
 
   if (loading) {
     return (
@@ -262,7 +209,7 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
               <div>
                 <h1 className="text-xl font-bold">Mendix Dashboard</h1>
                 <p className="text-sm text-muted-foreground">
-                  {statusCounts.total} applications • {statusCounts.error} critical
+                  Manage your Mendix applications
                 </p>
               </div>
             </div>
@@ -296,101 +243,15 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
 
       <div className="container mx-auto px-4 py-6">
         <div className="space-y-6">
-          {/* Status Overview */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="bg-gradient-card rounded-lg p-4 border border-border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Apps</p>
-                  <p className="text-2xl font-bold">{statusCounts.total}</p>
-                </div>
-                <Activity className="w-8 h-8 text-primary" />
-              </div>
-            </div>
-            
-            <div className="bg-gradient-card rounded-lg p-4 border border-border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Healthy</p>
-                  <p className="text-2xl font-bold text-success">{statusCounts.healthy}</p>
-                </div>
-                <CheckCircle className="w-8 h-8 text-success" />
-              </div>
-            </div>
-            
-            <div className="bg-gradient-card rounded-lg p-4 border border-border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Warnings (24h)</p>
-                  <p className="text-2xl font-bold text-warning">{realtimeStats.totalWarnings}</p>
-                </div>
-                <AlertTriangle className="w-8 h-8 text-warning" />
-              </div>
-            </div>
-            
-            <div className="bg-gradient-card rounded-lg p-4 border border-border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Errors (24h)</p>
-                  <p className="text-2xl font-bold text-error">{realtimeStats.totalErrors}</p>
-                </div>
-                <XCircle className="w-8 h-8 text-error" />
-              </div>
-            </div>
-            
-            <div className="bg-gradient-card rounded-lg p-4 border border-border">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Recent Logs</p>
-                  <p className="text-2xl font-bold text-accent">{realtimeStats.recentLogs}</p>
-                </div>
-                <Zap className="w-8 h-8 text-accent" />
-              </div>
-            </div>
-          </div>
-
-          {/* Filters */}
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Search applications..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            
-            <div className="flex gap-2 flex-wrap">
-              <Badge
-                variant={statusFilter === "all" ? "default" : "outline"}
-                className="cursor-pointer px-3 py-1"
-                onClick={() => setStatusFilter("all")}
-              >
-                All
-              </Badge>
-              <Badge
-                variant={statusFilter === "healthy" ? "default" : "outline"}
-                className="cursor-pointer px-3 py-1"
-                onClick={() => setStatusFilter("healthy")}
-              >
-                Healthy
-              </Badge>
-              <Badge
-                variant={statusFilter === "warning" ? "default" : "outline"}
-                className="cursor-pointer px-3 py-1"
-                onClick={() => setStatusFilter("warning")}
-              >
-                Warning
-              </Badge>
-              <Badge
-                variant={statusFilter === "error" ? "default" : "outline"}
-                className="cursor-pointer px-3 py-1"
-                onClick={() => setStatusFilter("error")}
-              >
-                Error
-              </Badge>
-            </div>
+          {/* Search */}
+          <div className="relative max-w-md">
+            <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search applications..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
           </div>
 
           {/* Applications Grid */}
