@@ -1,39 +1,84 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, Download, X, Calendar } from "lucide-react";
+import { Search, Download, X, Calendar, RefreshCw } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
+
+interface WebhookLog {
+  id: string;
+  timestamp: string;
+  level: string;
+  node?: string;
+  message: string;
+  stacktrace?: string;
+}
 
 interface LogsViewerProps {
   open: boolean;
   onClose: () => void;
   logs: string;
+  webhookLogs: WebhookLog[];
   environmentName: string;
   appName: string;
+  appId: string;
   onDownloadDate: (date: Date) => void;
+  onRefreshWebhookLogs: () => void;
   loading?: boolean;
+  webhookLoading?: boolean;
 }
 
 const LogsViewer = ({ 
   open, 
   onClose, 
   logs, 
+  webhookLogs,
   environmentName, 
   appName, 
+  appId,
   onDownloadDate,
-  loading = false 
+  onRefreshWebhookLogs,
+  loading = false,
+  webhookLoading = false
 }: LogsViewerProps) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDate, setSelectedDate] = useState<Date>();
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("webhook");
 
   const keywords = ["Error", "Critical", "Warning", "Exception", "Failed", "Autocommit"];
+
+  const getLevelColor = (level: string) => {
+    switch (level.toLowerCase()) {
+      case 'error':
+      case 'critical':
+        return 'text-destructive';
+      case 'warning':
+        return 'text-warning';
+      case 'info':
+        return 'text-info';
+      default:
+        return 'text-foreground';
+    }
+  };
+
+  const getLevelBadgeVariant = (level: string) => {
+    switch (level.toLowerCase()) {
+      case 'error':
+      case 'critical':
+        return 'destructive';
+      case 'warning':
+        return 'secondary';
+      default:
+        return 'outline';
+    }
+  };
 
   const highlightKeywords = (text: string, searchTerm: string) => {
     if (!searchTerm) return text;
@@ -59,6 +104,13 @@ const LogsViewer = ({
 
   const filteredLogs = filterLogs(logs, searchTerm);
   const highlightedLogs = highlightKeywords(filteredLogs, searchTerm);
+
+  const filteredWebhookLogs = webhookLogs.filter(log => 
+    !searchTerm || 
+    log.message.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    log.level.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (log.node && log.node.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
 
   const downloadLogs = () => {
     const blob = new Blob([logs], { type: 'text/plain' });
@@ -106,27 +158,43 @@ const LogsViewer = ({
             </div>
             
             <div className="flex gap-2">
-              <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm">
-                    <Calendar className="w-4 h-4 mr-2" />
-                    {selectedDate ? format(selectedDate, 'MMM dd, yyyy') : 'Select Date'}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="end">
-                  <CalendarComponent
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={handleDateSelect}
-                    disabled={(date) => date > new Date()}
-                  />
-                </PopoverContent>
-              </Popover>
+              {activeTab === "webhook" && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={onRefreshWebhookLogs}
+                  disabled={webhookLoading}
+                >
+                  <RefreshCw className={`w-4 h-4 mr-2 ${webhookLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              )}
+              
+              {activeTab === "file" && (
+                <>
+                  <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        <Calendar className="w-4 h-4 mr-2" />
+                        {selectedDate ? format(selectedDate, 'MMM dd, yyyy') : 'Select Date'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="end">
+                      <CalendarComponent
+                        mode="single"
+                        selected={selectedDate}
+                        onSelect={handleDateSelect}
+                        disabled={(date) => date > new Date()}
+                      />
+                    </PopoverContent>
+                  </Popover>
 
-              <Button variant="outline" size="sm" onClick={downloadLogs}>
-                <Download className="w-4 h-4 mr-2" />
-                Download
-              </Button>
+                  <Button variant="outline" size="sm" onClick={downloadLogs}>
+                    <Download className="w-4 h-4 mr-2" />
+                    Download
+                  </Button>
+                </>
+              )}
             </div>
           </div>
 
@@ -144,26 +212,94 @@ const LogsViewer = ({
             ))}
           </div>
 
-          {/* Logs content */}
-          <Card className="flex-1 min-h-0">
-            <CardContent className="p-0 h-full">
-              {loading ? (
-                <div className="flex items-center justify-center h-64">
-                  <div className="text-center space-y-2">
-                    <div className="w-8 h-8 bg-primary rounded mx-auto animate-pulse"></div>
-                    <p className="text-sm text-muted-foreground">Loading logs...</p>
-                  </div>
-                </div>
-              ) : (
-                <ScrollArea className="h-full max-h-96">
-                  <pre 
-                    className="p-4 text-xs font-mono whitespace-pre-wrap break-words"
-                    dangerouslySetInnerHTML={{ __html: highlightedLogs || "No logs available" }}
-                  />
-                </ScrollArea>
-              )}
-            </CardContent>
-          </Card>
+          {/* Tabs for different log types */}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 min-h-0 flex flex-col">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="webhook">
+                Real-time Logs ({filteredWebhookLogs.length})
+              </TabsTrigger>
+              <TabsTrigger value="file">
+                File Logs
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="webhook" className="flex-1 min-h-0 mt-4">
+              <Card className="h-full">
+                <CardContent className="p-0 h-full">
+                  {webhookLoading ? (
+                    <div className="flex items-center justify-center h-64">
+                      <div className="text-center space-y-2">
+                        <div className="w-8 h-8 bg-primary rounded mx-auto animate-pulse"></div>
+                        <p className="text-sm text-muted-foreground">Loading webhook logs...</p>
+                      </div>
+                    </div>
+                  ) : filteredWebhookLogs.length > 0 ? (
+                    <ScrollArea className="h-full max-h-96">
+                      <div className="p-4 space-y-3">
+                        {filteredWebhookLogs.map((log) => (
+                          <div key={log.id} className="border-l-4 border-l-muted pl-4 py-2 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <Badge variant={getLevelBadgeVariant(log.level)}>
+                                  {log.level}
+                                </Badge>
+                                {log.node && (
+                                  <span className="text-xs text-muted-foreground">{log.node}</span>
+                                )}
+                              </div>
+                              <span className="text-xs text-muted-foreground">
+                                {format(new Date(log.timestamp), 'MMM dd, yyyy HH:mm:ss')}
+                              </span>
+                            </div>
+                            <p className={`text-sm ${getLevelColor(log.level)}`}>
+                              {log.message}
+                            </p>
+                            {log.stacktrace && log.stacktrace !== 'null' && (
+                              <pre className="text-xs text-muted-foreground bg-muted p-2 rounded overflow-x-auto">
+                                {log.stacktrace}
+                              </pre>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  ) : (
+                    <div className="flex items-center justify-center h-64">
+                      <p className="text-sm text-muted-foreground">No webhook logs available</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+            
+            <TabsContent value="file" className="flex-1 min-h-0 mt-4">
+              <Card className="h-full">
+                <CardContent className="p-0 h-full">
+                  {loading ? (
+                    <div className="flex items-center justify-center h-64">
+                      <div className="text-center space-y-2">
+                        <div className="w-8 h-8 bg-primary rounded mx-auto animate-pulse"></div>
+                        <p className="text-sm text-muted-foreground">Loading file logs...</p>
+                      </div>
+                    </div>
+                  ) : logs ? (
+                    <ScrollArea className="h-full max-h-96">
+                      <pre 
+                        className="p-4 text-xs font-mono whitespace-pre-wrap break-words"
+                        dangerouslySetInnerHTML={{ __html: highlightedLogs || "No file logs available" }}
+                      />
+                    </ScrollArea>
+                  ) : (
+                    <div className="flex items-center justify-center h-64">
+                      <p className="text-sm text-muted-foreground">
+                        Select a date above to download file logs
+                      </p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </div>
       </DialogContent>
     </Dialog>

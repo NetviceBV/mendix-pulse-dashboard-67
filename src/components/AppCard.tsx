@@ -105,6 +105,8 @@ const environmentColors = {
 const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
   const [logsOpen, setLogsOpen] = useState(false);
   const [logs, setLogs] = useState("");
+  const [webhookLogs, setWebhookLogs] = useState<any[]>([]);
+  const [webhookLoading, setWebhookLoading] = useState(false);
   const [logsEnvironment, setLogsEnvironment] = useState<{ name: string; id: string; appId: string } | null>(null);
   const [stopDialogOpen, setStopDialogOpen] = useState(false);
   const [pendingStopEnv, setPendingStopEnv] = useState<{ id: string; name: string; appId: string } | null>(null);
@@ -113,7 +115,7 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
   
   const [environmentStatuses, setEnvironmentStatuses] = useState<Record<string, { status: string; loading: boolean }>>({});
   const [environmentErrorCounts, setEnvironmentErrorCounts] = useState<Record<string, number>>({});
-  const { loading, startEnvironment, stopEnvironment, downloadLogs, refreshEnvironmentStatus } = useMendixOperations();
+  const { loading, startEnvironment, stopEnvironment, downloadLogs, fetchWebhookLogs, refreshEnvironmentStatus } = useMendixOperations();
 
   const handleCopy = async (text: string, fieldName: string) => {
     try {
@@ -256,6 +258,21 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
       supabase.removeChannel(channel);
     };
   }, [app.app_id, app.environments]);
+
+  const fetchWebhookLogsForEnvironment = async (environmentName: string) => {
+    if (!app.app_id) return;
+    
+    setWebhookLoading(true);
+    try {
+      const logs = await fetchWebhookLogs(app.app_id, environmentName);
+      setWebhookLogs(logs);
+    } catch (error) {
+      console.error('Error fetching webhook logs:', error);
+      setWebhookLogs([]);
+    } finally {
+      setWebhookLoading(false);
+    }
+  };
 
   const handleRefreshEnvironment = async (env: MendixEnvironment) => {
     const envKey = env.environment_id || env.id;
@@ -540,14 +557,10 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                               disabled={loading}
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                try {
-                                  setLogsEnvironment({ name: env.environment_name, id: env.environment_id, appId: app.app_id });
-                                  const logData = await downloadLogs(app.app_name, env.environment_name);
-                                  setLogs(logData || 'No logs available');
-                                  setLogsOpen(true);
-                                } catch (error) {
-                                  // Error already handled in hook
-                                }
+                                setLogsEnvironment({ name: env.environment_name, id: env.environment_id, appId: app.app_id });
+                                setLogs("");
+                                await fetchWebhookLogsForEnvironment(env.environment_name);
+                                setLogsOpen(true);
                               }}
                             >
                               {loading ? (
@@ -627,11 +640,16 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
             setLogsOpen(false);
             setLogsEnvironment(null);
             setLogs("");
+            setWebhookLogs([]);
           }}
           logs={logs}
+          webhookLogs={webhookLogs}
           environmentName={logsEnvironment.name}
           appName={app.app_name}
+          appId={logsEnvironment.appId}
           loading={loading}
+          webhookLoading={webhookLoading}
+          onRefreshWebhookLogs={() => fetchWebhookLogsForEnvironment(logsEnvironment.name)}
           onDownloadDate={async (date) => {
             try {
               const dateStr = format(date, 'yyyy-MM-dd');

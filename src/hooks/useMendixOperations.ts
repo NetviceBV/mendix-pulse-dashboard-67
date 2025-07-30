@@ -137,6 +137,32 @@ export const useMendixOperations = () => {
     }
   };
 
+  const fetchWebhookLogs = async (appId: string, environment: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('mendix_logs')
+        .select('*')
+        .eq('app_id', appId)
+        .eq('environment', environment)
+        .order('timestamp', { ascending: false })
+        .limit(100);
+
+      if (error) throw error;
+      return data || [];
+    } catch (error: any) {
+      console.error('Error fetching webhook logs:', error);
+      toast({
+        title: "Failed to fetch webhook logs",
+        description: error.message,
+        variant: "destructive"
+      });
+      return [];
+    }
+  };
+
   const refreshEnvironmentStatus = async (credentialId: string, appId: string, environmentId: string) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -173,6 +199,7 @@ export const useMendixOperations = () => {
     startEnvironment,
     stopEnvironment,
     downloadLogs,
-    refreshEnvironmentStatus,
+    fetchWebhookLogs,
+    refreshEnvironmentStatus
   };
 };
