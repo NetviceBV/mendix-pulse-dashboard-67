@@ -119,6 +119,7 @@ export type Database = {
           credential_id: string
           environment_id: string | null
           environment_name: string
+          error_count: number | null
           id: string
           model_version: string | null
           runtime_version: string | null
@@ -134,6 +135,7 @@ export type Database = {
           credential_id: string
           environment_id?: string | null
           environment_name: string
+          error_count?: number | null
           id?: string
           model_version?: string | null
           runtime_version?: string | null
@@ -149,6 +151,7 @@ export type Database = {
           credential_id?: string
           environment_id?: string | null
           environment_name?: string
+          error_count?: number | null
           id?: string
           model_version?: string | null
           runtime_version?: string | null
@@ -207,6 +210,134 @@ export type Database = {
           timestamp?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      vulnerability_findings: {
+        Row: {
+          created_at: string
+          cve_id: string | null
+          cvss_score: number | null
+          cvss_vector: string | null
+          description: string | null
+          ghsa_id: string | null
+          id: string
+          jar_file: string
+          library_name: string
+          library_version: string | null
+          published_at: string | null
+          reference_url: string | null
+          scan_id: string
+          severity: string | null
+          title: string
+          updated_at_vuln: string | null
+          vulnerability_id: string
+        }
+        Insert: {
+          created_at?: string
+          cve_id?: string | null
+          cvss_score?: number | null
+          cvss_vector?: string | null
+          description?: string | null
+          ghsa_id?: string | null
+          id?: string
+          jar_file: string
+          library_name: string
+          library_version?: string | null
+          published_at?: string | null
+          reference_url?: string | null
+          scan_id: string
+          severity?: string | null
+          title: string
+          updated_at_vuln?: string | null
+          vulnerability_id: string
+        }
+        Update: {
+          created_at?: string
+          cve_id?: string | null
+          cvss_score?: number | null
+          cvss_vector?: string | null
+          description?: string | null
+          ghsa_id?: string | null
+          id?: string
+          jar_file?: string
+          library_name?: string
+          library_version?: string | null
+          published_at?: string | null
+          reference_url?: string | null
+          scan_id?: string
+          severity?: string | null
+          title?: string
+          updated_at_vuln?: string | null
+          vulnerability_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vulnerability_findings_scan_id_fkey"
+            columns: ["scan_id"]
+            isOneToOne: false
+            referencedRelation: "vulnerability_scans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vulnerability_scans: {
+        Row: {
+          app_id: string
+          clean_jars: number | null
+          completed_at: string | null
+          created_at: string
+          environment_name: string
+          error_jars: number | null
+          error_message: string | null
+          id: string
+          package_id: string | null
+          package_version: string | null
+          scan_status: string
+          started_at: string
+          total_jars: number | null
+          total_vulnerabilities: number | null
+          updated_at: string
+          user_id: string
+          vulnerable_jars: number | null
+        }
+        Insert: {
+          app_id: string
+          clean_jars?: number | null
+          completed_at?: string | null
+          created_at?: string
+          environment_name: string
+          error_jars?: number | null
+          error_message?: string | null
+          id?: string
+          package_id?: string | null
+          package_version?: string | null
+          scan_status?: string
+          started_at?: string
+          total_jars?: number | null
+          total_vulnerabilities?: number | null
+          updated_at?: string
+          user_id: string
+          vulnerable_jars?: number | null
+        }
+        Update: {
+          app_id?: string
+          clean_jars?: number | null
+          completed_at?: string | null
+          created_at?: string
+          environment_name?: string
+          error_jars?: number | null
+          error_message?: string | null
+          id?: string
+          package_id?: string | null
+          package_version?: string | null
+          scan_status?: string
+          started_at?: string
+          total_jars?: number | null
+          total_vulnerabilities?: number | null
+          updated_at?: string
+          user_id?: string
+          vulnerable_jars?: number | null
         }
         Relationships: []
       }

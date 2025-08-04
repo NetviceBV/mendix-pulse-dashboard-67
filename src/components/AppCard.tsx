@@ -20,10 +20,12 @@ import {
   RefreshCw,
   FileText,
   Copy,
-  Check
+  Check,
+  Shield
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import LogsViewer from "./LogsViewer";
+import { VulnerabilityScanDialog } from "./VulnerabilityScanDialog";
 import { useMendixOperations } from "@/hooks/useMendixOperations";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -112,6 +114,8 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
   const [pendingStopEnv, setPendingStopEnv] = useState<{ id: string; name: string; appId: string } | null>(null);
   const [collapsedEnvironments, setCollapsedEnvironments] = useState<Record<string, boolean>>({});
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [vulnerabilityScanOpen, setVulnerabilityScanOpen] = useState(false);
+  const [selectedEnvironmentForScan, setSelectedEnvironmentForScan] = useState<{ name: string; appId: string } | null>(null);
   
   const [environmentStatuses, setEnvironmentStatuses] = useState<Record<string, { status: string; loading: boolean }>>({});
   const [environmentErrorCounts, setEnvironmentErrorCounts] = useState<Record<string, number>>({});
@@ -570,6 +574,23 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                               )}
                               View Logs
                             </Button>
+
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedEnvironmentForScan({ 
+                                  name: env.environment_name, 
+                                  appId: app.app_id || '' 
+                                });
+                                setVulnerabilityScanOpen(true);
+                              }}
+                            >
+                              <Shield className="w-3 h-3 mr-1" />
+                              Scan Vulnerabilities
+                            </Button>
                           </div>
                         </div>
                       </div>
@@ -659,6 +680,20 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
               // Error already handled in hook
             }
           }}
+        />
+      )}
+
+      {/* Vulnerability Scan Dialog */}
+      {selectedEnvironmentForScan && (
+        <VulnerabilityScanDialog
+          isOpen={vulnerabilityScanOpen}
+          onClose={() => {
+            setVulnerabilityScanOpen(false);
+            setSelectedEnvironmentForScan(null);
+          }}
+          appId={selectedEnvironmentForScan.appId}
+          environmentName={selectedEnvironmentForScan.name}
+          appName={app.app_name}
         />
       )}
     </Card>
