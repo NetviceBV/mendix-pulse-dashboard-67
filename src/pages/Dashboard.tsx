@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import AppCard, { MendixApp } from "@/components/AppCard";
 import { 
@@ -23,8 +24,45 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
   const [filteredApps, setFilteredApps] = useState<MendixApp[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("production");
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  // Helper functions to categorize apps
+  const isSandboxOnlyApp = (app: MendixApp) => {
+    return app.environments && app.environments.length > 0 && 
+           app.environments.every(env => env.environment_name.toLowerCase().includes('sandbox'));
+  };
+
+  const hasNonSandboxEnvironments = (app: MendixApp) => {
+    return app.environments && app.environments.some(env => 
+      !env.environment_name.toLowerCase().includes('sandbox')
+    );
+  };
+
+  // Filter apps based on tab and search
+  const getFilteredApps = () => {
+    let filtered = apps;
+
+    // Filter by tab
+    if (activeTab === "production") {
+      filtered = filtered.filter(app => hasNonSandboxEnvironments(app));
+    } else {
+      filtered = filtered.filter(app => isSandboxOnlyApp(app));
+    }
+
+    // Filter by search term
+    if (searchTerm) {
+      filtered = filtered.filter(app => 
+        app.app_name.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    return filtered;
+  };
+
+  const productionApps = apps.filter(app => hasNonSandboxEnvironments(app));
+  const sandboxApps = apps.filter(app => isSandboxOnlyApp(app));
 
   // Fetch real apps from Supabase with environments
   useEffect(() => {
@@ -119,16 +157,8 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
   }, [toast]);
 
   useEffect(() => {
-    let filtered = apps;
-
-    if (searchTerm) {
-      filtered = filtered.filter(app => 
-        app.app_name.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    setFilteredApps(filtered);
-  }, [apps, searchTerm]);
+    setFilteredApps(getFilteredApps());
+  }, [apps, searchTerm, activeTab]);
 
   const refreshApps = async () => {
     setLoading(true);
@@ -254,29 +284,67 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
             />
           </div>
 
-          {/* Applications Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-            {filteredApps.map((app) => (
-              <AppCard
-                key={app.id}
-                app={app}
-                onOpenApp={handleOpenApp}
-                onRefresh={refreshApps}
-              />
-            ))}
-          </div>
-
-          {filteredApps.length === 0 && (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                <Search className="w-8 h-8 text-muted-foreground" />
+          {/* Tabs for organizing apps */}
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="production">
+                Production Apps ({productionApps.length})
+              </TabsTrigger>
+              <TabsTrigger value="sandbox">
+                Sandbox Apps ({sandboxApps.length})
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="production" className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                {filteredApps.map((app) => (
+                  <AppCard
+                    key={app.id}
+                    app={app}
+                    onOpenApp={handleOpenApp}
+                    onRefresh={refreshApps}
+                  />
+                ))}
               </div>
-              <h3 className="text-lg font-medium mb-2">No applications found</h3>
-              <p className="text-muted-foreground">
-                Try adjusting your search or filter criteria
-              </p>
-            </div>
-          )}
+              
+              {filteredApps.length === 0 && (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Search className="w-8 h-8 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-medium mb-2">No production applications found</h3>
+                  <p className="text-muted-foreground">
+                    {searchTerm ? "Try adjusting your search criteria" : "No applications with production environments"}
+                  </p>
+                </div>
+              )}
+            </TabsContent>
+            
+            <TabsContent value="sandbox" className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                {filteredApps.map((app) => (
+                  <AppCard
+                    key={app.id}
+                    app={app}
+                    onOpenApp={handleOpenApp}
+                    onRefresh={refreshApps}
+                  />
+                ))}
+              </div>
+              
+              {filteredApps.length === 0 && (
+                <div className="text-center py-12">
+                  <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Search className="w-8 h-8 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-medium mb-2">No sandbox applications found</h3>
+                  <p className="text-muted-foreground">
+                    {searchTerm ? "Try adjusting your search criteria" : "No sandbox-only applications"}
+                  </p>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     </div>
