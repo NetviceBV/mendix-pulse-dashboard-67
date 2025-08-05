@@ -116,6 +116,8 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [vulnerabilityScanOpen, setVulnerabilityScanOpen] = useState(false);
   const [selectedEnvironmentForScan, setSelectedEnvironmentForScan] = useState<{ name: string; appId: string } | null>(null);
+  const [vulnerabilityCount, setVulnerabilityCount] = useState(0);
+  const [showVulnerabilityResults, setShowVulnerabilityResults] = useState(false);
   
   const [environmentStatuses, setEnvironmentStatuses] = useState<Record<string, { status: string; loading: boolean }>>({});
   const [environmentErrorCounts, setEnvironmentErrorCounts] = useState<Record<string, number>>({});
@@ -190,7 +192,33 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
       }
     };
 
+    const fetchVulnerabilityCount = async () => {
+      if (!app.app_id) return;
+      
+      try {
+        // Get the latest scan for this app
+        const { data: latestScan, error: scanError } = await supabase
+          .from('vulnerability_scans')
+          .select('id, total_vulnerabilities')
+          .eq('app_id', app.app_id)
+          .eq('scan_status', 'completed')
+          .order('completed_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (scanError && scanError.code !== 'PGRST116') {
+          console.error('Error fetching vulnerability count:', scanError);
+          return;
+        }
+
+        setVulnerabilityCount(latestScan?.total_vulnerabilities || 0);
+      } catch (error) {
+        console.error('Failed to fetch vulnerability count:', error);
+      }
+    };
+
     fetchEnvironmentErrorCounts();
+    fetchVulnerabilityCount();
   }, [app.app_id, app.environments]);
 
   // Real-time subscription for environment error counts
@@ -324,6 +352,18 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
     return environmentStatuses[envKey]?.loading || false;
   };
 
+  const handleVulnerabilityTileClick = () => {
+    setShowVulnerabilityResults(true);
+    setVulnerabilityScanOpen(true);
+    // Set the first environment as default for scanning context
+    if (app.environments && app.environments.length > 0) {
+      setSelectedEnvironmentForScan({ 
+        name: app.environments[0].environment_name, 
+        appId: app.app_id || '' 
+      });
+    }
+  };
+
   return (
     <Card className={cn(
       "border-border hover:shadow-glow transition-all duration-300 cursor-pointer group",
@@ -400,6 +440,31 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
       </CardHeader>
 
       <CardContent className="pt-0">
+        {/* Vulnerability Summary Tile */}
+        <div 
+          className="mb-4 p-3 rounded-lg border cursor-pointer hover:bg-muted/30 transition-colors"
+          onClick={handleVulnerabilityTileClick}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Shield className={cn(
+                "w-4 h-4",
+                vulnerabilityCount > 0 ? "text-destructive" : "text-green-600"
+              )} />
+              <span className="text-sm font-medium">Vulnerabilities</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge 
+                variant={vulnerabilityCount > 0 ? "destructive" : "secondary"}
+                className="text-xs"
+              >
+                {vulnerabilityCount} Vulnerable
+              </Badge>
+              <ExternalLink className="w-3 h-3 text-muted-foreground" />
+            </div>
+          </div>
+        </div>
+
         {app.environments && app.environments.length > 0 && (
           <div className="space-y-2">
             {sortEnvironments(app.environments).map((env) => {
@@ -579,14 +644,15 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                               size="sm"
                               variant="outline"
                               className="h-8"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedEnvironmentForScan({ 
-                                  name: env.environment_name, 
-                                  appId: app.app_id || '' 
-                                });
-                                setVulnerabilityScanOpen(true);
-                              }}
+                               onClick={(e) => {
+                                 e.stopPropagation();
+                                 setSelectedEnvironmentForScan({ 
+                                   name: env.environment_name, 
+                                   appId: app.app_id || '' 
+                                 });
+                                 setShowVulnerabilityResults(false);
+                                 setVulnerabilityScanOpen(true);
+                               }}
                             >
                               <Shield className="w-3 h-3 mr-1" />
                               Scan Vulnerabilities
@@ -690,10 +756,12 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
           onClose={() => {
             setVulnerabilityScanOpen(false);
             setSelectedEnvironmentForScan(null);
+            setShowVulnerabilityResults(false);
           }}
           appId={selectedEnvironmentForScan.appId}
           environmentName={selectedEnvironmentForScan.name}
           appName={app.app_name}
+          showResultsOnOpen={showVulnerabilityResults}
         />
       )}
     </Card>
