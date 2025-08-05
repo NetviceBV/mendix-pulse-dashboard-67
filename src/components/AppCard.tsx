@@ -173,7 +173,14 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
         const counts: Record<string, number> = {};
         errorCounts?.forEach(log => {
           if (log.level === 'Error' || log.level === 'Critical') {
-            counts[log.environment] = (counts[log.environment] || 0) + 1;
+            // Find matching environment using case-insensitive comparison
+            const matchingEnv = app.environments.find(env => 
+              env.environment_name.toLowerCase() === log.environment.toLowerCase()
+            );
+            if (matchingEnv) {
+              const envKey = matchingEnv.environment_name;
+              counts[envKey] = (counts[envKey] || 0) + 1;
+            }
           }
         });
         
@@ -250,9 +257,9 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
           });
           
           if (newLog.level === 'Error' || newLog.level === 'Critical') {
-            // Find the matching environment by name to ensure we use the correct key
+            // Find the matching environment by name using case-insensitive comparison
             const matchingEnv = app.environments.find(env => 
-              env.environment_name === newLog.environment
+              env.environment_name.toLowerCase() === newLog.environment.toLowerCase()
             );
             
             if (matchingEnv) {

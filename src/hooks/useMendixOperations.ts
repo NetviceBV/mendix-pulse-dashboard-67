@@ -146,7 +146,7 @@ export const useMendixOperations = () => {
         .from('mendix_logs')
         .select('*')
         .eq('app_id', appId)
-        .eq('environment', environment)
+        .ilike('environment', environment)
         .order('timestamp', { ascending: false })
         .limit(100);
 
