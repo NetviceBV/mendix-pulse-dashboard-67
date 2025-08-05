@@ -123,6 +123,11 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
   const [environmentErrorCounts, setEnvironmentErrorCounts] = useState<Record<string, number>>({});
   const { loading, startEnvironment, stopEnvironment, downloadLogs, fetchWebhookLogs, refreshEnvironmentStatus } = useMendixOperations();
 
+  // Utility function to capitalize environment names for display
+  const capitalizeEnvironmentName = (envName: string) => {
+    return envName.charAt(0).toUpperCase() + envName.slice(1).toLowerCase();
+  };
+
   const handleCopy = async (text: string, fieldName: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -491,14 +496,14 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                     <CollapsibleTrigger className="w-full">
                       <div className="flex items-center justify-between p-3 hover:bg-muted/30 transition-colors">
                         <div className="flex items-center gap-3">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold">{env.environment_name}</span>
-                            {env.model_version && (
-                              <Badge variant="secondary" className="text-xs px-2 py-0">
-                                v{env.model_version}
-                              </Badge>
-                            )}
-                          </div>
+                           <div className="flex items-center gap-2">
+                             <span className="text-sm font-semibold">{capitalizeEnvironmentName(env.environment_name)}</span>
+                             {env.model_version && (
+                               <Badge variant="secondary" className="text-xs px-2 py-0">
+                                 v{env.model_version}
+                               </Badge>
+                             )}
+                           </div>
                           
                           {/* Show either error count or health status */}
                           {envErrorCount > 0 ? (
