@@ -50,10 +50,10 @@ serve(async (req) => {
       throw new Error('Mendix credentials not found or access denied');
     }
 
-    // Get the project_id from mendix_apps table
+    // Get the project_id and version from mendix_apps table
     const { data: appData, error: appError } = await supabase
       .from('mendix_apps')
-      .select('project_id')
+      .select('project_id, version')
       .eq('app_id', appId)
       .eq('user_id', user.id)
       .single();
@@ -63,7 +63,23 @@ serve(async (req) => {
     }
 
     const projectId = appData.project_id;
-    console.log(`Fetching microflows for app: ${appId}, project: ${projectId}`);
+    const version = appData.version;
+    
+    // Determine branch based on Mendix version
+    // MX10: version ends with git hash (hexadecimal) -> use "main"
+    // MX9: version is semantic or ends with numeric -> use "trunk"
+    function detectMendixBranch(version: string): string {
+      if (!version) return "main"; // fallback to main
+      
+      // Check if version ends with a git hash (hexadecimal pattern)
+      const gitHashPattern = /[a-f0-9]{6,}$/i;
+      const isMX10 = gitHashPattern.test(version);
+      
+      return isMX10 ? "main" : "trunk";
+    }
+    
+    const branchName = detectMendixBranch(version);
+    console.log(`Fetching microflows for app: ${appId}, project: ${projectId}, version: ${version}, branch: ${branchName}`);
 
     // Import Mendix SDK with npm compatibility
     const { MendixPlatformClient } = await import("npm:mendixplatformsdk@5.2.0");
@@ -71,7 +87,7 @@ serve(async (req) => {
     const client = new MendixPlatformClient();
     const mendixApp = client.getApp(projectId);
     
-    const workingCopy = await mendixApp.createTemporaryWorkingCopy("main");
+    const workingCopy = await mendixApp.createTemporaryWorkingCopy(branchName);
     const model = await workingCopy.openModel();
 
       // Get all modules and microflows
