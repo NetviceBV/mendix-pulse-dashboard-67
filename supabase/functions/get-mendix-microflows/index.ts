@@ -50,7 +50,20 @@ serve(async (req) => {
       throw new Error('Mendix credentials not found or access denied');
     }
 
-    console.log(`Fetching microflows for app: ${appId}`);
+    // Get the project ID from the mendix_apps table using the app ID
+    const { data: appData, error: appError } = await supabase
+      .from('mendix_apps')
+      .select('project_id')
+      .eq('app_id', appId)
+      .eq('user_id', user.id)
+      .single();
+
+    if (appError || !appData || !appData.project_id) {
+      throw new Error('App not found or project ID not available');
+    }
+
+    const projectId = appData.project_id;
+    console.log(`Fetching microflows for app: ${appId}, project ID: ${projectId}`);
 
     // Ensure MENDIX_TOKEN is available
     const mendixToken = Deno.env.get('MENDIX_TOKEN');
@@ -81,7 +94,7 @@ serve(async (req) => {
       const client = new MendixPlatformClient();
       
       console.log('Getting Mendix app...');
-      const mendixApp = client.getApp(appId);
+      const mendixApp = client.getApp(projectId);
       
       console.log('Creating temporary working copy...');
       const workingCopy = await mendixApp.createTemporaryWorkingCopy("main");
