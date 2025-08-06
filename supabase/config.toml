@@ -50,5 +50,7 @@ enabled = true
 
 [functions.download-mendix-logs]
 
+[functions.get-mendix-microflows]
+
 [functions.webhook-mendix-logs]
 verify_jwt = false

@@ -194,12 +194,50 @@ export const useMendixOperations = () => {
     }
   };
 
+  const getMicroflows = async (credentialId: string, appId: string) => {
+    setLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase.functions.invoke('get-mendix-microflows', {
+        body: {
+          credentialId,
+          appId
+        },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      });
+
+      if (error) throw error;
+      if (!data.success) throw new Error(data.message || 'Failed to fetch microflows');
+
+      toast({
+        title: "Microflows Retrieved",
+        description: `Found ${data.data.count} microflows across ${Object.keys(data.data.microflowsByModule).length} modules`
+      });
+
+      return data.data;
+    } catch (error: any) {
+      toast({
+        title: "Failed to Get Microflows",
+        description: error.message,
+        variant: "destructive"
+      });
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     loading,
     startEnvironment,
     stopEnvironment,
     downloadLogs,
     fetchWebhookLogs,
-    refreshEnvironmentStatus
+    refreshEnvironmentStatus,
+    getMicroflows
   };
 };

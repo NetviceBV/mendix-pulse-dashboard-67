@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import LogsViewer from "./LogsViewer";
 import { VulnerabilityScanDialog } from "./VulnerabilityScanDialog";
 import { useMendixOperations } from "@/hooks/useMendixOperations";
+import { MicroflowsDialog, type MicroflowsResponse } from "./MicroflowsDialog";
 import { toast } from "@/hooks/use-toast";
 import {
   AlertDialog,
@@ -121,7 +122,10 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
   
   const [environmentStatuses, setEnvironmentStatuses] = useState<Record<string, { status: string; loading: boolean }>>({});
   const [environmentErrorCounts, setEnvironmentErrorCounts] = useState<Record<string, number>>({});
-  const { loading, startEnvironment, stopEnvironment, downloadLogs, fetchWebhookLogs, refreshEnvironmentStatus } = useMendixOperations();
+  const [microflowsDialogOpen, setMicroflowsDialogOpen] = useState(false);
+  const [microflowsData, setMicroflowsData] = useState<MicroflowsResponse | null>(null);
+  const [microflowsLoading, setMicroflowsLoading] = useState(false);
+  const { loading, startEnvironment, stopEnvironment, downloadLogs, fetchWebhookLogs, refreshEnvironmentStatus, getMicroflows } = useMendixOperations();
 
   // Utility function to capitalize environment names for display
   const capitalizeEnvironmentName = (envName: string) => {
@@ -315,6 +319,36 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
       setWebhookLogs([]);
     } finally {
       setWebhookLoading(false);
+    }
+  };
+
+  const handleGetMicroflows = async () => {
+    try {
+      // Find credential that has this app
+      const { data: credentials } = await supabase
+        .from('mendix_credentials')
+        .select('*')
+        .eq('user_id', (await supabase.auth.getUser()).data.user?.id);
+
+      if (!credentials || credentials.length === 0) {
+        throw new Error('No Mendix credentials found');
+      }
+
+      // Use the first credential that has this app (assuming one credential per app for now)
+      const credential = credentials[0];
+
+      setMicroflowsLoading(true);
+      setMicroflowsDialogOpen(true);
+      setMicroflowsData(null);
+
+      const data = await getMicroflows(credential.id, app.app_id);
+      setMicroflowsData(data);
+
+    } catch (error) {
+      console.error('Error getting microflows:', error);
+      setMicroflowsDialogOpen(false);
+    } finally {
+      setMicroflowsLoading(false);
     }
   };
 
@@ -656,6 +690,24 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                               size="sm"
                               variant="outline"
                               className="h-8"
+                              disabled={microflowsLoading}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleGetMicroflows();
+                              }}
+                            >
+                              {microflowsLoading ? (
+                                <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                              ) : (
+                                <Code className="w-3 h-3 mr-1" />
+                              )}
+                              Get Microflows
+                            </Button>
+
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8"
                                onClick={(e) => {
                                  e.stopPropagation();
                                  setSelectedEnvironmentForScan({ 
@@ -760,6 +812,15 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
           }}
         />
       )}
+
+      {/* Microflows Dialog */}
+      <MicroflowsDialog
+        open={microflowsDialogOpen}
+        onOpenChange={setMicroflowsDialogOpen}
+        microflowsData={microflowsData}
+        loading={microflowsLoading}
+        appName={app.app_name}
+      />
 
       {/* Vulnerability Scan Dialog */}
       {selectedEnvironmentForScan && (
