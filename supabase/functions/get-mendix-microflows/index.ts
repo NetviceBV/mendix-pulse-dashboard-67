@@ -50,38 +50,16 @@ serve(async (req) => {
       throw new Error('Mendix credentials not found or access denied');
     }
 
-    if (!credentials.pat) {
-      throw new Error('Personal Access Token (PAT) not found in credentials');
-    }
-
     console.log(`Fetching microflows for app: ${appId}`);
-    console.log('PAT present:', !!credentials.pat);
 
-    // Create a temporary environment context with the PAT
-    // Since Deno.env.set() is not supported in Supabase Edge Functions,
-    // we'll use a workaround by temporarily modifying the process environment
-    const originalEnv = globalThis.Deno?.env?.get?.('MENDIX_TOKEN');
+    // Import Mendix SDK with npm compatibility
+    const { MendixPlatformClient } = await import("npm:mendixplatformsdk@5.2.0");
+
+    const client = new MendixPlatformClient();
+    const mendixApp = client.getApp(appId);
     
-    // Create a custom environment getter that returns our PAT for MENDIX_TOKEN
-    const originalGetEnv = globalThis.Deno?.env?.get;
-    if (globalThis.Deno?.env) {
-      globalThis.Deno.env.get = (key: string) => {
-        if (key === 'MENDIX_TOKEN') {
-          return credentials.pat;
-        }
-        return originalGetEnv ? originalGetEnv.call(globalThis.Deno.env, key) : undefined;
-      };
-    }
-
-    try {
-      // Import Mendix SDK with npm compatibility
-      const { MendixPlatformClient } = await import("npm:mendixplatformsdk@5.2.0");
-
-      const client = new MendixPlatformClient();
-      const mendixApp = client.getApp(appId);
-      
-      const workingCopy = await mendixApp.createTemporaryWorkingCopy("main");
-      const model = await workingCopy.openModel();
+    const workingCopy = await mendixApp.createTemporaryWorkingCopy("main");
+    const model = await workingCopy.openModel();
 
       // Get all modules and microflows
       const allModules = model.allModules();
@@ -144,26 +122,19 @@ serve(async (req) => {
 
       console.log('Microflows grouped by module:', Object.keys(microflowsByModule).map(m => `${m}: ${microflowsByModule[m].length}`));
 
-      return new Response(JSON.stringify({
-        success: true,
-        data: {
-          appId,
-          availableModules: allModules.map(m => m.name),
-          microflows: microflowData,
-          microflowsByModule,
-          count: microflowData.length,
-          totalCount: allMicroflows.length
-        }
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-
-    } finally {
-      // Restore original environment getter
-      if (globalThis.Deno?.env && originalGetEnv) {
-        globalThis.Deno.env.get = originalGetEnv;
+    return new Response(JSON.stringify({
+      success: true,
+      data: {
+        appId,
+        availableModules: allModules.map(m => m.name),
+        microflows: microflowData,
+        microflowsByModule,
+        count: microflowData.length,
+        totalCount: allMicroflows.length
       }
-    }
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
 
   } catch (error: any) {
     console.error('Error fetching microflows:', error);
