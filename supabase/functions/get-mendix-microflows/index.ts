@@ -32,7 +32,7 @@ serve(async (req) => {
       throw new Error('Authentication failed');
     }
 
-    const { credentialId, appId } = await req.json();
+    const { credentialId, appId, includeActivities = false } = await req.json();
 
     if (!credentialId || !appId) {
       throw new Error('Missing credentialId or appId parameters');
@@ -117,14 +117,60 @@ serve(async (req) => {
       }
       }
 
-      // Process microflows with safe module name extraction
+      // Helper function to extract microflow activities
+      function extractMicroflowActivities(microflow: any): any[] {
+        try {
+          if (!microflow.objectCollection) {
+            console.warn(`No objectCollection found for microflow ${microflow.name}`);
+            return [];
+          }
+
+          // Use the toJSON() method as suggested in the Mendix SDK documentation
+          const objectCollectionData = microflow.objectCollection.toJSON();
+          console.log(`Extracted ${objectCollectionData?.objects?.length || 0} activities from microflow ${microflow.name}`);
+          
+          if (!objectCollectionData?.objects) {
+            return [];
+          }
+
+          // Extract relevant activity information
+          return objectCollectionData.objects.map((obj: any) => ({
+            id: obj.id,
+            type: obj.$Type || 'Unknown',
+            name: obj.caption || obj.text || obj.id,
+            properties: {
+              caption: obj.caption,
+              text: obj.text,
+              documentation: obj.documentation
+            }
+          }));
+        } catch (error) {
+          console.warn(`Error extracting activities from microflow ${microflow.name}:`, error);
+          return [];
+        }
+      }
+
+      // Process microflows with safe module name extraction and optional activities
       const microflowData = allMicroflows.map(mf => {
         const moduleName = getModuleName(mf);
-        return {
+        const baseData = {
           name: mf.name,
           module: moduleName,
           qualifiedName: mf.qualifiedName || `${moduleName || 'Unknown'}.${mf.name}`
         };
+
+        // Add activities if requested
+        if (includeActivities) {
+          const activities = extractMicroflowActivities(mf);
+          return {
+            ...baseData,
+            activities,
+            activityCount: activities.length,
+            activityTypes: [...new Set(activities.map(a => a.type))]
+          };
+        }
+
+        return baseData;
       });
 
       // Group by module for better overview
