@@ -52,6 +52,14 @@ serve(async (req) => {
 
     console.log(`Fetching microflows for app: ${appId}`);
 
+    // Ensure MENDIX_TOKEN is available to the SDK
+    const mendixToken = Deno.env.get('MENDIX_TOKEN');
+    console.log('MENDIX_TOKEN available:', !!mendixToken);
+    
+    if (!mendixToken) {
+      throw new Error('MENDIX_TOKEN not available in environment');
+    }
+
     // Import Mendix SDK with npm compatibility
     const { MendixPlatformClient } = await import("npm:mendixplatformsdk@5.2.0");
 
