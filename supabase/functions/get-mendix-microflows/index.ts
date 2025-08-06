@@ -50,13 +50,26 @@ serve(async (req) => {
       throw new Error('Mendix credentials not found or access denied');
     }
 
-    console.log(`Fetching microflows for app: ${appId}`);
+    // Get the project_id from mendix_apps table
+    const { data: appData, error: appError } = await supabase
+      .from('mendix_apps')
+      .select('project_id')
+      .eq('app_id', appId)
+      .eq('user_id', user.id)
+      .single();
+
+    if (appError || !appData || !appData.project_id) {
+      throw new Error(`Project ID not found for app: ${appId}. Please ensure the app has been fetched and stored in the database.`);
+    }
+
+    const projectId = appData.project_id;
+    console.log(`Fetching microflows for app: ${appId}, project: ${projectId}`);
 
     // Import Mendix SDK with npm compatibility
     const { MendixPlatformClient } = await import("npm:mendixplatformsdk@5.2.0");
 
     const client = new MendixPlatformClient();
-    const mendixApp = client.getApp(appId);
+    const mendixApp = client.getApp(projectId);
     
     const workingCopy = await mendixApp.createTemporaryWorkingCopy("main");
     const model = await workingCopy.openModel();
