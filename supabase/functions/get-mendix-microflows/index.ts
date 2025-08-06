@@ -118,8 +118,12 @@ serve(async (req) => {
       }
 
       // Helper function to extract microflow activities
-      function extractMicroflowActivities(microflow: any): any[] {
+      async function extractMicroflowActivities(microflow: any): Promise<any[]> {
         try {
+          // Load the microflow fully before accessing objectCollection
+          console.log(`Loading microflow ${microflow.name} to extract activities...`);
+          await microflow.load();
+          
           if (!microflow.objectCollection) {
             console.warn(`No objectCollection found for microflow ${microflow.name}`);
             return [];
@@ -145,15 +149,16 @@ serve(async (req) => {
             }
           }));
         } catch (error) {
-          console.warn(`Error extracting activities from microflow ${microflow.name}:`, error);
+          console.error(`Error extracting activities from microflow ${microflow.name}:`, error);
           return [];
         }
       }
 
       // Process microflows with safe module name extraction and optional activities
-      const microflowData = allMicroflows
-        .filter(mf => !targetMicroflow || mf.name === targetMicroflow)
-        .map(mf => {
+      const filteredMicroflows = allMicroflows.filter(mf => !targetMicroflow || mf.name === targetMicroflow);
+      
+      const microflowData = await Promise.all(
+        filteredMicroflows.map(async (mf) => {
           const moduleName = getModuleName(mf);
           const baseData = {
             name: mf.name,
@@ -163,7 +168,7 @@ serve(async (req) => {
 
           // Add activities if requested
           if (includeActivities) {
-            const activities = extractMicroflowActivities(mf);
+            const activities = await extractMicroflowActivities(mf);
             return {
               ...baseData,
               activities,
@@ -173,7 +178,8 @@ serve(async (req) => {
           }
 
           return baseData;
-        });
+        })
+      );
 
       // Group by module for better overview
       const microflowsByModule = microflowData.reduce((acc, mf) => {
