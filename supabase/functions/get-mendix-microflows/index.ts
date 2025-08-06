@@ -32,7 +32,7 @@ serve(async (req) => {
       throw new Error('Authentication failed');
     }
 
-    const { credentialId, appId, includeActivities = false } = await req.json();
+    const { credentialId, appId, includeActivities = false, targetMicroflow } = await req.json();
 
     if (!credentialId || !appId) {
       throw new Error('Missing credentialId or appId parameters');
@@ -151,27 +151,29 @@ serve(async (req) => {
       }
 
       // Process microflows with safe module name extraction and optional activities
-      const microflowData = allMicroflows.map(mf => {
-        const moduleName = getModuleName(mf);
-        const baseData = {
-          name: mf.name,
-          module: moduleName,
-          qualifiedName: mf.qualifiedName || `${moduleName || 'Unknown'}.${mf.name}`
-        };
-
-        // Add activities if requested
-        if (includeActivities) {
-          const activities = extractMicroflowActivities(mf);
-          return {
-            ...baseData,
-            activities,
-            activityCount: activities.length,
-            activityTypes: [...new Set(activities.map(a => a.type))]
+      const microflowData = allMicroflows
+        .filter(mf => !targetMicroflow || mf.name === targetMicroflow)
+        .map(mf => {
+          const moduleName = getModuleName(mf);
+          const baseData = {
+            name: mf.name,
+            module: moduleName,
+            qualifiedName: mf.qualifiedName || `${moduleName || 'Unknown'}.${mf.name}`
           };
-        }
 
-        return baseData;
-      });
+          // Add activities if requested
+          if (includeActivities) {
+            const activities = extractMicroflowActivities(mf);
+            return {
+              ...baseData,
+              activities,
+              activityCount: activities.length,
+              activityTypes: [...new Set(activities.map(a => a.type))]
+            };
+          }
+
+          return baseData;
+        });
 
       // Group by module for better overview
       const microflowsByModule = microflowData.reduce((acc, mf) => {

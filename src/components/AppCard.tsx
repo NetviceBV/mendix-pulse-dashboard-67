@@ -62,6 +62,7 @@ export interface MendixApp {
   active_users: number | null;
   error_count: number | null;
   app_url?: string;
+  credential_id: string;
   environments?: MendixEnvironment[];
 }
 
@@ -820,6 +821,8 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
         microflowsData={microflowsData}
         loading={microflowsLoading}
         appName={app.app_name}
+        credentialId={app.credential_id}
+        appId={app.app_id}
       />
 
       {/* Vulnerability Scan Dialog */}

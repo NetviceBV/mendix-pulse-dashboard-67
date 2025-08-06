@@ -231,6 +231,39 @@ export const useMendixOperations = () => {
     }
   };
 
+  const getMicroflowActivities = async (credentialId: string, appId: string, microflowName: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase.functions.invoke('get-mendix-microflows', {
+        body: {
+          credentialId,
+          appId,
+          includeActivities: true,
+          targetMicroflow: microflowName
+        },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      });
+
+      if (error) throw error;
+      if (!data.success) throw new Error(data.message || 'Failed to fetch microflow activities');
+
+      // Find the specific microflow in the response
+      const microflow = data.data.microflows.find((mf: any) => mf.name === microflowName);
+      return microflow?.activities || [];
+    } catch (error: any) {
+      toast({
+        title: "Failed to Get Activities",
+        description: error.message,
+        variant: "destructive"
+      });
+      throw error;
+    }
+  };
+
   return {
     loading,
     startEnvironment,
@@ -238,6 +271,7 @@ export const useMendixOperations = () => {
     downloadLogs,
     fetchWebhookLogs,
     refreshEnvironmentStatus,
-    getMicroflows
+    getMicroflows,
+    getMicroflowActivities
   };
 };
