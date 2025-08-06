@@ -117,6 +117,74 @@ serve(async (req) => {
       }
       }
 
+      // Helper function to extract meaningful activity names
+      function extractActivityName(obj: any): string {
+        // Try to get meaningful names based on activity type
+        if (obj.microflowCallAction && obj.microflowCallAction.microflowCall) {
+          return `Call ${obj.microflowCallAction.microflowCall.qualifiedName || obj.microflowCallAction.microflowCall.name || 'Microflow'}`;
+        }
+        
+        if (obj.showPageAction && obj.showPageAction.pageSettings) {
+          return `Show ${obj.showPageAction.pageSettings.page?.name || 'Page'}`;
+        }
+        
+        if (obj.retrieveAction) {
+          return obj.retrieveAction.outputVariableName ? 
+            `Retrieve ${obj.retrieveAction.outputVariableName}` : 
+            'Retrieve from database';
+        }
+        
+        if (obj.changeAction) {
+          return obj.changeAction.changeVariableName ? 
+            `Change ${obj.changeAction.changeVariableName}` : 
+            'Change object';
+        }
+        
+        if (obj.createAction) {
+          return obj.createAction.outputVariableName ? 
+            `Create ${obj.createAction.outputVariableName}` : 
+            'Create object';
+        }
+        
+        if (obj.deleteAction) {
+          return 'Delete object';
+        }
+        
+        if (obj.commitAction) {
+          return 'Commit';
+        }
+        
+        if (obj.rollbackAction) {
+          return 'Rollback';
+        }
+        
+        if (obj.closePageAction) {
+          return 'Close page';
+        }
+        
+        if (obj.logMessageAction) {
+          return obj.logMessageAction.template ? 
+            `Log: ${obj.logMessageAction.template.substring(0, 30)}...` : 
+            'Log message';
+        }
+        
+        if (obj.webServiceCallAction) {
+          return `Call web service`;
+        }
+        
+        if (obj.restCallAction) {
+          return `REST call`;
+        }
+        
+        // Fallback to caption, text, or cleaned type name
+        if (obj.caption) return obj.caption;
+        if (obj.text) return obj.text;
+        
+        // Clean up type name as last resort
+        const typeName = obj.$Type || 'Unknown';
+        return typeName.replace(/^.*\$/, '').replace(/([A-Z])/g, ' $1').trim();
+      }
+
       // Helper function to extract microflow activities
       async function extractMicroflowActivities(microflow: any): Promise<any[]> {
         try {
@@ -137,17 +205,44 @@ serve(async (req) => {
             return [];
           }
 
-          // Extract relevant activity information
-          return objectCollectionData.objects.map((obj: any) => ({
-            id: obj.id,
-            type: obj.$Type || 'Unknown',
-            name: obj.caption || obj.text || obj.id,
-            properties: {
-              caption: obj.caption,
-              text: obj.text,
-              documentation: obj.documentation
+          // Extract and enhance activity information
+          const activities = objectCollectionData.objects.map((obj: any) => {
+            const activityName = extractActivityName(obj);
+            const cleanType = (obj.$Type || 'Unknown').replace(/^.*\$/, '');
+            
+            return {
+              id: obj.id,
+              type: cleanType,
+              name: activityName,
+              position: obj.relativeMiddlePoint ? {
+                x: obj.relativeMiddlePoint.x || 0,
+                y: obj.relativeMiddlePoint.y || 0
+              } : null,
+              properties: {
+                caption: obj.caption,
+                text: obj.text,
+                documentation: obj.documentation,
+                originalType: obj.$Type
+              }
+            };
+          });
+
+          // Sort activities by position if available (left to right, top to bottom)
+          activities.sort((a, b) => {
+            if (a.position && b.position) {
+              // First sort by Y position (top to bottom), then by X position (left to right)
+              if (Math.abs(a.position.y - b.position.y) > 50) { // Threshold for "same row"
+                return a.position.y - b.position.y;
+              }
+              return a.position.x - b.position.x;
             }
-          }));
+            // If no position data, maintain original order
+            return 0;
+          });
+
+          console.log(`Activities with positions: ${activities.filter(a => a.position).length}/${activities.length}`);
+          
+          return activities;
         } catch (error) {
           console.error(`Error extracting activities from microflow ${microflow.name}:`, error);
           return [];
