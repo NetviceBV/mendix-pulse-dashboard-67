@@ -54,30 +54,44 @@ serve(async (req) => {
       throw new Error('Personal Access Token (PAT) not found in credentials');
     }
 
-    // Import Mendix SDK with npm compatibility
-    const { MendixPlatformClient } = await import("npm:mendixplatformsdk@5.2.0");
-
     console.log(`Fetching microflows for app: ${appId}`);
     console.log('PAT present:', !!credentials.pat);
 
-    // Set the MENDIX_TOKEN environment variable for the SDK
-    Deno.env.set('MENDIX_TOKEN', credentials.pat);
-
-    const client = new MendixPlatformClient();
-    const mendixApp = client.getApp(appId);
+    // Create a temporary environment context with the PAT
+    // Since Deno.env.set() is not supported in Supabase Edge Functions,
+    // we'll use a workaround by temporarily modifying the process environment
+    const originalEnv = globalThis.Deno?.env?.get?.('MENDIX_TOKEN');
     
-    const workingCopy = await mendixApp.createTemporaryWorkingCopy("main");
-    const model = await workingCopy.openModel();
+    // Create a custom environment getter that returns our PAT for MENDIX_TOKEN
+    const originalGetEnv = globalThis.Deno?.env?.get;
+    if (globalThis.Deno?.env) {
+      globalThis.Deno.env.get = (key: string) => {
+        if (key === 'MENDIX_TOKEN') {
+          return credentials.pat;
+        }
+        return originalGetEnv ? originalGetEnv.call(globalThis.Deno.env, key) : undefined;
+      };
+    }
 
-    // Get all modules and microflows
-    const allModules = model.allModules();
-    console.log('Available modules:', allModules.map(m => m.name));
+    try {
+      // Import Mendix SDK with npm compatibility
+      const { MendixPlatformClient } = await import("npm:mendixplatformsdk@5.2.0");
 
-    const allMicroflows = model.allMicroflows();
-    console.log(`Total microflows found: ${allMicroflows.length}`);
+      const client = new MendixPlatformClient();
+      const mendixApp = client.getApp(appId);
+      
+      const workingCopy = await mendixApp.createTemporaryWorkingCopy("main");
+      const model = await workingCopy.openModel();
 
-    // Helper function to safely get module name from a microflow
-    function getModuleName(microflow: any): string | null {
+      // Get all modules and microflows
+      const allModules = model.allModules();
+      console.log('Available modules:', allModules.map(m => m.name));
+
+      const allMicroflows = model.allMicroflows();
+      console.log(`Total microflows found: ${allMicroflows.length}`);
+
+      // Helper function to safely get module name from a microflow
+      function getModuleName(microflow: any): string | null {
       try {
         // Try to get the module directly
         if (microflow.containerAsModule) {
@@ -106,43 +120,50 @@ serve(async (req) => {
         console.warn(`Could not get module name for microflow ${microflow.name}:`, error);
         return null;
       }
+      }
+
+      // Process microflows with safe module name extraction
+      const microflowData = allMicroflows.map(mf => {
+        const moduleName = getModuleName(mf);
+        return {
+          name: mf.name,
+          module: moduleName,
+          qualifiedName: mf.qualifiedName || `${moduleName || 'Unknown'}.${mf.name}`
+        };
+      });
+
+      // Group by module for better overview
+      const microflowsByModule = microflowData.reduce((acc, mf) => {
+        const module = mf.module || 'Unknown';
+        if (!acc[module]) {
+          acc[module] = [];
+        }
+        acc[module].push(mf);
+        return acc;
+      }, {} as Record<string, any[]>);
+
+      console.log('Microflows grouped by module:', Object.keys(microflowsByModule).map(m => `${m}: ${microflowsByModule[m].length}`));
+
+      return new Response(JSON.stringify({
+        success: true,
+        data: {
+          appId,
+          availableModules: allModules.map(m => m.name),
+          microflows: microflowData,
+          microflowsByModule,
+          count: microflowData.length,
+          totalCount: allMicroflows.length
+        }
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+
+    } finally {
+      // Restore original environment getter
+      if (globalThis.Deno?.env && originalGetEnv) {
+        globalThis.Deno.env.get = originalGetEnv;
+      }
     }
-
-    // Process microflows with safe module name extraction
-    const microflowData = allMicroflows.map(mf => {
-      const moduleName = getModuleName(mf);
-      return {
-        name: mf.name,
-        module: moduleName,
-        qualifiedName: mf.qualifiedName || `${moduleName || 'Unknown'}.${mf.name}`
-      };
-    });
-
-    // Group by module for better overview
-    const microflowsByModule = microflowData.reduce((acc, mf) => {
-      const module = mf.module || 'Unknown';
-      if (!acc[module]) {
-        acc[module] = [];
-      }
-      acc[module].push(mf);
-      return acc;
-    }, {} as Record<string, any[]>);
-
-    console.log('Microflows grouped by module:', Object.keys(microflowsByModule).map(m => `${m}: ${microflowsByModule[m].length}`));
-
-    return new Response(JSON.stringify({
-      success: true,
-      data: {
-        appId,
-        availableModules: allModules.map(m => m.name),
-        microflows: microflowData,
-        microflowsByModule,
-        count: microflowData.length,
-        totalCount: allMicroflows.length
-      }
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
 
   } catch (error: any) {
     console.error('Error fetching microflows:', error);
