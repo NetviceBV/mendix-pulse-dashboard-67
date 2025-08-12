@@ -155,7 +155,7 @@ export function MicroflowsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[95vw] max-w-5xl max-h-[85vh] overflow-hidden flex flex-col">
+      <DialogContent className="w-[95vw] max-w-5xl max-h-[85vh] overflow-hidden grid grid-rows-[auto,1fr]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Code className="h-5 w-5" />
@@ -172,7 +172,7 @@ export function MicroflowsDialog({
         </DialogHeader>
 
         {loading ? (
-          <div className="flex-1 space-y-4">
+          <div className="min-h-0 overflow-auto pr-1 space-y-4 pb-6">
             <Skeleton className="h-10 w-full" />
             {[...Array(5)].map((_, i) => (
               <div key={i} className="space-y-2">
@@ -186,7 +186,7 @@ export function MicroflowsDialog({
             ))}
           </div>
         ) : microflowsData ? (
-          <div className="flex-1 min-h-0 flex flex-col gap-4">
+          <div className="min-h-0 overflow-hidden flex flex-col gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
@@ -207,8 +207,8 @@ export function MicroflowsDialog({
                 Collapse all details
               </Button>
             </div>
-            <ScrollArea className="flex-1 h-[60vh] pr-1">
-              <div className="space-y-2">
+            <ScrollArea className="h-full min-h-0 pr-1">
+              <div className="space-y-2 pb-6">
                 {Object.entries(filteredMicroflowsByModule).map(([moduleName, microflows]) => (
                   <Collapsible
                     key={moduleName}
