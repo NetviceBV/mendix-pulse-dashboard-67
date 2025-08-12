@@ -155,7 +155,7 @@ export function MicroflowsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
+      <DialogContent className="w-[95vw] max-w-5xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Code className="h-5 w-5" />
@@ -186,7 +186,7 @@ export function MicroflowsDialog({
             ))}
           </div>
         ) : microflowsData ? (
-          <div className="flex-1 flex flex-col gap-4">
+          <div className="flex-1 min-h-0 flex flex-col gap-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
               <Input
@@ -202,8 +202,12 @@ export function MicroflowsDialog({
                 Showing {totalFilteredMicroflows} of {microflowsData.count} microflows
               </div>
             )}
-
-            <ScrollArea className="flex-1">
+            <div className="flex justify-end">
+              <Button variant="outline" size="sm" onClick={() => setExpandedActivities({})}>
+                Collapse all details
+              </Button>
+            </div>
+            <ScrollArea className="flex-1 h-[60vh] pr-1">
               <div className="space-y-2">
                 {Object.entries(filteredMicroflowsByModule).map(([moduleName, microflows]) => (
                   <Collapsible
@@ -250,10 +254,12 @@ export function MicroflowsDialog({
                                 >
                                   {isLoadingActivities ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : isActivitiesExpanded ? (
+                                    <ChevronDown className="h-4 w-4" />
                                   ) : (
                                     <Activity className="h-4 w-4" />
                                   )}
-                                  <span className="ml-1 text-xs">Activities</span>
+                                  <span className="ml-1 text-xs">{isActivitiesExpanded ? 'Hide details' : 'Show details'}</span>
                                 </Button>
                               </div>
                               
