@@ -167,15 +167,27 @@ serve(async (req) => {
         }
       }
 
+      // Treat very generic auto-generated captions as non-informative
+      function isGenericCaption(s: string | null | undefined): boolean {
+        if (!s) return false;
+        const v = String(s).trim();
+        const GENERIC = new Set([
+          'Activity',
+          'Action',
+          'Submicroflow',
+          // Dutch common generics
+          'Activiteit',
+          'Actie',
+        ]);
+        return GENERIC.has(v);
+      }
+
       // Helper function to extract meaningful activity names
       function extractActivityName(obj: any): string {
-        // 1) Prefer explicit caption if present
-        const caption = resolveText(obj?.caption);
-        if (caption) return caption;
-
         const type = obj?.$Type || '';
+        const caption = resolveText(obj?.caption);
 
-        // 2) Decode ActionActivity via its inner action
+        // 1) For ActionActivity, prefer derived action name over generic captions
         if (type.endsWith('ActionActivity') && obj?.action) {
           const action = obj.action;
           const aType: string = action.$Type || '';
@@ -214,6 +226,12 @@ serve(async (req) => {
           if (aType.endsWith('JavaActionCallAction')) {
             return `Call Java action ${action.javaAction?.qualifiedName || ''}`.trim();
           }
+
+          // If we couldn't decode action type and caption is informative, use it
+          if (caption && !isGenericCaption(caption)) return caption;
+        } else {
+          // 2) Non-action objects: trust explicit caption first
+          if (caption) return caption;
         }
 
         // 3) Events and flow objects
@@ -297,6 +315,22 @@ serve(async (req) => {
             return 0;
           });
 
+          const rawSample = (objectCollectionData?.objects || []).slice(0, 3).map((o: any) => ({
+            id: o.id,
+            $Type: o.$Type,
+            actionType: o?.action?.$Type,
+            caption: o.caption,
+            text: o.text,
+            names: {
+              microflow: o.action?.microflowCall?.qualifiedName || o.action?.microflowCall?.name,
+              page: o.action?.pageSettings?.page?.name,
+              entity: o.action?.entity?.qualifiedName,
+              outputVariableName: o.action?.outputVariableName,
+              changeVariableName: o.action?.changeVariableName,
+            }
+          }));
+
+          console.log(`Raw activities snapshot for ${microflow.name}:`, rawSample);
           console.log(`Activities with positions: ${activities.filter(a => a.position).length}/${activities.length}`);
           console.log(`Resolved captions in ${microflow.name}: ${resolvedCaptionCount}/${activities.length}`);
           console.log(`Sample activities for ${microflow.name}:`, activities.slice(0, 3));
