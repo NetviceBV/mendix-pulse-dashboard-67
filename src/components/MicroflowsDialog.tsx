@@ -107,7 +107,20 @@ export function MicroflowsDialog({
     if (!activitiesData[activityKey]) {
       setLoadingActivities(prev => ({ ...prev, [activityKey]: true }));
       try {
-        const activities = await getMicroflowActivities(credentialId, appId, microflowName);
+        const activities = await getMicroflowActivities(credentialId, appId, microflowName, { includeRaw: true });
+        try {
+          // eslint-disable-next-line no-console
+          console.debug('[MicroflowsDialog] Activities summary', {
+            microflow: microflowName,
+            count: activities.length,
+            first: activities.slice(0, 5).map(a => ({
+              id: a.id,
+              type: a.type,
+              name: a.name,
+              captionText: a.properties?.captionText,
+            })),
+          });
+        } catch {}
         setActivitiesData(prev => ({
           ...prev,
           [activityKey]: activities

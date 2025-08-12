@@ -231,7 +231,7 @@ export const useMendixOperations = () => {
     }
   };
 
-  const getMicroflowActivities = async (credentialId: string, appId: string, microflowName: string) => {
+  const getMicroflowActivities = async (credentialId: string, appId: string, microflowName: string, options?: { includeRaw?: boolean }) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Not authenticated');
@@ -241,7 +241,8 @@ export const useMendixOperations = () => {
           credentialId,
           appId,
           includeActivities: true,
-          targetMicroflow: microflowName
+          targetMicroflow: microflowName,
+          includeRaw: options?.includeRaw === true,
         },
         headers: {
           Authorization: `Bearer ${session.access_token}`
@@ -250,6 +251,27 @@ export const useMendixOperations = () => {
 
       if (error) throw error;
       if (!data.success) throw new Error(data.message || 'Failed to fetch microflow activities');
+
+      // Debug logging when includeRaw is requested
+      if (options?.includeRaw && data?.data) {
+        try {
+          const debug = (data as any).data?.debug;
+          const mf = (data as any).data?.microflows?.find((mf: any) => mf.name === microflowName);
+          const sample = mf?.activities?.slice?.(0, 5)?.map((a: any) => ({
+            id: a.id, type: a.type, name: a.name, captionText: a?.properties?.captionText
+          }));
+          // eslint-disable-next-line no-console
+          console.debug('[getMicroflowActivities] Debug', {
+            target: microflowName,
+            hasDebug: !!debug,
+            debugRawSample: debug?.rawSample ? 'present' : 'absent',
+            firstActivities: sample,
+          });
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.debug('[getMicroflowActivities] Debug logging failed', e);
+        }
+      }
 
       // Find the specific microflow in the response
       const microflow = data.data.microflows.find((mf: any) => mf.name === microflowName);
