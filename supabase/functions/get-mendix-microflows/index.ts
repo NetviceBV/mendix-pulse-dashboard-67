@@ -32,7 +32,7 @@ serve(async (req) => {
       throw new Error('Authentication failed');
     }
 
-    const { credentialId, appId, includeActivities = false, targetMicroflow } = await req.json();
+    const { credentialId, appId, includeActivities = false, includeRaw = false, targetMicroflow } = await req.json();
 
     if (!credentialId || !appId) {
       throw new Error('Missing credentialId or appId parameters');
@@ -193,20 +193,32 @@ serve(async (req) => {
           const aType: string = action.$Type || '';
 
           if (aType.endsWith('MicroflowCallAction')) {
-            return `Call ${action.microflowCall?.qualifiedName || action.microflowCall?.name || 'Microflow'}`;
+            const mfName =
+              action.microflowCall?.qualifiedName ||
+              action.microflowCall?.microflowQualifiedName ||
+              action.microflowQualifiedName ||
+              action.microflowCall?.name;
+            return `Call ${mfName || 'Microflow'}`;
           }
           if (aType.endsWith('ShowPageAction')) {
-            return `Show ${action.pageSettings?.page?.name || 'Page'}`;
+            const pageName =
+              action.pageSettings?.pageQualifiedName ||
+              action.pageQualifiedName ||
+              action.pageSettings?.page?.qualifiedName ||
+              action.pageSettings?.page?.name;
+            return `Show ${pageName || 'Page'}`;
           }
           if (aType.endsWith('RetrieveAction')) {
+            const entityName = action.entity?.qualifiedName || action.entityQualifiedName;
             return action.outputVariableName
               ? `Retrieve ${action.outputVariableName}`
-              : `Retrieve ${action.entity?.qualifiedName || 'objects'}`;
+              : `Retrieve ${entityName || 'objects'}`;
           }
           if (aType.endsWith('CreateObjectAction')) {
+            const entityName = action.entity?.qualifiedName || action.entityQualifiedName;
             return action.outputVariableName
               ? `Create ${action.outputVariableName}`
-              : `Create ${action.entity?.qualifiedName || 'object'}`;
+              : `Create ${entityName || 'object'}`;
           }
           if (aType.endsWith('ChangeObjectAction')) {
             return action.changeVariableName
@@ -248,7 +260,7 @@ serve(async (req) => {
       }
 
       // Helper function to extract microflow activities
-      async function extractMicroflowActivities(microflow: any): Promise<any[]> {
+      async function extractMicroflowActivities(microflow: any): Promise<{ items: any[]; rawSample?: any[] }> {
         try {
           // Load the microflow fully before accessing objectCollection
           console.log(`Loading microflow ${microflow.name} to extract activities...`);
@@ -256,7 +268,7 @@ serve(async (req) => {
           
           if (!microflow.objectCollection) {
             console.warn(`No objectCollection found for microflow ${microflow.name}`);
-            return [];
+            return { items: [] };
           }
 
           // Use the toJSON() method as suggested in the Mendix SDK documentation
@@ -264,7 +276,7 @@ serve(async (req) => {
           console.log(`Extracted ${objectCollectionData?.objects?.length || 0} activities from microflow ${microflow.name}`);
           
           if (!objectCollectionData?.objects) {
-            return [];
+            return { items: [] };
           }
 
           const unknownActionTypes = new Set<string>();
@@ -322,9 +334,17 @@ serve(async (req) => {
             caption: o.caption,
             text: o.text,
             names: {
-              microflow: o.action?.microflowCall?.qualifiedName || o.action?.microflowCall?.name,
-              page: o.action?.pageSettings?.page?.name,
-              entity: o.action?.entity?.qualifiedName,
+              microflow:
+                o.action?.microflowCall?.qualifiedName ||
+                o.action?.microflowCall?.microflowQualifiedName ||
+                o.action?.microflowQualifiedName ||
+                o.action?.microflowCall?.name,
+              page:
+                o.action?.pageSettings?.pageQualifiedName ||
+                o.action?.pageQualifiedName ||
+                o.action?.pageSettings?.page?.qualifiedName ||
+                o.action?.pageSettings?.page?.name,
+              entity: o.action?.entity?.qualifiedName || o.action?.entityQualifiedName,
               outputVariableName: o.action?.outputVariableName,
               changeVariableName: o.action?.changeVariableName,
             }
@@ -338,10 +358,10 @@ serve(async (req) => {
             console.log(`Unknown action types in ${microflow.name}:`, Array.from(unknownActionTypes));
           }
           
-          return activities;
+          return includeRaw ? { items: activities, rawSample } : { items: activities };
         } catch (error) {
           console.error(`Error extracting activities from microflow ${microflow.name}:`, error);
-          return [];
+          return { items: [] };
         }
       }
 
@@ -359,13 +379,18 @@ serve(async (req) => {
 
           // Add activities if requested
           if (includeActivities) {
-            const activities = await extractMicroflowActivities(mf);
-            return {
+            const res = await extractMicroflowActivities(mf);
+            const activities = Array.isArray(res) ? res : res.items;
+            const result: any = {
               ...baseData,
               activities,
               activityCount: activities.length,
-              activityTypes: [...new Set(activities.map(a => a.type))]
+              activityTypes: [...new Set(activities.map((a: any) => a.type))]
             };
+            if (includeRaw && !Array.isArray(res) && res.rawSample) {
+              result.debug = { rawSample: res.rawSample };
+            }
+            return result;
           }
 
           return baseData;
