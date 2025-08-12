@@ -19,10 +19,14 @@ export interface MicroflowActivity {
   id: string;
   type: string;
   name: string;
+  position?: { x: number; y: number } | null;
   properties: {
-    caption?: string;
-    text?: string;
+    caption?: any;
+    text?: any;
     documentation?: string;
+    originalType?: string;
+    originalActionType?: string;
+    captionText?: string;
   };
 }
 
@@ -261,7 +265,7 @@ export function MicroflowsDialog({
                                         {activities.map((activity, actIndex) => (
                                           <div key={`${activity.id}-${actIndex}`} className="flex items-center justify-between p-2 bg-background/50 rounded text-xs">
                                             <div className="flex flex-col">
-                                              <span className="font-medium">{activity.name || activity.id}</span>
+                                              <span className="font-medium">{activity.name || activity.properties?.captionText || activity.type}</span>
                                               <span className="text-muted-foreground">{activity.type}</span>
                                             </div>
                                             <Badge variant="secondary" className="text-xs">

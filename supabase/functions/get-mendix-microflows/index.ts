@@ -117,72 +117,116 @@ serve(async (req) => {
       }
       }
 
+      // Helper to resolve Mendix Text objects to a readable string
+      function resolveText(val: any): string | null {
+        try {
+          if (!val) return null;
+          if (typeof val === 'string') {
+            const s = val.trim();
+            return s.length ? s : null;
+          }
+          if (typeof val === 'object') {
+            // 1) Array of translations: [{ languageCode/languageTag, text/value }]
+            if (Array.isArray(val.translations)) {
+              const preferred = ['en', 'en_US', 'en-GB', 'nl', 'nl_NL', 'nl-BE'];
+              for (const p of preferred) {
+                const t = val.translations.find((tr: any) =>
+                  (tr.languageCode && (tr.languageCode === p || tr.languageCode?.startsWith(p))) ||
+                  (tr.languageTag && (tr.languageTag === p || tr.languageTag?.startsWith(p)))
+                );
+                const text = t?.text ?? t?.value;
+                if (text && String(text).trim()) return String(text).trim();
+              }
+              for (const t of val.translations) {
+                const text = t?.text ?? t?.value;
+                if (text && String(text).trim()) return String(text).trim();
+              }
+            }
+            // 2) Object map of translations: { en: string, nl: string, ... }
+            if (val.translations && typeof val.translations === 'object' && !Array.isArray(val.translations)) {
+              const candidates = ['en', 'en_US', 'en-GB', 'nl', 'nl_NL', 'nl-BE'];
+              for (const key of candidates) {
+                const text = val.translations[key];
+                if (text && String(text).trim()) return String(text).trim();
+              }
+              for (const k in val.translations) {
+                const text = val.translations[k];
+                if (text && String(text).trim()) return String(text).trim();
+              }
+            }
+            // 3) Nested text fields
+            if (val.text) {
+              const nested = resolveText(val.text);
+              if (nested) return nested;
+            }
+            if (val.value && String(val.value).trim()) return String(val.value).trim();
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      }
+
       // Helper function to extract meaningful activity names
       function extractActivityName(obj: any): string {
-        // Try to get meaningful names based on activity type
-        if (obj.microflowCallAction && obj.microflowCallAction.microflowCall) {
-          return `Call ${obj.microflowCallAction.microflowCall.qualifiedName || obj.microflowCallAction.microflowCall.name || 'Microflow'}`;
+        // 1) Prefer explicit caption if present
+        const caption = resolveText(obj?.caption);
+        if (caption) return caption;
+
+        const type = obj?.$Type || '';
+
+        // 2) Decode ActionActivity via its inner action
+        if (type.endsWith('ActionActivity') && obj?.action) {
+          const action = obj.action;
+          const aType: string = action.$Type || '';
+
+          if (aType.endsWith('MicroflowCallAction')) {
+            return `Call ${action.microflowCall?.qualifiedName || action.microflowCall?.name || 'Microflow'}`;
+          }
+          if (aType.endsWith('ShowPageAction')) {
+            return `Show ${action.pageSettings?.page?.name || 'Page'}`;
+          }
+          if (aType.endsWith('RetrieveAction')) {
+            return action.outputVariableName
+              ? `Retrieve ${action.outputVariableName}`
+              : `Retrieve ${action.entity?.qualifiedName || 'objects'}`;
+          }
+          if (aType.endsWith('CreateObjectAction')) {
+            return action.outputVariableName
+              ? `Create ${action.outputVariableName}`
+              : `Create ${action.entity?.qualifiedName || 'object'}`;
+          }
+          if (aType.endsWith('ChangeObjectAction')) {
+            return action.changeVariableName
+              ? `Change ${action.changeVariableName}`
+              : 'Change object';
+          }
+          if (aType.endsWith('CommitAction')) return 'Commit';
+          if (aType.endsWith('RollbackAction')) return 'Rollback';
+          if (aType.endsWith('DeleteAction')) return 'Delete object';
+          if (aType.endsWith('LogMessageAction')) {
+            const t = resolveText(action.template) || resolveText(action.messageTemplate);
+            if (t) return `Log: ${t.slice(0, 40)}${t.length > 40 ? '…' : ''}`;
+            return 'Log message';
+          }
+          if (aType.includes('Rest') || aType.includes('CallRestService')) return 'REST call';
+          if (aType.includes('WebService')) return 'Web service call';
+          if (aType.endsWith('JavaActionCallAction')) {
+            return `Call Java action ${action.javaAction?.qualifiedName || ''}`.trim();
+          }
         }
-        
-        if (obj.showPageAction && obj.showPageAction.pageSettings) {
-          return `Show ${obj.showPageAction.pageSettings.page?.name || 'Page'}`;
-        }
-        
-        if (obj.retrieveAction) {
-          return obj.retrieveAction.outputVariableName ? 
-            `Retrieve ${obj.retrieveAction.outputVariableName}` : 
-            'Retrieve from database';
-        }
-        
-        if (obj.changeAction) {
-          return obj.changeAction.changeVariableName ? 
-            `Change ${obj.changeAction.changeVariableName}` : 
-            'Change object';
-        }
-        
-        if (obj.createAction) {
-          return obj.createAction.outputVariableName ? 
-            `Create ${obj.createAction.outputVariableName}` : 
-            'Create object';
-        }
-        
-        if (obj.deleteAction) {
-          return 'Delete object';
-        }
-        
-        if (obj.commitAction) {
-          return 'Commit';
-        }
-        
-        if (obj.rollbackAction) {
-          return 'Rollback';
-        }
-        
-        if (obj.closePageAction) {
-          return 'Close page';
-        }
-        
-        if (obj.logMessageAction) {
-          return obj.logMessageAction.template ? 
-            `Log: ${obj.logMessageAction.template.substring(0, 30)}...` : 
-            'Log message';
-        }
-        
-        if (obj.webServiceCallAction) {
-          return `Call web service`;
-        }
-        
-        if (obj.restCallAction) {
-          return `REST call`;
-        }
-        
-        // Fallback to caption, text, or cleaned type name
-        if (obj.caption) return obj.caption;
-        if (obj.text) return obj.text;
-        
-        // Clean up type name as last resort
-        const typeName = obj.$Type || 'Unknown';
-        return typeName.replace(/^.*\$/, '').replace(/([A-Z])/g, ' $1').trim();
+
+        // 3) Events and flow objects
+        const cleanType = (type || 'Unknown').replace(/^.*\$/, '');
+        if (cleanType.includes('StartEvent')) return 'Start';
+        if (cleanType.includes('EndEvent')) return 'End';
+        if (cleanType.includes('ExclusiveSplit') || cleanType.includes('Decision')) return 'Decision';
+        if (cleanType.includes('ExclusiveMerge')) return 'Merge';
+        if (cleanType.includes('ParallelSplit')) return 'Parallel split';
+        if (cleanType.includes('ParallelMerge')) return 'Parallel merge';
+
+        // 4) Fallback to cleaned type
+        return cleanType.replace(/([A-Z])/g, ' $1').trim();
       }
 
       // Helper function to extract microflow activities
@@ -205,15 +249,26 @@ serve(async (req) => {
             return [];
           }
 
+          const unknownActionTypes = new Set<string>();
+          let resolvedCaptionCount = 0;
+
           // Extract and enhance activity information
           const activities = objectCollectionData.objects.map((obj: any) => {
-            const activityName = extractActivityName(obj);
+            const captionText = resolveText(obj?.caption) || resolveText(obj?.text);
+            if (captionText) resolvedCaptionCount++;
+
             const cleanType = (obj.$Type || 'Unknown').replace(/^.*\$/, '');
+            const name = extractActivityName(obj);
+            const fallbackName = cleanType.replace(/([A-Z])/g, ' $1').trim();
+            const actionType = obj?.action?.$Type;
+            if (cleanType.endsWith('ActionActivity') && actionType && name === fallbackName) {
+              unknownActionTypes.add(actionType);
+            }
             
             return {
               id: obj.id,
               type: cleanType,
-              name: activityName,
+              name,
               position: obj.relativeMiddlePoint ? {
                 x: obj.relativeMiddlePoint.x || 0,
                 y: obj.relativeMiddlePoint.y || 0
@@ -222,16 +277,18 @@ serve(async (req) => {
                 caption: obj.caption,
                 text: obj.text,
                 documentation: obj.documentation,
-                originalType: obj.$Type
+                originalType: obj.$Type,
+                originalActionType: actionType,
+                captionText
               }
             };
           });
 
-          // Sort activities by position if available (left to right, top to bottom)
+          // Sort activities by position if available (top-to-bottom, then left-to-right)
           activities.sort((a, b) => {
             if (a.position && b.position) {
-              // First sort by Y position (top to bottom), then by X position (left to right)
-              if (Math.abs(a.position.y - b.position.y) > 50) { // Threshold for "same row"
+              // Slightly tighter threshold for considering the same row
+              if (Math.abs(a.position.y - b.position.y) > 32) {
                 return a.position.y - b.position.y;
               }
               return a.position.x - b.position.x;
@@ -241,6 +298,11 @@ serve(async (req) => {
           });
 
           console.log(`Activities with positions: ${activities.filter(a => a.position).length}/${activities.length}`);
+          console.log(`Resolved captions in ${microflow.name}: ${resolvedCaptionCount}/${activities.length}`);
+          console.log(`Sample activities for ${microflow.name}:`, activities.slice(0, 3));
+          if (unknownActionTypes.size) {
+            console.log(`Unknown action types in ${microflow.name}:`, Array.from(unknownActionTypes));
+          }
           
           return activities;
         } catch (error) {
