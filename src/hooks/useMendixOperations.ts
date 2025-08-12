@@ -255,8 +255,8 @@ export const useMendixOperations = () => {
       // Debug logging when includeRaw is requested
       if (options?.includeRaw && data?.data) {
         try {
-          const debug = (data as any).data?.debug;
           const mf = (data as any).data?.microflows?.find((mf: any) => mf.name === microflowName);
+          const debug = mf?.debug;
           const sample = mf?.activities?.slice?.(0, 5)?.map((a: any) => ({
             id: a.id, type: a.type, name: a.name, captionText: a?.properties?.captionText
           }));
@@ -264,7 +264,7 @@ export const useMendixOperations = () => {
           console.debug('[getMicroflowActivities] Debug', {
             target: microflowName,
             hasDebug: !!debug,
-            debugRawSample: debug?.rawSample ? 'present' : 'absent',
+            debugRawSample: Array.isArray(debug?.rawSample) && debug.rawSample.length > 0 ? 'present' : 'absent',
             firstActivities: sample,
           });
         } catch (e) {
