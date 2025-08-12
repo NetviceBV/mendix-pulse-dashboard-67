@@ -271,84 +271,152 @@ serve(async (req) => {
             return { items: [] };
           }
 
-          // Use the toJSON() method as suggested in the Mendix SDK documentation
+          // Get both typed and plain representations
+          const typedObjects: any[] = microflow.objectCollection.objects || [];
           const objectCollectionData = microflow.objectCollection.toJSON();
-          console.log(`Extracted ${objectCollectionData?.objects?.length || 0} activities from microflow ${microflow.name}`);
-          
-          if (!objectCollectionData?.objects) {
-            return { items: [] };
-          }
+          const plainObjects: any[] = objectCollectionData?.objects || [];
+          console.log(`Extracted ${plainObjects.length} activities from microflow ${microflow.name}`);
 
           const unknownActionTypes = new Set<string>();
           let resolvedCaptionCount = 0;
 
-          // Extract and enhance activity information
-          const activities = objectCollectionData.objects.map((obj: any) => {
+          // Safely derive target qualified names using typed SDK objects
+          function deriveTargets(typed: any, actionType: string | undefined) {
+            const targets: Record<string, string | undefined> = {};
+            try {
+              if (!typed) return targets;
+              // Microflow calls
+              if (actionType && actionType.endsWith('MicroflowCallAction')) {
+                targets.microflowQualifiedName =
+                  typed?.action?.microflowCall?.microflow?.qualifiedName ||
+                  typed?.action?.microflowCall?.microflowQualifiedName ||
+                  typed?.action?.microflowQualifiedName;
+              }
+              // Show page
+              if (actionType && actionType.endsWith('ShowPageAction')) {
+                targets.pageQualifiedName =
+                  typed?.action?.pageSettings?.page?.qualifiedName ||
+                  typed?.action?.pageSettings?.pageQualifiedName ||
+                  typed?.action?.pageQualifiedName;
+              }
+              // Java action
+              if (actionType && actionType.endsWith('JavaActionCallAction')) {
+                targets.javaActionQualifiedName = typed?.action?.javaAction?.qualifiedName;
+              }
+              // Entity-based actions
+              if (
+                actionType && (
+                  actionType.endsWith('CreateObjectAction') ||
+                  actionType.endsWith('RetrieveAction') ||
+                  actionType.endsWith('ChangeObjectAction')
+                )
+              ) {
+                targets.entityQualifiedName =
+                  typed?.action?.entity?.qualifiedName ||
+                  typed?.action?.entityQualifiedName;
+              }
+            } catch (_) {
+              // noop
+            }
+            return targets;
+          }
+
+          // Extract and enhance activity information by aligning typed and plain arrays
+          const activities = plainObjects.map((obj: any, idx: number) => {
+            const typed = typedObjects[idx];
             const captionText = resolveText(obj?.caption) || resolveText(obj?.text);
             if (captionText) resolvedCaptionCount++;
 
             const cleanType = (obj.$Type || 'Unknown').replace(/^.*\$/, '');
-            const name = extractActivityName(obj);
-            const fallbackName = cleanType.replace(/([A-Z])/g, ' $1').trim();
             const actionType = obj?.action?.$Type;
-            if (cleanType.endsWith('ActionActivity') && actionType && name === fallbackName) {
-              unknownActionTypes.add(actionType);
+
+            // Use typed SDK to resolve targets for better names
+            const targets = deriveTargets(typed, actionType);
+
+            // Build a richer name using targets when available
+            let name = extractActivityName({ ...obj, action: obj.action });
+            if (cleanType.endsWith('ActionActivity') && actionType) {
+              if (actionType.endsWith('MicroflowCallAction') && targets.microflowQualifiedName) {
+                name = `Call ${targets.microflowQualifiedName}`;
+              } else if (actionType.endsWith('ShowPageAction') && targets.pageQualifiedName) {
+                name = `Show ${targets.pageQualifiedName}`;
+              } else if (actionType.endsWith('JavaActionCallAction') && targets.javaActionQualifiedName) {
+                name = `Call Java action ${targets.javaActionQualifiedName}`;
+              } else if (
+                (actionType.endsWith('CreateObjectAction') || actionType.endsWith('RetrieveAction')) &&
+                targets.entityQualifiedName
+              ) {
+                const verb = actionType.endsWith('CreateObjectAction') ? 'Create' : 'Retrieve';
+                name = `${verb} ${targets.entityQualifiedName}`;
+              }
             }
-            
-            return {
+
+            const activity = {
               id: obj.id,
               type: cleanType,
               name,
-              position: obj.relativeMiddlePoint ? {
-                x: obj.relativeMiddlePoint.x || 0,
-                y: obj.relativeMiddlePoint.y || 0
-              } : null,
+              position: obj.relativeMiddlePoint
+                ? { x: obj.relativeMiddlePoint.x || 0, y: obj.relativeMiddlePoint.y || 0 }
+                : null,
               properties: {
                 caption: obj.caption,
                 text: obj.text,
                 documentation: obj.documentation,
                 originalType: obj.$Type,
                 originalActionType: actionType,
-                captionText
-              }
+                captionText,
+                targets,
+              },
             };
+
+            if (cleanType.endsWith('ActionActivity') && actionType && name === cleanType.replace(/([A-Z])/g, ' $1').trim()) {
+              unknownActionTypes.add(actionType);
+            }
+
+            return activity;
           });
 
           // Sort activities by position if available (top-to-bottom, then left-to-right)
           activities.sort((a, b) => {
             if (a.position && b.position) {
-              // Slightly tighter threshold for considering the same row
               if (Math.abs(a.position.y - b.position.y) > 32) {
                 return a.position.y - b.position.y;
               }
               return a.position.x - b.position.x;
             }
-            // If no position data, maintain original order
             return 0;
           });
 
-          const rawSample = (objectCollectionData?.objects || []).slice(0, 3).map((o: any) => ({
-            id: o.id,
-            $Type: o.$Type,
-            actionType: o?.action?.$Type,
-            caption: o.caption,
-            text: o.text,
-            names: {
-              microflow:
-                o.action?.microflowCall?.qualifiedName ||
-                o.action?.microflowCall?.microflowQualifiedName ||
-                o.action?.microflowQualifiedName ||
-                o.action?.microflowCall?.name,
-              page:
-                o.action?.pageSettings?.pageQualifiedName ||
-                o.action?.pageQualifiedName ||
-                o.action?.pageSettings?.page?.qualifiedName ||
-                o.action?.pageSettings?.page?.name,
-              entity: o.action?.entity?.qualifiedName || o.action?.entityQualifiedName,
-              outputVariableName: o.action?.outputVariableName,
-              changeVariableName: o.action?.changeVariableName,
-            }
-          }));
+          const rawSample = plainObjects.slice(0, 3).map((o: any, i: number) => {
+            const typed = typedObjects[i];
+            const actionType = o?.action?.$Type;
+            const targets = deriveTargets(typed, actionType);
+            return {
+              id: o.id,
+              $Type: o.$Type,
+              actionType: actionType,
+              caption: o.caption,
+              text: o.text,
+              names: {
+                microflow: targets.microflowQualifiedName ||
+                  o.action?.microflowCall?.qualifiedName ||
+                  o.action?.microflowCall?.microflowQualifiedName ||
+                  o.action?.microflowQualifiedName ||
+                  o.action?.microflowCall?.name,
+                page: targets.pageQualifiedName ||
+                  o.action?.pageSettings?.pageQualifiedName ||
+                  o.action?.pageQualifiedName ||
+                  o.action?.pageSettings?.page?.qualifiedName ||
+                  o.action?.pageSettings?.page?.name,
+                entity: targets.entityQualifiedName ||
+                  o.action?.entity?.qualifiedName ||
+                  o.action?.entityQualifiedName,
+                javaAction: targets.javaActionQualifiedName,
+                outputVariableName: o.action?.outputVariableName,
+                changeVariableName: o.action?.changeVariableName,
+              },
+            };
+          });
 
           console.log(`Raw activities snapshot for ${microflow.name}:`, rawSample);
           console.log(`Activities with positions: ${activities.filter(a => a.position).length}/${activities.length}`);
