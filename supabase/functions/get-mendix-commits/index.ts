@@ -79,7 +79,7 @@ serve(async (req) => {
     console.log(`Fetching commits for project ${projectId}, branch: ${actualBranchName}`);
 
     // Call Mendix Repository API to get commits
-    const auth = 'Basic ' + btoa(`${credData.username}:${credData.api_key}`);
+    const auth = `MxToken ${credData.pat}`;
     const repoApiUrl = `https://repository.api.mendix.com/v1/repositories/${projectId}/branches/${encodeURIComponent(actualBranchName)}/commits`;
 
     const response = await fetch(repoApiUrl, {
