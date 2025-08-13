@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -256,6 +256,7 @@ const form = useForm<FormValues>({
           <DialogTitle className="flex items-center gap-2">
             <CloudCog className="h-5 w-5" /> New Cloud Action
           </DialogTitle>
+          <DialogDescription>Plan and queue a cloud action for your Mendix environment.</DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-6 md:grid-cols-[1fr_280px]">
@@ -607,6 +608,7 @@ function LogsDialog({ actionId }: { actionId: string }) {
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Execution logs</DialogTitle>
+          <DialogDescription>Live and historical logs for the selected action.</DialogDescription>
         </DialogHeader>
         <div className="max-h-[60vh] overflow-auto space-y-2 pr-1">
           {logs.length === 0 && <div className="text-sm text-muted-foreground">No logs yet</div>}
