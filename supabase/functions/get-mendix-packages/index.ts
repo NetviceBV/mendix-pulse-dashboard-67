@@ -104,11 +104,11 @@ serve(async (req) => {
     }
 
     // Normalize and filter by branch prefix
-    type Pkg = { Name?: string; name?: string; Created?: string; created?: string };
+    type Pkg = { Name?: string; name?: string; CreationDate?: string };
     const filtered = (packages as Pkg[])
       .map(p => ({
         name: (p.Name || p.name || '').toString(),
-        created: (p.Created || p.created) ? new Date(p.Created || (p as any).created).getTime() : undefined,
+        created: p.CreationDate ? new Date(p.CreationDate).getTime() : undefined,
       }))
       .filter(p => p.name && p.name.toLowerCase().startsWith(namePrefix))
       .sort((a, b) => {
