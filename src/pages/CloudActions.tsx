@@ -58,12 +58,8 @@ function AddCloudActionDialog({ onCreated }: { onCreated: () => void }) {
   const [loadingApps, setLoadingApps] = useState(false);
   const [loadingEnvs, setLoadingEnvs] = useState(false);
 
-  const PLACEHOLDER_BRANCHES: Record<string, string[]> = {
-    "mx-app-001": ["main", "develop"],
-    "mx-app-002": ["main"],
-    "mx-app-101": ["develop", "feature/new-ui"],
-  };
-
+  const [branches, setBranches] = useState<string[]>([]);
+  const [loadingBranches, setLoadingBranches] = useState(false);
   const PLACEHOLDER_REVISIONS: Record<string, string[]> = {
     "mx-app-001:main": ["v1.2.3", "v1.2.2", "v1.2.1"],
     "mx-app-001:develop": ["v1.3.0-beta1", "v1.3.0-alpha2"],
@@ -197,9 +193,25 @@ const form = useForm<FormValues>({
     })();
   }, [appId, credentialId]);
 
-  const filteredBranches = useMemo(() => {
-    return appId ? (PLACEHOLDER_BRANCHES[appId] || []) : [];
-  }, [appId]);
+  useEffect(() => {
+    (async () => {
+      if (!appId || !credentialId) { setBranches([]); return; }
+      setLoadingBranches(true);
+      try {
+        const { data, error } = await supabase.functions.invoke('get-mendix-branches', {
+          body: { credentialId, appId },
+        });
+        if (error) throw error;
+        setBranches((data as any)?.branches || []);
+      } catch (e: any) {
+        console.error(e);
+        setBranches([]);
+        toast({ title: 'Failed to load branches', description: e.message || 'Could not fetch branches', variant: 'destructive' });
+      } finally {
+        setLoadingBranches(false);
+      }
+    })();
+  }, [appId, credentialId]);
   const branchName = form.watch("branchName");
   const filteredRevisions = useMemo(() => {
     return appId && branchName ? (PLACEHOLDER_REVISIONS[`${appId}:${branchName}`] || []) : [];
@@ -461,11 +473,13 @@ const form = useForm<FormValues>({
                         <Select value={field.value} onValueChange={field.onChange} disabled={!appId}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder={appId ? "Select branch" : "Select an app first"} />
+                              <SelectValue placeholder={appId ? (loadingBranches ? "Loading branches..." : "Select branch") : "Select an app first"} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {filteredBranches.map((b) => (
+                            {loadingBranches && <SelectItem disabled value="__loading">Loading branches...</SelectItem>}
+                            {!loadingBranches && branches.length === 0 && <SelectItem disabled value="__empty">No branches found</SelectItem>}
+                            {!loadingBranches && branches.map((b) => (
                               <SelectItem key={b} value={b}>
                                 {b}
                               </SelectItem>
