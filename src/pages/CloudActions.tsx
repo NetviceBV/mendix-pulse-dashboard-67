@@ -50,24 +50,13 @@ function AddCloudActionDialog({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
 
-  // UI-only placeholder data
-  const PLACEHOLDER_CREDENTIALS: Credential[] = [
-    { id: "cred1", name: "Production Credentials" },
-    { id: "cred2", name: "Dev/Test Credentials" },
-  ];
-  const PLACEHOLDER_APPS: App[] = [
-    { id: "1", app_id: "mx-app-001", app_name: "Customer Portal", credential_id: "cred1" },
-    { id: "2", app_id: "mx-app-002", app_name: "Backoffice Suite", credential_id: "cred1" },
-    { id: "3", app_id: "mx-app-101", app_name: "QA Sandbox", credential_id: "cred2" },
-  ];
-  const PLACEHOLDER_ENVS: Env[] = [
-    { id: "e1", app_id: "mx-app-001", environment_name: "production" },
-    { id: "e2", app_id: "mx-app-001", environment_name: "acceptance" },
-    { id: "e3", app_id: "mx-app-002", environment_name: "production" },
-    { id: "e4", app_id: "mx-app-002", environment_name: "test" },
-    { id: "e5", app_id: "mx-app-101", environment_name: "test" },
-    { id: "e6", app_id: "mx-app-101", environment_name: "acceptance" },
-  ];
+  // Data from Supabase
+  const [credentials, setCredentials] = useState<Credential[]>([]);
+  const [apps, setApps] = useState<App[]>([]);
+  const [envs, setEnvs] = useState<Env[]>([]);
+  const [loadingCreds, setLoadingCreds] = useState(false);
+  const [loadingApps, setLoadingApps] = useState(false);
+  const [loadingEnvs, setLoadingEnvs] = useState(false);
 
   const PLACEHOLDER_BRANCHES: Record<string, string[]> = {
     "mx-app-001": ["main", "develop"],
@@ -150,11 +139,64 @@ const form = useForm<FormValues>({
   }, [scheduledDate]);
 
   const filteredApps = useMemo(() => {
-    return credentialId ? PLACEHOLDER_APPS.filter((a) => a.credential_id === credentialId) : PLACEHOLDER_APPS;
-  }, [credentialId]);
+    return apps;
+  }, [apps]);
   const filteredEnvs = useMemo(() => {
-    return appId ? PLACEHOLDER_ENVS.filter((e) => e.app_id === appId) : [];
-  }, [appId]);
+    return envs;
+  }, [envs]);
+  useEffect(() => {
+    if (!open) return;
+    (async () => {
+      setLoadingCreds(true);
+      try {
+        const { data, error } = await supabase
+          .from("mendix_credentials")
+          .select("id, name")
+          .order("created_at", { ascending: true });
+        if (!error) setCredentials((data || []) as any);
+      } finally {
+        setLoadingCreds(false);
+      }
+    })();
+  }, [open]);
+
+  useEffect(() => {
+    (async () => {
+      if (!credentialId) { setApps([]); return; }
+      setLoadingApps(true);
+      try {
+        const { data, error } = await supabase
+          .from("mendix_apps")
+          .select("id, app_id, app_name, credential_id")
+          .eq("credential_id", credentialId)
+          .order("app_name", { ascending: true });
+        if (!error) setApps((data || []) as any);
+        else setApps([]);
+      } finally {
+        setLoadingApps(false);
+      }
+    })();
+  }, [credentialId]);
+
+  useEffect(() => {
+    (async () => {
+      if (!appId || !credentialId) { setEnvs([]); return; }
+      setLoadingEnvs(true);
+      try {
+        const { data, error } = await supabase
+          .from("mendix_environments")
+          .select("id, app_id, environment_name")
+          .eq("credential_id", credentialId)
+          .eq("app_id", appId)
+          .order("environment_name", { ascending: true });
+        if (!error) setEnvs((data || []) as any);
+        else setEnvs([]);
+      } finally {
+        setLoadingEnvs(false);
+      }
+    })();
+  }, [appId, credentialId]);
+
   const filteredBranches = useMemo(() => {
     return appId ? (PLACEHOLDER_BRANCHES[appId] || []) : [];
   }, [appId]);
@@ -183,8 +225,8 @@ const form = useForm<FormValues>({
       values.runWhen === "now"
         ? "Now"
         : `${values.scheduledDate ? format(values.scheduledDate, "PPP") : ""} ${values.scheduledTime || ""}`.trim();
-    const credName = PLACEHOLDER_CREDENTIALS.find((c) => c.id === values.credentialId)?.name;
-    const appName = PLACEHOLDER_APPS.find((a) => a.app_id === values.appId)?.app_name;
+    const credName = credentials.find((c) => c.id === values.credentialId)?.name;
+    const appName = apps.find((a) => a.app_id === values.appId)?.app_name;
     const deployInfo =
       values.actionType === "deploy"
         ? ` • Branch: ${values.branchName || ""} • Revision: ${values.revision || ""}`
@@ -232,7 +274,7 @@ const form = useForm<FormValues>({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {PLACEHOLDER_CREDENTIALS.map((c) => (
+                        {credentials.map((c) => (
                           <SelectItem key={c.id} value={c.id}>
                             {c.name}
                           </SelectItem>
@@ -501,10 +543,10 @@ const form = useForm<FormValues>({
             <div className="text-sm text-muted-foreground">Summary</div>
             <div className="text-sm">
               <div>
-                <span className="text-muted-foreground">Credential:</span> {credentialId ? (PLACEHOLDER_CREDENTIALS.find(c => c.id === credentialId)?.name || credentialId) : "—"}
+                <span className="text-muted-foreground">Credential:</span> {credentialId ? (credentials.find(c => c.id === credentialId)?.name || credentialId) : "—"}
               </div>
               <div>
-                <span className="text-muted-foreground">App:</span> {appId ? (PLACEHOLDER_APPS.find(a => a.app_id === appId)?.app_name || appId) : "—"}
+                <span className="text-muted-foreground">App:</span> {appId ? (apps.find(a => a.app_id === appId)?.app_name || appId) : "—"}
               </div>
               {actionType === "transport" && (
                 <div>
