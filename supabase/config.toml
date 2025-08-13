@@ -60,3 +60,5 @@ verify_jwt = false
 [functions.get-mendix-branches]
 
 [functions.get-mendix-packages]
+
+[functions.get-mendix-commits]

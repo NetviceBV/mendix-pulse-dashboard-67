@@ -61,6 +61,8 @@ function AddCloudActionDialog({ onCreated }: { onCreated: () => void }) {
 
   const [branches, setBranches] = useState<string[]>([]);
   const [loadingBranches, setLoadingBranches] = useState(false);
+  const [revisions, setRevisions] = useState<{ id: string; message: string }[]>([]);
+  const [loadingRevisions, setLoadingRevisions] = useState(false);
   const [packages, setPackages] = useState<string[]>([]);
   const [loadingPackages, setLoadingPackages] = useState(false);
 
@@ -72,6 +74,7 @@ const FormSchema = z
       environmentName: z.string().min(1, "Select environment"),
       sourceEnvironmentName: z.string().optional(),
       branchName: z.string().optional(),
+      revisionId: z.string().optional(),
       revision: z.string().optional(),
       actionType: ActionType,
       runWhen: z.enum(["now", "schedule"]).default("now"),
@@ -96,7 +99,7 @@ const FormSchema = z
       }
       if (val.actionType === "deploy") {
         if (!val.branchName) ctx.addIssue({ code: "custom", message: "Branch is required", path: ["branchName"] });
-        if (!val.revision) ctx.addIssue({ code: "custom", message: "Revision is required", path: ["revision"] });
+        if (!val.revisionId) ctx.addIssue({ code: "custom", message: "Revision is required", path: ["revisionId"] });
       }
     });
 
@@ -111,6 +114,7 @@ const form = useForm<FormValues>({
       environmentName: "",
       sourceEnvironmentName: "",
       branchName: "",
+      revisionId: "",
       revision: "",
       actionType: "start",
       runWhen: "now",
@@ -211,7 +215,28 @@ const form = useForm<FormValues>({
 
   const branchName = form.watch("branchName");
 
-  // Load packages when branch changes
+  // Load revisions when branch changes
+  useEffect(() => {
+    (async () => {
+      if (!appId || !credentialId || !branchName) { setRevisions([]); return; }
+      setLoadingRevisions(true);
+      try {
+        const { data, error } = await supabase.functions.invoke('get-mendix-commits', {
+          body: { credentialId, appId, branchName },
+        });
+        if (error) throw error;
+        setRevisions(((data as any)?.commits || []) as { id: string; message: string }[]);
+      } catch (e: any) {
+        console.error(e);
+        setRevisions([]);
+        toast({ title: 'Failed to load revisions', description: e.message || 'Could not fetch revisions', variant: 'destructive' });
+      } finally {
+        setLoadingRevisions(false);
+      }
+    })();
+  }, [appId, credentialId, branchName]);
+
+  // Load packages when branch changes (keep for future use)
   useEffect(() => {
     (async () => {
       if (!appId || !credentialId || !branchName) { setPackages([]); return; }
@@ -225,7 +250,7 @@ const form = useForm<FormValues>({
       } catch (e: any) {
         console.error(e);
         setPackages([]);
-        toast({ title: 'Failed to load packages', description: e.message || 'Could not fetch packages', variant: 'destructive' });
+        // Don't show toast for packages since we're not using them in UI
       } finally {
         setLoadingPackages(false);
       }
@@ -233,8 +258,8 @@ const form = useForm<FormValues>({
   }, [appId, credentialId, branchName]);
 
   const filteredRevisions = useMemo(() => {
-    return branchName ? packages : [];
-  }, [branchName, packages]);
+    return branchName ? revisions : [];
+  }, [branchName, revisions]);
 
   // Reset dependent fields
   useEffect(() => {
@@ -244,11 +269,14 @@ const form = useForm<FormValues>({
   useEffect(() => {
     form.setValue("environmentName", "");
     form.setValue("branchName", "");
+    form.setValue("revisionId", "");
     form.setValue("revision", "");
   }, [appId]);
 
   useEffect(() => {
+    form.setValue("revisionId", "");
     form.setValue("revision", "");
+    setRevisions([]);
     setPackages([]);
   }, [branchName]);
 
@@ -259,9 +287,10 @@ const form = useForm<FormValues>({
         : `${values.scheduledDate ? format(values.scheduledDate, "PPP") : ""} ${values.scheduledTime || ""}`.trim();
     const credName = credentials.find((c) => c.id === values.credentialId)?.name;
     const appName = apps.find((a) => a.app_id === values.appId)?.app_name;
+    const selectedRevision = revisions.find(r => r.id === values.revisionId);
     const deployInfo =
       values.actionType === "deploy"
-        ? ` • Branch: ${values.branchName || ""} • Package: ${values.revision || ""}`
+        ? ` • Branch: ${values.branchName || ""} • Revision: ${selectedRevision ? `${selectedRevision.id} - ${selectedRevision.message}` : values.revisionId || ""}`
         : "";
 
     toast({
@@ -513,22 +542,22 @@ const form = useForm<FormValues>({
 
                   <FormField
                     control={form.control}
-                    name="revision"
+                    name="revisionId"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Package</FormLabel>
+                        <FormLabel>Revision</FormLabel>
                         <Select value={field.value} onValueChange={field.onChange} disabled={!appId || !branchName}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder={branchName ? (loadingPackages ? "Loading packages..." : "Select package") : "Select a branch first"} />
+                              <SelectValue placeholder={branchName ? (loadingRevisions ? "Loading revisions..." : "Select revision") : "Select a branch first"} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            {loadingPackages && <SelectItem disabled value="__loading">Loading packages...</SelectItem>}
-                            {!loadingPackages && filteredRevisions.length === 0 && <SelectItem disabled value="__empty">No packages found</SelectItem>}
-                            {filteredRevisions.map((r) => (
-                              <SelectItem key={r} value={r}>
-                                {r}
+                            {loadingRevisions && <SelectItem disabled value="__loading">Loading revisions...</SelectItem>}
+                            {!loadingRevisions && filteredRevisions.length === 0 && <SelectItem disabled value="__empty">No revisions found</SelectItem>}
+                            {!loadingRevisions && filteredRevisions.map((r) => (
+                              <SelectItem key={r.id} value={r.id}>
+                                {r.id} - {r.message}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -605,7 +634,11 @@ const form = useForm<FormValues>({
                     <span className="text-muted-foreground">Branch:</span> {form.watch("branchName") || "—"}
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Package:</span> {form.watch("revision") || "—"}
+                    <span className="text-muted-foreground">Revision:</span> {(() => {
+                      const revisionId = form.watch("revisionId");
+                      const selectedRevision = revisions.find(r => r.id === revisionId);
+                      return selectedRevision ? `${selectedRevision.id} - ${selectedRevision.message}` : revisionId || "—";
+                    })()}
                   </div>
                 </>
               )}
