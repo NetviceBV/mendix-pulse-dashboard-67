@@ -71,7 +71,14 @@ serve(async (req) => {
     }
 
     const mx10 = isMx10(version);
-    const targetBranch = String(branchName || '').toLowerCase().trim();
+    
+    // Extract actual branch name from "branches/branch-name" format for MX9
+    let actualBranchName = String(branchName || '').trim();
+    if (actualBranchName.startsWith('branches/')) {
+      actualBranchName = actualBranchName.substring('branches/'.length);
+    }
+    
+    const targetBranch = actualBranchName.toLowerCase();
 
     // Build prefix to filter package names
     // MX9: main line packages are prefixed with "Main line-...", MX10 uses e.g. "main-..."
