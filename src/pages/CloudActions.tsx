@@ -16,7 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
+import { format, startOfToday, isSameDay, parse } from "date-fns";
 
 
 interface CloudActionRow {
@@ -101,6 +101,14 @@ const FormSchema = z
       if (val.runWhen === "schedule") {
         if (!val.scheduledDate) ctx.addIssue({ code: "custom", message: "Date required", path: ["scheduledDate"] });
         if (!val.scheduledTime) ctx.addIssue({ code: "custom", message: "Time required", path: ["scheduledTime"] });
+
+        if (val.scheduledDate && val.scheduledTime) {
+          const scheduledAt = parse(val.scheduledTime, "HH:mm", val.scheduledDate);
+          const now = new Date();
+          if (scheduledAt <= now) {
+            ctx.addIssue({ code: "custom", message: "Must be in the future", path: ["scheduledTime"] });
+          }
+        }
       }
       if (val.actionType === "transport" && !val.sourceEnvironmentName) {
         ctx.addIssue({ code: "custom", message: "Source environment required", path: ["sourceEnvironmentName"] });
@@ -134,6 +142,12 @@ const form = useForm<FormValues>({
   const appId = form.watch("appId");
   const actionType = form.watch("actionType");
   const runWhen = form.watch("runWhen");
+  const scheduledDate = form.watch("scheduledDate");
+  const minTime = useMemo(() => {
+    if (!scheduledDate) return undefined;
+    if (!isSameDay(scheduledDate as Date, new Date())) return undefined;
+    return format(new Date(), "HH:mm");
+  }, [scheduledDate]);
 
   const filteredApps = useMemo(() => {
     return credentialId ? PLACEHOLDER_APPS.filter((a) => a.credential_id === credentialId) : PLACEHOLDER_APPS;
@@ -314,6 +328,7 @@ const form = useForm<FormValues>({
                               mode="single"
                               selected={field.value}
                               onSelect={field.onChange}
+                              disabled={{ before: startOfToday() }}
                               initialFocus
                               className={cn("p-3 pointer-events-auto")}
                             />
@@ -331,7 +346,7 @@ const form = useForm<FormValues>({
                       <FormItem>
                         <FormLabel>Schedule time</FormLabel>
                         <FormControl>
-                          <Input type="time" value={field.value} onChange={field.onChange} />
+                          <Input type="time" value={field.value} onChange={field.onChange} min={minTime} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
