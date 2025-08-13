@@ -69,29 +69,45 @@ function AddCloudActionDialog({ onCreated }: { onCreated: () => void }) {
     { id: "e6", app_id: "mx-app-101", environment_name: "acceptance" },
   ];
 
-  const ActionType = z.enum(["start", "stop", "restart", "refresh_status", "download_logs", "transport"]);
+  const PLACEHOLDER_BRANCHES: Record<string, string[]> = {
+    "mx-app-001": ["main", "develop"],
+    "mx-app-002": ["main"],
+    "mx-app-101": ["develop", "feature/new-ui"],
+  };
+
+  const PLACEHOLDER_REVISIONS: Record<string, string[]> = {
+    "mx-app-001:main": ["v1.2.3", "v1.2.2", "v1.2.1"],
+    "mx-app-001:develop": ["v1.3.0-beta1", "v1.3.0-alpha2"],
+    "mx-app-002:main": ["v2.0.0", "v1.9.5"],
+    "mx-app-101:develop": ["r105", "r104"],
+    "mx-app-101:feature/new-ui": ["r201", "r200"],
+  };
+
+  const ActionType = z.enum(["start", "stop", "restart", "transport", "deploy"]);
 const FormSchema = z
     .object({
       credentialId: z.string().min(1, "Select credential"),
       appId: z.string().min(1, "Select app"),
       environmentName: z.string().min(1, "Select environment"),
       sourceEnvironmentName: z.string().optional(),
+      branchName: z.string().optional(),
+      revision: z.string().optional(),
       actionType: ActionType,
       runWhen: z.enum(["now", "schedule"]).default("now"),
       scheduledDate: z.date().optional(),
       scheduledTime: z.string().optional(), // HH:mm
-      logsDate: z.date().optional(),
     })
     .superRefine((val, ctx) => {
       if (val.runWhen === "schedule") {
         if (!val.scheduledDate) ctx.addIssue({ code: "custom", message: "Date required", path: ["scheduledDate"] });
         if (!val.scheduledTime) ctx.addIssue({ code: "custom", message: "Time required", path: ["scheduledTime"] });
       }
-      if (val.actionType === "download_logs" && !val.logsDate) {
-        ctx.addIssue({ code: "custom", message: "Logs date required", path: ["logsDate"] });
-      }
       if (val.actionType === "transport" && !val.sourceEnvironmentName) {
         ctx.addIssue({ code: "custom", message: "Source environment required", path: ["sourceEnvironmentName"] });
+      }
+      if (val.actionType === "deploy") {
+        if (!val.branchName) ctx.addIssue({ code: "custom", message: "Branch is required", path: ["branchName"] });
+        if (!val.revision) ctx.addIssue({ code: "custom", message: "Revision is required", path: ["revision"] });
       }
     });
 
@@ -100,16 +116,17 @@ const FormSchema = z
 const form = useForm<FormValues>({
     resolver: zodResolver(FormSchema),
     mode: "onChange",
-    defaultValues: {
+      defaultValues: {
       credentialId: "",
       appId: "",
       environmentName: "",
       sourceEnvironmentName: "",
+      branchName: "",
+      revision: "",
       actionType: "start",
       runWhen: "now",
       scheduledDate: undefined,
       scheduledTime: "",
-      logsDate: undefined,
     },
   });
 
@@ -124,6 +141,13 @@ const form = useForm<FormValues>({
   const filteredEnvs = useMemo(() => {
     return appId ? PLACEHOLDER_ENVS.filter((e) => e.app_id === appId) : [];
   }, [appId]);
+  const filteredBranches = useMemo(() => {
+    return appId ? (PLACEHOLDER_BRANCHES[appId] || []) : [];
+  }, [appId]);
+  const branchName = form.watch("branchName");
+  const filteredRevisions = useMemo(() => {
+    return appId && branchName ? (PLACEHOLDER_REVISIONS[`${appId}:${branchName}`] || []) : [];
+  }, [appId, branchName]);
 
   // Reset dependent fields
   useEffect(() => {
@@ -132,16 +156,25 @@ const form = useForm<FormValues>({
   }, [credentialId]);
   useEffect(() => {
     form.setValue("environmentName", "");
+    form.setValue("branchName", "");
+    form.setValue("revision", "");
   }, [appId]);
+
+  useEffect(() => {
+    form.setValue("revision", "");
+  }, [branchName]);
 
   const onSubmit = (values: FormValues) => {
     const when =
       values.runWhen === "now"
         ? "Now"
         : `${values.scheduledDate ? format(values.scheduledDate, "PPP") : ""} ${values.scheduledTime || ""}`.trim();
-    const logDate = values.actionType === "download_logs" && values.logsDate ? format(values.logsDate, "PPP") : undefined;
     const credName = PLACEHOLDER_CREDENTIALS.find((c) => c.id === values.credentialId)?.name;
     const appName = PLACEHOLDER_APPS.find((a) => a.app_id === values.appId)?.app_name;
+    const deployInfo =
+      values.actionType === "deploy"
+        ? ` • Branch: ${values.branchName || ""} • Revision: ${values.revision || ""}`
+        : "";
 
     toast({
       title: "Cloud action prepared",
@@ -150,7 +183,7 @@ const form = useForm<FormValues>({
         (values.actionType === "transport"
           ? `Source: ${values.sourceEnvironmentName || ""} • Target: ${values.environmentName}`
           : `Target: ${values.environmentName}`) +
-        ` • When: ${when}` + (logDate ? ` • Logs date: ${logDate}` : ""),
+        ` • When: ${when}${deployInfo}`,
     });
     setOpen(false);
   };
@@ -316,15 +349,14 @@ const form = useForm<FormValues>({
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue />
+                          <SelectValue placeholder="Select action" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
                         <SelectItem value="start">Start</SelectItem>
                         <SelectItem value="stop">Stop</SelectItem>
                         <SelectItem value="restart">Restart</SelectItem>
-                        <SelectItem value="refresh_status">Refresh status</SelectItem>
-                        <SelectItem value="download_logs">Download logs</SelectItem>
+                        <SelectItem value="deploy">Deploy</SelectItem>
                         <SelectItem value="transport">Transport</SelectItem>
                       </SelectContent>
                     </Select>
@@ -385,41 +417,58 @@ const form = useForm<FormValues>({
                 )}
               />
 
-              {actionType === "download_logs" && (
-                <FormField
-                  control={form.control}
-                  name="logsDate"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>Logs date</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
+              {actionType === "deploy" && (
+                <>
+                  <FormField
+                    control={form.control}
+                    name="branchName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Branch</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange} disabled={!appId}>
                           <FormControl>
-                            <Button
-                              variant={"outline"}
-                              className={cn(
-                                "justify-start text-left font-normal",
-                                !field.value && "text-muted-foreground"
-                              )}
-                            >
-                              {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
-                            </Button>
+                            <SelectTrigger>
+                              <SelectValue placeholder={appId ? "Select branch" : "Select an app first"} />
+                            </SelectTrigger>
                           </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            onSelect={field.onChange}
-                            initialFocus
-                            className={cn("p-3 pointer-events-auto")}
-                          />
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                          <SelectContent>
+                            {filteredBranches.map((b) => (
+                              <SelectItem key={b} value={b}>
+                                {b}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="revision"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Revision</FormLabel>
+                        <Select value={field.value} onValueChange={field.onChange} disabled={!appId || !branchName}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder={branchName ? "Select revision" : "Select a branch first"} />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {filteredRevisions.map((r) => (
+                              <SelectItem key={r} value={r}>
+                                {r}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </>
               )}
 
               <div className="flex justify-end gap-2">
@@ -456,10 +505,15 @@ const form = useForm<FormValues>({
               <div>
                 <span className="text-muted-foreground">When:</span> {runWhen === "now" ? "Now" : `${form.watch("scheduledDate") ? format(form.watch("scheduledDate") as Date, "PPP") : "—"} ${form.watch("scheduledTime") || ""}`}
               </div>
-              {actionType === "download_logs" && (
-                <div>
-                  <span className="text-muted-foreground">Logs date:</span> {form.watch("logsDate") ? format(form.watch("logsDate") as Date, "PPP") : "—"}
-                </div>
+              {actionType === "deploy" && (
+                <>
+                  <div>
+                    <span className="text-muted-foreground">Branch:</span> {form.watch("branchName") || "—"}
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Revision:</span> {form.watch("revision") || "—"}
+                  </div>
+                </>
               )}
             </div>
           </aside>
@@ -523,10 +577,10 @@ export default function CloudActionsPage() {
     if (!metaDesc) {
       const m = document.createElement("meta");
       m.name = "description";
-      m.content = "Manage and schedule Mendix cloud actions like start, stop, restart, and status refresh.";
+      m.content = "Manage and schedule Mendix cloud actions like start, stop, restart, deploy, and transport.";
       document.head.appendChild(m);
     } else {
-      metaDesc.setAttribute("content", "Manage and schedule Mendix cloud actions like start, stop, restart, and status refresh.");
+      metaDesc.setAttribute("content", "Manage and schedule Mendix cloud actions like start, stop, restart, deploy, and transport.");
     }
     const link = document.querySelector('link[rel="canonical"]') || document.createElement('link');
     link.setAttribute('rel','canonical');
