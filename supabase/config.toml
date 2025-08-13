@@ -56,3 +56,7 @@ enabled = true
 verify_jwt = false
 
 [functions.run-cloud-actions]
+
+[functions.get-mendix-branches]
+
+[functions.get-mendix-packages]

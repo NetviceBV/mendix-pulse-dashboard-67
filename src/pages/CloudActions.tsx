@@ -61,13 +61,8 @@ function AddCloudActionDialog({ onCreated }: { onCreated: () => void }) {
 
   const [branches, setBranches] = useState<string[]>([]);
   const [loadingBranches, setLoadingBranches] = useState(false);
-  const PLACEHOLDER_REVISIONS: Record<string, string[]> = {
-    "mx-app-001:main": ["v1.2.3", "v1.2.2", "v1.2.1"],
-    "mx-app-001:develop": ["v1.3.0-beta1", "v1.3.0-alpha2"],
-    "mx-app-002:main": ["v2.0.0", "v1.9.5"],
-    "mx-app-101:develop": ["r105", "r104"],
-    "mx-app-101:feature/new-ui": ["r201", "r200"],
-  };
+  const [packages, setPackages] = useState<string[]>([]);
+  const [loadingPackages, setLoadingPackages] = useState(false);
 
   const ActionType = z.enum(["start", "stop", "restart", "transport", "deploy"]);
 const FormSchema = z
@@ -213,10 +208,33 @@ const form = useForm<FormValues>({
       }
     })();
   }, [appId, credentialId]);
+
   const branchName = form.watch("branchName");
+
+  // Load packages when branch changes
+  useEffect(() => {
+    (async () => {
+      if (!appId || !credentialId || !branchName) { setPackages([]); return; }
+      setLoadingPackages(true);
+      try {
+        const { data, error } = await supabase.functions.invoke('get-mendix-packages', {
+          body: { credentialId, appId, branchName },
+        });
+        if (error) throw error;
+        setPackages(((data as any)?.packages || []) as string[]);
+      } catch (e: any) {
+        console.error(e);
+        setPackages([]);
+        toast({ title: 'Failed to load packages', description: e.message || 'Could not fetch packages', variant: 'destructive' });
+      } finally {
+        setLoadingPackages(false);
+      }
+    })();
+  }, [appId, credentialId, branchName]);
+
   const filteredRevisions = useMemo(() => {
-    return appId && branchName ? (PLACEHOLDER_REVISIONS[`${appId}:${branchName}`] || []) : [];
-  }, [appId, branchName]);
+    return branchName ? packages : [];
+  }, [branchName, packages]);
 
   // Reset dependent fields
   useEffect(() => {
@@ -231,6 +249,7 @@ const form = useForm<FormValues>({
 
   useEffect(() => {
     form.setValue("revision", "");
+    setPackages([]);
   }, [branchName]);
 
   const onSubmit = (values: FormValues) => {
@@ -242,7 +261,7 @@ const form = useForm<FormValues>({
     const appName = apps.find((a) => a.app_id === values.appId)?.app_name;
     const deployInfo =
       values.actionType === "deploy"
-        ? ` • Branch: ${values.branchName || ""} • Revision: ${values.revision || ""}`
+        ? ` • Branch: ${values.branchName || ""} • Package: ${values.revision || ""}`
         : "";
 
     toast({
@@ -497,14 +516,16 @@ const form = useForm<FormValues>({
                     name="revision"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Revision</FormLabel>
+                        <FormLabel>Package</FormLabel>
                         <Select value={field.value} onValueChange={field.onChange} disabled={!appId || !branchName}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder={branchName ? "Select revision" : "Select a branch first"} />
+                              <SelectValue placeholder={branchName ? (loadingPackages ? "Loading packages..." : "Select package") : "Select a branch first"} />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
+                            {loadingPackages && <SelectItem disabled value="__loading">Loading packages...</SelectItem>}
+                            {!loadingPackages && filteredRevisions.length === 0 && <SelectItem disabled value="__empty">No packages found</SelectItem>}
                             {filteredRevisions.map((r) => (
                               <SelectItem key={r} value={r}>
                                 {r}
@@ -584,7 +605,7 @@ const form = useForm<FormValues>({
                     <span className="text-muted-foreground">Branch:</span> {form.watch("branchName") || "—"}
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Revision:</span> {form.watch("revision") || "—"}
+                    <span className="text-muted-foreground">Package:</span> {form.watch("revision") || "—"}
                   </div>
                 </>
               )}
