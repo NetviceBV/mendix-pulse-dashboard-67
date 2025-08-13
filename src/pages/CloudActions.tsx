@@ -69,12 +69,13 @@ function AddCloudActionDialog({ onCreated }: { onCreated: () => void }) {
     { id: "e6", app_id: "mx-app-101", environment_name: "acceptance" },
   ];
 
-  const ActionType = z.enum(["start", "stop", "restart", "refresh_status", "download_logs"]);
-  const FormSchema = z
+  const ActionType = z.enum(["start", "stop", "restart", "refresh_status", "download_logs", "transport"]);
+const FormSchema = z
     .object({
       credentialId: z.string().min(1, "Select credential"),
       appId: z.string().min(1, "Select app"),
       environmentName: z.string().min(1, "Select environment"),
+      sourceEnvironmentName: z.string().optional(),
       actionType: ActionType,
       runWhen: z.enum(["now", "schedule"]).default("now"),
       scheduledDate: z.date().optional(),
@@ -89,17 +90,21 @@ function AddCloudActionDialog({ onCreated }: { onCreated: () => void }) {
       if (val.actionType === "download_logs" && !val.logsDate) {
         ctx.addIssue({ code: "custom", message: "Logs date required", path: ["logsDate"] });
       }
+      if (val.actionType === "transport" && !val.sourceEnvironmentName) {
+        ctx.addIssue({ code: "custom", message: "Source environment required", path: ["sourceEnvironmentName"] });
+      }
     });
 
   type FormValues = z.infer<typeof FormSchema>;
 
-  const form = useForm<FormValues>({
+const form = useForm<FormValues>({
     resolver: zodResolver(FormSchema),
     mode: "onChange",
     defaultValues: {
       credentialId: "",
       appId: "",
       environmentName: "",
+      sourceEnvironmentName: "",
       actionType: "start",
       runWhen: "now",
       scheduledDate: undefined,
@@ -140,9 +145,12 @@ function AddCloudActionDialog({ onCreated }: { onCreated: () => void }) {
 
     toast({
       title: "Cloud action prepared",
-      description: `Action: ${values.actionType.replace("_", " ")} • App: ${appName} • Env: ${values.environmentName} • When: ${when}${
-        logDate ? ` • Logs date: ${logDate}` : ""
-      }`,
+      description:
+        `Action: ${values.actionType.replace("_", " ")} • App: ${appName} • ` +
+        (values.actionType === "transport"
+          ? `Source: ${values.sourceEnvironmentName || ""} • Target: ${values.environmentName}`
+          : `Target: ${values.environmentName}`) +
+        ` • When: ${when}` + (logDate ? ` • Logs date: ${logDate}` : ""),
     });
     setOpen(false);
   };
@@ -164,57 +172,30 @@ function AddCloudActionDialog({ onCreated }: { onCreated: () => void }) {
         <div className="grid gap-6 md:grid-cols-[1fr_280px]">
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="credentialId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Credential</FormLabel>
-                      <Select value={field.value} onValueChange={(v) => field.onChange(v)}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select credential" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {PLACEHOLDER_CREDENTIALS.map((c) => (
-                            <SelectItem key={c.id} value={c.id}>
-                              {c.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="actionType"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Action</FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="start">Start</SelectItem>
-                          <SelectItem value="stop">Stop</SelectItem>
-                          <SelectItem value="restart">Restart</SelectItem>
-                          <SelectItem value="refresh_status">Refresh status</SelectItem>
-                          <SelectItem value="download_logs">Download logs</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+              <FormField
+                control={form.control}
+                name="credentialId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Credential</FormLabel>
+                    <Select value={field.value} onValueChange={(v) => field.onChange(v)}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select credential" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {PLACEHOLDER_CREDENTIALS.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               <FormField
                 control={form.control}
@@ -245,30 +226,6 @@ function AddCloudActionDialog({ onCreated }: { onCreated: () => void }) {
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="environmentName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Environment</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange} disabled={!appId}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder={appId ? "Select environment" : "Select an app first"} />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {filteredEnvs.map((e) => (
-                          <SelectItem key={e.id} value={e.environment_name}>
-                            {e.environment_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
 
               <FormField
                 control={form.control}
@@ -350,6 +307,84 @@ function AddCloudActionDialog({ onCreated }: { onCreated: () => void }) {
                 </div>
               )}
 
+              <FormField
+                control={form.control}
+                name="actionType"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Action</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="start">Start</SelectItem>
+                        <SelectItem value="stop">Stop</SelectItem>
+                        <SelectItem value="restart">Restart</SelectItem>
+                        <SelectItem value="refresh_status">Refresh status</SelectItem>
+                        <SelectItem value="download_logs">Download logs</SelectItem>
+                        <SelectItem value="transport">Transport</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {actionType === "transport" && (
+                <FormField
+                  control={form.control}
+                  name="sourceEnvironmentName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Source environment</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange} disabled={!appId}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={appId ? "Select source environment" : "Select an app first"} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {filteredEnvs.map((e) => (
+                            <SelectItem key={`src-${e.id}`} value={e.environment_name}>
+                              {e.environment_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              <FormField
+                control={form.control}
+                name="environmentName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Target environment</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange} disabled={!appId}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={appId ? "Select target environment" : "Select an app first"} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {filteredEnvs.map((e) => (
+                          <SelectItem key={e.id} value={e.environment_name}>
+                            {e.environment_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               {actionType === "download_logs" && (
                 <FormField
                   control={form.control}
@@ -407,8 +442,13 @@ function AddCloudActionDialog({ onCreated }: { onCreated: () => void }) {
               <div>
                 <span className="text-muted-foreground">App:</span> {appId ? (PLACEHOLDER_APPS.find(a => a.app_id === appId)?.app_name || appId) : "—"}
               </div>
+              {actionType === "transport" && (
+                <div>
+                  <span className="text-muted-foreground">Source environment:</span> {form.watch("sourceEnvironmentName") || "—"}
+                </div>
+              )}
               <div>
-                <span className="text-muted-foreground">Environment:</span> {form.watch("environmentName") || "—"}
+                <span className="text-muted-foreground">Target environment:</span> {form.watch("environmentName") || "—"}
               </div>
               <div className="capitalize">
                 <span className="text-muted-foreground">Action:</span> {actionType.replace("_", " ")}
