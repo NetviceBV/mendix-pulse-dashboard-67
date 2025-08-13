@@ -54,3 +54,5 @@ enabled = true
 
 [functions.webhook-mendix-logs]
 verify_jwt = false
+
+[functions.run-cloud-actions]

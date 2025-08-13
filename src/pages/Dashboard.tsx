@@ -9,7 +9,8 @@ import {
   RefreshCw, 
   Settings, 
   LogOut,
-  Activity
+  Activity,
+  CloudCog
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
@@ -253,6 +254,14 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
               >
                 <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
                 Refresh
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => navigate("/cloud-actions")}
+              >
+                <CloudCog className="w-4 h-4 mr-2" />
+                Cloud Actions
               </Button>
               <Button 
                 variant="outline" 
