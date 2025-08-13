@@ -392,31 +392,6 @@ const form = useForm<FormValues>({
                 />
               )}
 
-              <FormField
-                control={form.control}
-                name="environmentName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Target environment</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange} disabled={!appId}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder={appId ? "Select target environment" : "Select an app first"} />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {filteredEnvs.map((e) => (
-                          <SelectItem key={e.id} value={e.environment_name}>
-                            {e.environment_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
               {actionType === "deploy" && (
                 <>
                   <FormField
@@ -470,6 +445,31 @@ const form = useForm<FormValues>({
                   />
                 </>
               )}
+
+              <FormField
+                control={form.control}
+                name="environmentName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Target environment</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange} disabled={!appId}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={appId ? "Select target environment" : "Select an app first"} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {filteredEnvs.map((e) => (
+                          <SelectItem key={e.id} value={e.environment_name}>
+                            {e.environment_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>
