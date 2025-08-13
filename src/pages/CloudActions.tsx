@@ -8,6 +8,16 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { CalendarClock, CloudCog, Loader2, Plus, RefreshCcw, ScrollText } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { cn } from "@/lib/utils";
+import { format } from "date-fns";
+
 
 interface CloudActionRow {
   id: string;
@@ -38,81 +48,103 @@ const statusColor: Record<string, string> = {
 
 function AddCloudActionDialog({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [credentials, setCredentials] = useState<Credential[]>([]);
-  const [apps, setApps] = useState<App[]>([]);
-  const [envs, setEnvs] = useState<Env[]>([]);
-
-  const [credentialId, setCredentialId] = useState<string>("");
-  const [appId, setAppId] = useState<string>("");
-  const [environmentName, setEnvironmentName] = useState<string>("");
-  const [actionType, setActionType] = useState<string>("start");
-  const [scheduledFor, setScheduledFor] = useState<string>("");
   const { toast } = useToast();
 
-  useEffect(() => {
-    if (!open) return;
-    const load = async () => {
-      const [{ data: creds }, { data: apps }] = await Promise.all([
-        supabase.from("mendix_credentials").select("id, name"),
-        supabase.from("mendix_apps").select("id, app_id, app_name, credential_id"),
-      ]);
-      setCredentials((creds || []) as Credential[]);
-      setApps((apps || []) as App[]);
-    };
-    load();
-  }, [open]);
+  // UI-only placeholder data
+  const PLACEHOLDER_CREDENTIALS: Credential[] = [
+    { id: "cred1", name: "Production Credentials" },
+    { id: "cred2", name: "Dev/Test Credentials" },
+  ];
+  const PLACEHOLDER_APPS: App[] = [
+    { id: "1", app_id: "mx-app-001", app_name: "Customer Portal", credential_id: "cred1" },
+    { id: "2", app_id: "mx-app-002", app_name: "Backoffice Suite", credential_id: "cred1" },
+    { id: "3", app_id: "mx-app-101", app_name: "QA Sandbox", credential_id: "cred2" },
+  ];
+  const PLACEHOLDER_ENVS: Env[] = [
+    { id: "e1", app_id: "mx-app-001", environment_name: "production" },
+    { id: "e2", app_id: "mx-app-001", environment_name: "acceptance" },
+    { id: "e3", app_id: "mx-app-002", environment_name: "production" },
+    { id: "e4", app_id: "mx-app-002", environment_name: "test" },
+    { id: "e5", app_id: "mx-app-101", environment_name: "test" },
+    { id: "e6", app_id: "mx-app-101", environment_name: "acceptance" },
+  ];
 
-  useEffect(() => {
-    const loadEnv = async () => {
-      if (!appId) { setEnvs([]); return; }
-      const { data } = await supabase
-        .from("mendix_environments")
-        .select("id, app_id, environment_name")
-        .eq("app_id", appId);
-      setEnvs((data || []) as Env[]);
-    };
-    loadEnv();
-  }, [appId]);
+  const ActionType = z.enum(["start", "stop", "restart", "refresh_status", "download_logs"]);
+  const FormSchema = z
+    .object({
+      credentialId: z.string().min(1, "Select credential"),
+      appId: z.string().min(1, "Select app"),
+      environmentName: z.string().min(1, "Select environment"),
+      actionType: ActionType,
+      runWhen: z.enum(["now", "schedule"]).default("now"),
+      scheduledDate: z.date().optional(),
+      scheduledTime: z.string().optional(), // HH:mm
+      logsDate: z.date().optional(),
+    })
+    .superRefine((val, ctx) => {
+      if (val.runWhen === "schedule") {
+        if (!val.scheduledDate) ctx.addIssue({ code: "custom", message: "Date required", path: ["scheduledDate"] });
+        if (!val.scheduledTime) ctx.addIssue({ code: "custom", message: "Time required", path: ["scheduledTime"] });
+      }
+      if (val.actionType === "download_logs" && !val.logsDate) {
+        ctx.addIssue({ code: "custom", message: "Logs date required", path: ["logsDate"] });
+      }
+    });
+
+  type FormValues = z.infer<typeof FormSchema>;
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(FormSchema),
+    mode: "onChange",
+    defaultValues: {
+      credentialId: "",
+      appId: "",
+      environmentName: "",
+      actionType: "start",
+      runWhen: "now",
+      scheduledDate: undefined,
+      scheduledTime: "",
+      logsDate: undefined,
+    },
+  });
+
+  const credentialId = form.watch("credentialId");
+  const appId = form.watch("appId");
+  const actionType = form.watch("actionType");
+  const runWhen = form.watch("runWhen");
 
   const filteredApps = useMemo(() => {
-    return credentialId ? apps.filter(a => a.credential_id === credentialId) : apps;
-  }, [apps, credentialId]);
+    return credentialId ? PLACEHOLDER_APPS.filter((a) => a.credential_id === credentialId) : PLACEHOLDER_APPS;
+  }, [credentialId]);
+  const filteredEnvs = useMemo(() => {
+    return appId ? PLACEHOLDER_ENVS.filter((e) => e.app_id === appId) : [];
+  }, [appId]);
 
-  const handleCreate = async () => {
-    try {
-      if (!credentialId || !appId || !environmentName || !actionType) {
-        toast({ title: "Missing fields", description: "Please fill all required fields", variant: "destructive" });
-        return;
-      }
-      setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-      const insert: any = {
-        user_id: user.id,
-        credential_id: credentialId,
-        app_id: appId,
-        environment_name: environmentName,
-        action_type: actionType,
-        status: "scheduled",
-      };
-      if (scheduledFor) insert.scheduled_for = new Date(scheduledFor).toISOString();
+  // Reset dependent fields
+  useEffect(() => {
+    form.setValue("appId", "");
+    form.setValue("environmentName", "");
+  }, [credentialId]);
+  useEffect(() => {
+    form.setValue("environmentName", "");
+  }, [appId]);
 
-      const { error } = await supabase.from("cloud_actions").insert(insert);
-      if (error) throw error;
-      toast({ title: "Action scheduled", description: `Queued ${actionType} on ${environmentName}` });
-      setOpen(false);
-      setCredentialId("");
-      setAppId("");
-      setEnvironmentName("");
-      setActionType("start");
-      setScheduledFor("");
-      onCreated();
-    } catch (e: any) {
-      toast({ title: "Could not create action", description: e.message, variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
+  const onSubmit = (values: FormValues) => {
+    const when =
+      values.runWhen === "now"
+        ? "Now"
+        : `${values.scheduledDate ? format(values.scheduledDate, "PPP") : ""} ${values.scheduledTime || ""}`.trim();
+    const logDate = values.actionType === "download_logs" && values.logsDate ? format(values.logsDate, "PPP") : undefined;
+    const credName = PLACEHOLDER_CREDENTIALS.find((c) => c.id === values.credentialId)?.name;
+    const appName = PLACEHOLDER_APPS.find((a) => a.app_id === values.appId)?.app_name;
+
+    toast({
+      title: "Cloud action prepared",
+      description: `Action: ${values.actionType.replace("_", " ")} • App: ${appName} • Env: ${values.environmentName} • When: ${when}${
+        logDate ? ` • Logs date: ${logDate}` : ""
+      }`,
+    });
+    setOpen(false);
   };
 
   return (
@@ -122,84 +154,275 @@ function AddCloudActionDialog({ onCreated }: { onCreated: () => void }) {
           <Plus className="mr-2 h-4 w-4" /> Add Cloud Action
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CloudCog className="h-5 w-5" /> New Cloud Action
           </DialogTitle>
         </DialogHeader>
-        <div className="grid gap-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium">Credential</label>
-              <Select value={credentialId} onValueChange={setCredentialId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select credential" />
-                </SelectTrigger>
-                <SelectContent>
-                  {credentials.map(c => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+
+        <div className="grid gap-6 md:grid-cols-[1fr_280px]">
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="credentialId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Credential</FormLabel>
+                      <Select value={field.value} onValueChange={(v) => field.onChange(v)}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select credential" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {PLACEHOLDER_CREDENTIALS.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="actionType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Action</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="start">Start</SelectItem>
+                          <SelectItem value="stop">Stop</SelectItem>
+                          <SelectItem value="restart">Restart</SelectItem>
+                          <SelectItem value="refresh_status">Refresh status</SelectItem>
+                          <SelectItem value="download_logs">Download logs</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <FormField
+                control={form.control}
+                name="appId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Application</FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={(v) => field.onChange(v)}
+                      disabled={!credentialId}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={credentialId ? "Select app (filtered)" : "Select credential first"} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {filteredApps.map((a) => (
+                          <SelectItem key={a.app_id} value={a.app_id}>
+                            {a.app_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="environmentName"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Environment</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange} disabled={!appId}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={appId ? "Select environment" : "Select an app first"} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {filteredEnvs.map((e) => (
+                          <SelectItem key={e.id} value={e.environment_name}>
+                            {e.environment_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="runWhen"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-2"><CalendarClock className="h-4 w-4" />When to run</FormLabel>
+                    <FormControl>
+                      <RadioGroup
+                        className="grid grid-cols-2 gap-2"
+                        value={field.value}
+                        onValueChange={field.onChange}
+                      >
+                        <div className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2">
+                          <RadioGroupItem value="now" id="run-now" />
+                          <label htmlFor="run-now" className="text-sm">Run now</label>
+                        </div>
+                        <div className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2">
+                          <RadioGroupItem value="schedule" id="run-schedule" />
+                          <label htmlFor="run-schedule" className="text-sm">Schedule</label>
+                        </div>
+                      </RadioGroup>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {runWhen === "schedule" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="scheduledDate"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Schedule date</FormLabel>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant={"outline"}
+                                className={cn(
+                                  "justify-start text-left font-normal",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                              >
+                                {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={field.value}
+                              onSelect={field.onChange}
+                              initialFocus
+                              className={cn("p-3 pointer-events-auto")}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="scheduledTime"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Schedule time</FormLabel>
+                        <FormControl>
+                          <Input type="time" value={field.value} onChange={field.onChange} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
+
+              {actionType === "download_logs" && (
+                <FormField
+                  control={form.control}
+                  name="logsDate"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>Logs date</FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant={"outline"}
+                              className={cn(
+                                "justify-start text-left font-normal",
+                                !field.value && "text-muted-foreground"
+                              )}
+                            >
+                              {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={field.value}
+                            onSelect={field.onChange}
+                            initialFocus
+                            className={cn("p-3 pointer-events-auto")}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={!form.formState.isValid}>
+                  Prepare action
+                </Button>
+              </div>
+            </form>
+          </Form>
+
+          <aside className="rounded-lg border border-border bg-card/50 p-4 space-y-3">
+            <div className="text-sm text-muted-foreground">Summary</div>
+            <div className="text-sm">
+              <div>
+                <span className="text-muted-foreground">Credential:</span> {credentialId ? (PLACEHOLDER_CREDENTIALS.find(c => c.id === credentialId)?.name || credentialId) : "—"}
+              </div>
+              <div>
+                <span className="text-muted-foreground">App:</span> {appId ? (PLACEHOLDER_APPS.find(a => a.app_id === appId)?.app_name || appId) : "—"}
+              </div>
+              <div>
+                <span className="text-muted-foreground">Environment:</span> {form.watch("environmentName") || "—"}
+              </div>
+              <div className="capitalize">
+                <span className="text-muted-foreground">Action:</span> {actionType.replace("_", " ")}
+              </div>
+              <div>
+                <span className="text-muted-foreground">When:</span> {runWhen === "now" ? "Now" : `${form.watch("scheduledDate") ? format(form.watch("scheduledDate") as Date, "PPP") : "—"} ${form.watch("scheduledTime") || ""}`}
+              </div>
+              {actionType === "download_logs" && (
+                <div>
+                  <span className="text-muted-foreground">Logs date:</span> {form.watch("logsDate") ? format(form.watch("logsDate") as Date, "PPP") : "—"}
+                </div>
+              )}
             </div>
-            <div>
-              <label className="text-sm font-medium">Action</label>
-              <Select value={actionType} onValueChange={setActionType}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="start">Start</SelectItem>
-                  <SelectItem value="stop">Stop</SelectItem>
-                  <SelectItem value="restart">Restart</SelectItem>
-                  <SelectItem value="refresh_status">Refresh status</SelectItem>
-                  <SelectItem value="download_logs">Download logs</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium">Application</label>
-            <Select value={appId} onValueChange={(v) => { setAppId(v); setEnvironmentName(""); }}>
-              <SelectTrigger>
-                <SelectValue placeholder={credentialId ? "Select app (filtered)" : "Select app"} />
-              </SelectTrigger>
-              <SelectContent>
-                {filteredApps.map(a => (
-                  <SelectItem key={a.app_id} value={a.app_id}>{a.app_name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium">Environment</label>
-            <Select value={environmentName} onValueChange={setEnvironmentName}>
-              <SelectTrigger>
-                <SelectValue placeholder={appId ? "Select environment" : "Select an app first"} />
-              </SelectTrigger>
-              <SelectContent>
-                {envs.map(e => (
-                  <SelectItem key={e.id} value={e.environment_name}>{e.environment_name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <label className="text-sm font-medium flex items-center gap-2"><CalendarClock className="h-4 w-4"/> Schedule (optional)</label>
-            <Input type="datetime-local" value={scheduledFor} onChange={(e) => setScheduledFor(e.target.value)} />
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={loading}>
-              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin"/>}
-              Schedule
-            </Button>
-          </div>
+          </aside>
         </div>
       </DialogContent>
     </Dialog>
