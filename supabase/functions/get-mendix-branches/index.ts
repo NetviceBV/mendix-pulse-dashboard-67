@@ -79,7 +79,7 @@ serve(async (req) => {
     const projectId = appRow.project_id as string;
 
     // Build request to Mendix App Repository API
-    const url = `https://repository.api.mendix.com/v1/projects/${projectId}/branches`;
+    const url = `https://repository.api.mendix.com/v1/repositories/${projectId}/branches`;
 
     const headers: Record<string, string> = { Accept: "application/json" };
 

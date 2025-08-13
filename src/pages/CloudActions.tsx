@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { CalendarClock, CloudCog, Loader2, Plus, RefreshCcw, ScrollText } from "lucide-react";
+import { CalendarClock, CloudCog, Loader2, Plus, RefreshCcw, ScrollText, ArrowLeft } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -17,6 +17,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { cn } from "@/lib/utils";
 import { format, startOfToday, isSameDay, parse } from "date-fns";
+import { Link } from "react-router-dom";
 
 
 interface CloudActionRow {
@@ -732,6 +733,11 @@ export default function CloudActionsPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/">
+                <ArrowLeft className="mr-2 h-4 w-4"/> Back to Dashboard
+              </Link>
+            </Button>
             <Button variant="outline" onClick={() => triggerRunner()}>
               <RefreshCcw className="mr-2 h-4 w-4"/> Run due now
             </Button>
