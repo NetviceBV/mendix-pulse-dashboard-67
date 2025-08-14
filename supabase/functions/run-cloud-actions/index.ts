@@ -182,10 +182,13 @@ serve(async (req) => {
           appId: string,
           environmentId: string,
           targetStatus: string,
-          retryUntil: Date
+          retryUntil: Date,
+          authToken: string
         ): Promise<boolean> => {
           let attempts = 0;
           const maxAttempts = 100; // Safety limit to prevent infinite loops
+          
+          console.log(`Starting to poll environment status for ${appId}/${environmentId}, target: ${targetStatus}, deadline: ${retryUntil.toISOString()}`);
           
           while (new Date() < retryUntil && attempts < maxAttempts) {
             attempts++;
@@ -195,12 +198,13 @@ serve(async (req) => {
               const { data: statusData, error: statusError } = await supabase.functions.invoke(
                 "refresh-mendix-environment-status",
                 {
-                  headers: { Authorization: `Bearer ${jwt}` },
+                  headers: { Authorization: `Bearer ${authToken}` },
                   body: { credentialId, appId, environmentId },
                 }
               );
 
               if (statusError) {
+                console.error(`Status check failed (attempt ${attempts}):`, statusError);
                 await supabase.from("cloud_action_logs").insert({
                   user_id: user.id,
                   action_id: action.id,
@@ -216,6 +220,8 @@ serve(async (req) => {
               const currentStatus = statusData?.status;
               const deadline = retryUntil.toISOString().substring(0, 19) + 'Z';
               
+              console.log(`Poll attempt ${attempts}: Current status = ${currentStatus}, Target = ${targetStatus}`);
+              
               await supabase.from("cloud_action_logs").insert({
                 user_id: user.id,
                 action_id: action.id,
@@ -224,6 +230,7 @@ serve(async (req) => {
               });
 
               if (currentStatus === targetStatus) {
+                console.log(`Environment reached target status: ${targetStatus}`);
                 await supabase.from("cloud_action_logs").insert({
                   user_id: user.id,
                   action_id: action.id,
@@ -237,6 +244,7 @@ serve(async (req) => {
               await new Promise(resolve => setTimeout(resolve, 3000));
               
             } catch (pollError) {
+              console.error(`Polling error (attempt ${attempts}):`, pollError);
               await supabase.from("cloud_action_logs").insert({
                 user_id: user.id,
                 action_id: action.id,
@@ -251,6 +259,7 @@ serve(async (req) => {
 
           // Timeout reached
           const reason = attempts >= maxAttempts ? "maximum attempts reached" : "retry deadline reached";
+          console.error(`Timeout waiting for environment status '${targetStatus}' - ${reason}`);
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
             action_id: action.id,
@@ -286,7 +295,8 @@ serve(async (req) => {
               action.app_id,
               action.environment_name, // Using environment_name as environment_id
               "Stopped",
-              retryUntil
+              retryUntil,
+              jwt
             );
             
             if (!stopSuccess) {

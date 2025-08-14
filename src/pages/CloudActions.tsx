@@ -175,6 +175,7 @@ const form = useForm<FormValues>({
 
   // Auto-populate retry until when schedule changes
   useEffect(() => {
+    const currentValues = form.getValues();
     if (runWhen === "now") {
       const now = new Date();
       const retryUntil = new Date(now.getTime() + 30 * 60 * 1000); // 30 minutes from now
@@ -189,7 +190,7 @@ const form = useForm<FormValues>({
       form.setValue("retryUntilDate", retryUntil);
       form.setValue("retryUntilTime", format(retryUntil, "HH:mm"));
     }
-  }, [runWhen, scheduledDate, scheduledTime, form]);
+  }, [runWhen, scheduledDate, scheduledTime]);
 
   const filteredApps = useMemo(() => {
     return apps;
