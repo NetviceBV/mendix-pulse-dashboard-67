@@ -180,35 +180,18 @@ const form = useForm<FormValues>({
 
   // Auto-populate retry until when schedule changes
   useEffect(() => {
-    if (isAutoPopulatingRef.current) return;
-    
-    const prevValues = previousValuesRef.current;
-    const hasChanged = prevValues.runWhen !== runWhen || 
-                      prevValues.scheduledDate !== scheduledDate || 
-                      prevValues.scheduledTime !== scheduledTime;
-    
-    if (!hasChanged) return;
-    
-    isAutoPopulatingRef.current = true;
-    
     if (runWhen === "now") {
       const now = new Date();
       const retryUntil = new Date(now.getTime() + 30 * 60 * 1000); // 30 minutes from now
       form.setValue("retryUntilDate", retryUntil);
       form.setValue("retryUntilTime", format(retryUntil, "HH:mm"));
-      // Auto-fill schedule with current time for "run now"
-      form.setValue("scheduledDate", now);
-      form.setValue("scheduledTime", format(now, "HH:mm"));
     } else if (runWhen === "schedule" && scheduledDate && scheduledTime) {
       const scheduledAt = parse(scheduledTime, "HH:mm", scheduledDate);
       const retryUntil = new Date(scheduledAt.getTime() + 30 * 60 * 1000); // 30 minutes after scheduled
       form.setValue("retryUntilDate", retryUntil);
       form.setValue("retryUntilTime", format(retryUntil, "HH:mm"));
     }
-    
-    previousValuesRef.current = { runWhen, scheduledDate, scheduledTime };
-    isAutoPopulatingRef.current = false;
-  }, [runWhen, scheduledDate, scheduledTime, form]);
+  }, [runWhen, scheduledDate, scheduledTime]);
 
   const filteredApps = useMemo(() => {
     return apps;
