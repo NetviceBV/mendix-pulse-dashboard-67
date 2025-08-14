@@ -83,6 +83,8 @@ const FormSchema = z
       runWhen: z.enum(["now", "schedule"]).default("now"),
       scheduledDate: z.date().optional(),
       scheduledTime: z.string().optional(), // HH:mm
+      retryUntilDate: z.date().optional(),
+      retryUntilTime: z.string().optional(), // HH:mm
     })
     .superRefine((val, ctx) => {
       if (val.runWhen === "schedule") {
@@ -97,6 +99,31 @@ const FormSchema = z
           }
         }
       }
+      
+      // Validate retry until datetime
+      if (val.retryUntilDate && val.retryUntilTime) {
+        const retryUntil = parse(val.retryUntilTime, "HH:mm", val.retryUntilDate);
+        const now = new Date();
+        
+        // Retry until must be at least 5 minutes from now
+        if (retryUntil <= new Date(now.getTime() + 5 * 60 * 1000)) {
+          ctx.addIssue({ code: "custom", message: "Must be at least 5 minutes from now", path: ["retryUntilTime"] });
+        }
+        
+        // Retry until cannot exceed 24 hours
+        if (retryUntil > new Date(now.getTime() + 24 * 60 * 60 * 1000)) {
+          ctx.addIssue({ code: "custom", message: "Cannot exceed 24 hours", path: ["retryUntilTime"] });
+        }
+        
+        // If scheduled, retry until must be after scheduled time
+        if (val.runWhen === "schedule" && val.scheduledDate && val.scheduledTime) {
+          const scheduledAt = parse(val.scheduledTime, "HH:mm", val.scheduledDate);
+          if (retryUntil <= scheduledAt) {
+            ctx.addIssue({ code: "custom", message: "Must be after scheduled time", path: ["retryUntilTime"] });
+          }
+        }
+      }
+      
       if (val.actionType === "transport" && !val.sourceEnvironmentName) {
         ctx.addIssue({ code: "custom", message: "Source environment required", path: ["sourceEnvironmentName"] });
       }
@@ -123,6 +150,8 @@ const form = useForm<FormValues>({
       runWhen: "now",
       scheduledDate: undefined,
       scheduledTime: "",
+      retryUntilDate: undefined,
+      retryUntilTime: "",
     },
   });
 
@@ -131,11 +160,37 @@ const form = useForm<FormValues>({
   const actionType = form.watch("actionType");
   const runWhen = form.watch("runWhen");
   const scheduledDate = form.watch("scheduledDate");
+  const scheduledTime = form.watch("scheduledTime");
+  const retryUntilDate = form.watch("retryUntilDate");
   const minTime = useMemo(() => {
     if (!scheduledDate) return undefined;
     if (!isSameDay(scheduledDate as Date, new Date())) return undefined;
     return format(new Date(), "HH:mm");
   }, [scheduledDate]);
+
+  const minRetryTime = useMemo(() => {
+    if (!retryUntilDate) return undefined;
+    if (!isSameDay(retryUntilDate as Date, new Date())) return undefined;
+    return format(new Date(Date.now() + 5 * 60 * 1000), "HH:mm"); // 5 minutes from now
+  }, [retryUntilDate]);
+
+  // Auto-populate retry until when schedule changes
+  useEffect(() => {
+    if (runWhen === "now") {
+      const now = new Date();
+      const retryUntil = new Date(now.getTime() + 30 * 60 * 1000); // 30 minutes from now
+      form.setValue("retryUntilDate", retryUntil);
+      form.setValue("retryUntilTime", format(retryUntil, "HH:mm"));
+      // Auto-fill schedule with current time for "run now"
+      form.setValue("scheduledDate", now);
+      form.setValue("scheduledTime", format(now, "HH:mm"));
+    } else if (runWhen === "schedule" && scheduledDate && scheduledTime) {
+      const scheduledAt = parse(scheduledTime, "HH:mm", scheduledDate);
+      const retryUntil = new Date(scheduledAt.getTime() + 30 * 60 * 1000); // 30 minutes after scheduled
+      form.setValue("retryUntilDate", retryUntil);
+      form.setValue("retryUntilTime", format(retryUntil, "HH:mm"));
+    }
+  }, [runWhen, scheduledDate, scheduledTime, form]);
 
   const filteredApps = useMemo(() => {
     return apps;
@@ -299,6 +354,13 @@ const form = useForm<FormValues>({
         scheduledFor = scheduledDateTime.toISOString();
       }
 
+      // Calculate retry_until timestamp
+      let retryUntil = null;
+      if (values.retryUntilDate && values.retryUntilTime) {
+        const retryUntilDateTime = parse(values.retryUntilTime, "HH:mm", values.retryUntilDate);
+        retryUntil = retryUntilDateTime.toISOString();
+      }
+
       // Create action-specific payload
       const payload: any = {
         actionType: values.actionType,
@@ -330,6 +392,7 @@ const form = useForm<FormValues>({
           action_type: values.actionType,
           status: values.runWhen === "now" ? "scheduled" : "scheduled",
           scheduled_for: scheduledFor,
+          retry_until: retryUntil,
           payload: payload,
         });
 
@@ -657,7 +720,7 @@ const form = useForm<FormValues>({
                 </>
               )}
 
-              <FormField
+               <FormField
                 control={form.control}
                 name="environmentName"
                 render={({ field }) => (
@@ -681,6 +744,64 @@ const form = useForm<FormValues>({
                   </FormItem>
                 )}
               />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="retryUntilDate"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>Retry until (date)</FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant={"outline"}
+                              className={cn(
+                                "justify-start text-left font-normal",
+                                !field.value && "text-muted-foreground"
+                              )}
+                            >
+                              {field.value ? format(field.value, "PPP") : <span>Auto-populated</span>}
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={field.value}
+                            onSelect={field.onChange}
+                            disabled={{ before: startOfToday() }}
+                            initialFocus
+                            className={cn("p-3 pointer-events-auto")}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="retryUntilTime"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Retry until (time)</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="time" 
+                          value={field.value} 
+                          onChange={field.onChange} 
+                          min={minRetryTime}
+                          placeholder="Auto-populated"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>
@@ -736,6 +857,16 @@ const form = useForm<FormValues>({
               )}
               <div>
                 <span className="text-muted-foreground">Target environment:</span> {form.watch("environmentName") || "—"}
+              </div>
+              <div>
+                <span className="text-muted-foreground">Retry until:</span> {(() => {
+                  const retryDate = form.watch("retryUntilDate");
+                  const retryTime = form.watch("retryUntilTime");
+                  if (retryDate && retryTime) {
+                    return `${format(retryDate as Date, "PPP")} ${retryTime}`;
+                  }
+                  return "Auto-populated";
+                })()}
               </div>
             </div>
           </aside>
