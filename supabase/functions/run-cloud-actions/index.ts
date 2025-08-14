@@ -307,8 +307,8 @@ serve(async (req) => {
             break;
           case "transport":
             // Extract source and target environments from payload
-            const payload = action.payload as { sourceEnvironment?: string; comment?: string } || {};
-            const sourceEnvironment = payload.sourceEnvironment;
+            const payload = action.payload as { sourceEnvironmentName?: string; comment?: string } || {};
+            const sourceEnvironment = payload.sourceEnvironmentName;
             const comment = payload.comment || `Transport from ${sourceEnvironment} to ${action.environment_name}`;
             
             if (!sourceEnvironment) {
