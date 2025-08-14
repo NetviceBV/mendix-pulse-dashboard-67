@@ -40,15 +40,18 @@ interface App { id: string; app_id: string; app_name: string; credential_id: str
 interface Env { id: string; app_id: string; environment_name: string; }
 
 const statusColor: Record<string, string> = {
-  scheduled: "bg-muted text-foreground",
-  running: "bg-primary text-primary-foreground",
-  succeeded: "bg-green-600 text-primary-foreground",
-  failed: "bg-destructive text-destructive-foreground",
-  canceled: "bg-muted text-muted-foreground",
+  scheduled: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+  running: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+  succeeded: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+  failed: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
+  canceled: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
+  done: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200",
+  error: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
 };
 
 function AddCloudActionDialog({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
 
   // Data from Supabase
@@ -280,29 +283,114 @@ const form = useForm<FormValues>({
     setPackages([]);
   }, [branchName]);
 
-  const onSubmit = (values: FormValues) => {
-    const when =
-      values.runWhen === "now"
-        ? "Now"
-        : `${values.scheduledDate ? format(values.scheduledDate, "PPP") : ""} ${values.scheduledTime || ""}`.trim();
-    const credName = credentials.find((c) => c.id === values.credentialId)?.name;
-    const appName = apps.find((a) => a.app_id === values.appId)?.app_name;
-    const selectedRevision = revisions.find(r => r.id === values.revisionId);
-    const deployInfo =
-      values.actionType === "deploy"
+  const onSubmit = async (values: FormValues) => {
+    setIsSubmitting(true);
+    try {
+      // Get current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error("Authentication required");
+      }
+
+      // Calculate scheduled_for timestamp
+      let scheduledFor = null;
+      if (values.runWhen === "schedule" && values.scheduledDate && values.scheduledTime) {
+        const scheduledDateTime = parse(values.scheduledTime, "HH:mm", values.scheduledDate);
+        scheduledFor = scheduledDateTime.toISOString();
+      }
+
+      // Create action-specific payload
+      const payload: any = {
+        actionType: values.actionType,
+        appId: values.appId,
+        environmentName: values.environmentName,
+      };
+
+      if (values.actionType === "transport") {
+        payload.sourceEnvironmentName = values.sourceEnvironmentName;
+      }
+
+      if (values.actionType === "deploy") {
+        payload.branchName = values.branchName;
+        payload.revisionId = values.revisionId;
+        const selectedRevision = revisions.find(r => r.id === values.revisionId);
+        if (selectedRevision) {
+          payload.revisionMessage = selectedRevision.message;
+        }
+      }
+
+      // Insert into cloud_actions table
+      const { error: insertError } = await supabase
+        .from("cloud_actions")
+        .insert({
+          user_id: user.id,
+          credential_id: values.credentialId,
+          app_id: values.appId,
+          environment_name: values.environmentName,
+          action_type: values.actionType,
+          status: values.runWhen === "now" ? "scheduled" : "scheduled",
+          scheduled_for: scheduledFor,
+          payload: payload,
+        });
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      // Show success message
+      const when = values.runWhen === "now" ? "Now" : 
+        `${values.scheduledDate ? format(values.scheduledDate, "PPP") : ""} ${values.scheduledTime || ""}`.trim();
+      const appName = apps.find((a) => a.app_id === values.appId)?.app_name;
+      const selectedRevision = revisions.find(r => r.id === values.revisionId);
+      const deployInfo = values.actionType === "deploy"
         ? ` • Branch: ${values.branchName || ""} • Revision: ${selectedRevision ? `${selectedRevision.id} - ${selectedRevision.message}` : values.revisionId || ""}`
         : "";
 
-    toast({
-      title: "Cloud action prepared",
-      description:
-        `Action: ${values.actionType.replace("_", " ")} • App: ${appName} • ` +
-        (values.actionType === "transport"
-          ? `Source: ${values.sourceEnvironmentName || ""} • Target: ${values.environmentName}`
-          : `Target: ${values.environmentName}`) +
-        ` • When: ${when}${deployInfo}`,
-    });
-    setOpen(false);
+      toast({
+        title: "Cloud action created",
+        description:
+          `Action: ${values.actionType.replace("_", " ")} • App: ${appName} • ` +
+          (values.actionType === "transport"
+            ? `Source: ${values.sourceEnvironmentName || ""} • Target: ${values.environmentName}`
+            : `Target: ${values.environmentName}`) +
+          ` • When: ${when}${deployInfo}`,
+      });
+
+      // Reset form and close dialog
+      form.reset();
+      setOpen(false);
+      onCreated(); // Refresh the actions list
+      
+      // If scheduled for now, trigger the runner immediately
+      if (values.runWhen === "now") {
+        try {
+          await supabase.functions.invoke("run-cloud-actions", {
+            body: { processAllDue: true },
+          });
+          toast({
+            title: "Action triggered",
+            description: "The action has been queued for immediate execution",
+          });
+        } catch (runError: any) {
+          console.error("Failed to trigger runner:", runError);
+          toast({
+            title: "Action saved but not triggered",
+            description: "You can manually trigger it from the actions list",
+            variant: "destructive",
+          });
+        }
+      }
+
+    } catch (error: any) {
+      console.error("Failed to create action:", error);
+      toast({
+        title: "Failed to create action",
+        description: error.message || "Something went wrong",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -598,8 +686,15 @@ const form = useForm<FormValues>({
                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={!form.formState.isValid}>
-                  Prepare action
+                <Button type="submit" disabled={!form.formState.isValid || isSubmitting}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {form.watch("runWhen") === "now" ? "Creating & Running..." : "Creating..."}
+                    </>
+                  ) : (
+                    form.watch("runWhen") === "now" ? "Create & Run Now" : "Create Action"
+                  )}
                 </Button>
               </div>
             </form>
