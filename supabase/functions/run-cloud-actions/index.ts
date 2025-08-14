@@ -12,7 +12,7 @@ type CloudAction = {
   credential_id: string;
   app_id: string;
   environment_name: string;
-  action_type: "start" | "stop" | "restart" | "download_logs" | "refresh_status";
+  action_type: "start" | "stop" | "restart" | "deploy" | "transport";
   status: string;
   scheduled_for: string | null;
   started_at: string | null;
@@ -161,36 +161,22 @@ serve(async (req) => {
             });
             await callMendix("start");
             break;
-          case "refresh_status": {
-            // Try to find environment_id to call existing function (best-effort)
-            const { data: env } = await supabase
-              .from("mendix_environments")
-              .select("environment_id")
-              .eq("user_id", user.id)
-              .eq("app_id", action.app_id)
-              .eq("environment_name", action.environment_name)
-              .maybeSingle();
-
-            await supabase.functions.invoke("refresh-mendix-environment-status", {
-              body: {
-                credentialId: action.credential_id,
-                appId: action.app_id,
-                environmentId: env?.environment_id ?? null,
-              },
-              headers: { Authorization: `Bearer ${jwt}` },
-            });
-            break;
-          }
-          case "download_logs": {
-            // Fire-and-forget for now
+          case "deploy":
             await supabase.from("cloud_action_logs").insert({
               user_id: user.id,
               action_id: action.id,
               level: "info",
-              message: "Download logs action requested (queue implementation TBD)",
+              message: "Deploy action placeholder - implementation coming soon",
             });
             break;
-          }
+          case "transport":
+            await supabase.from("cloud_action_logs").insert({
+              user_id: user.id,
+              action_id: action.id,
+              level: "info",
+              message: "Transport action placeholder - implementation coming soon",
+            });
+            break;
           default:
             throw new Error(`Unknown action type: ${action.action_type}`);
         }
