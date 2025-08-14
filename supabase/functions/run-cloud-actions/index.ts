@@ -229,7 +229,7 @@ serve(async (req) => {
                 message: `Polling environment status... Current: ${currentStatus}, Target: ${targetStatus} (deadline: ${deadline})`,
               });
 
-              if (currentStatus === targetStatus) {
+              if (currentStatus?.toLowerCase() === targetStatus.toLowerCase()) {
                 console.log(`Environment reached target status: ${targetStatus}`);
                 await supabase.from("cloud_action_logs").insert({
                   user_id: user.id,
@@ -294,7 +294,7 @@ serve(async (req) => {
               action.credential_id,
               action.app_id,
               action.environment_name, // Using environment_name as environment_id
-              "Stopped",
+              "stopped",
               retryUntil,
               jwt
             );
