@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { CalendarClock, CloudCog, Loader2, Plus, RefreshCcw, ScrollText, ArrowLeft, Trash2 } from "lucide-react";
 import { useForm } from "react-hook-form";
+import { useRef, useCallback } from "react";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -173,9 +174,23 @@ const form = useForm<FormValues>({
     return format(new Date(Date.now() + 5 * 60 * 1000), "HH:mm"); // 5 minutes from now
   }, [retryUntilDate]);
 
+  // Refs to prevent infinite loops
+  const isAutoPopulatingRef = useRef(false);
+  const previousValuesRef = useRef<{runWhen?: string, scheduledDate?: Date, scheduledTime?: string}>({});
+
   // Auto-populate retry until when schedule changes
   useEffect(() => {
-    const currentValues = form.getValues();
+    if (isAutoPopulatingRef.current) return;
+    
+    const prevValues = previousValuesRef.current;
+    const hasChanged = prevValues.runWhen !== runWhen || 
+                      prevValues.scheduledDate !== scheduledDate || 
+                      prevValues.scheduledTime !== scheduledTime;
+    
+    if (!hasChanged) return;
+    
+    isAutoPopulatingRef.current = true;
+    
     if (runWhen === "now") {
       const now = new Date();
       const retryUntil = new Date(now.getTime() + 30 * 60 * 1000); // 30 minutes from now
@@ -190,7 +205,10 @@ const form = useForm<FormValues>({
       form.setValue("retryUntilDate", retryUntil);
       form.setValue("retryUntilTime", format(retryUntil, "HH:mm"));
     }
-  }, [runWhen, scheduledDate, scheduledTime]);
+    
+    previousValuesRef.current = { runWhen, scheduledDate, scheduledTime };
+    isAutoPopulatingRef.current = false;
+  }, [runWhen, scheduledDate, scheduledTime, form]);
 
   const filteredApps = useMemo(() => {
     return apps;
@@ -319,24 +337,48 @@ const form = useForm<FormValues>({
     return branchName ? revisions : [];
   }, [branchName, revisions]);
 
-  // Reset dependent fields
-  useEffect(() => {
-    form.setValue("appId", "");
-    form.setValue("environmentName", "");
-  }, [credentialId]);
-  useEffect(() => {
-    form.setValue("environmentName", "");
-    form.setValue("branchName", "");
-    form.setValue("revisionId", "");
-    form.setValue("revision", "");
-  }, [appId]);
+  // Reset dependent fields with callbacks to prevent infinite loops
+  const resetAppFields = useCallback(() => {
+    const currentAppId = form.getValues("appId");
+    const currentEnvName = form.getValues("environmentName");
+    if (currentAppId !== "" || currentEnvName !== "") {
+      form.setValue("appId", "");
+      form.setValue("environmentName", "");
+    }
+  }, [form]);
 
-  useEffect(() => {
-    form.setValue("revisionId", "");
-    form.setValue("revision", "");
+  const resetEnvAndBranchFields = useCallback(() => {
+    const currentValues = form.getValues();
+    if (currentValues.environmentName !== "" || currentValues.branchName !== "" || 
+        currentValues.revisionId !== "" || currentValues.revision !== "") {
+      form.setValue("environmentName", "");
+      form.setValue("branchName", "");
+      form.setValue("revisionId", "");
+      form.setValue("revision", "");
+    }
+  }, [form]);
+
+  const resetRevisionFields = useCallback(() => {
+    const currentValues = form.getValues();
+    if (currentValues.revisionId !== "" || currentValues.revision !== "") {
+      form.setValue("revisionId", "");
+      form.setValue("revision", "");
+    }
     setRevisions([]);
     setPackages([]);
-  }, [branchName]);
+  }, [form]);
+
+  useEffect(() => {
+    resetAppFields();
+  }, [credentialId, resetAppFields]);
+
+  useEffect(() => {
+    resetEnvAndBranchFields();
+  }, [appId, resetEnvAndBranchFields]);
+
+  useEffect(() => {
+    resetRevisionFields();
+  }, [branchName, resetRevisionFields]);
 
   const onSubmit = async (values: FormValues) => {
     setIsSubmitting(true);
