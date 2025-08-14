@@ -129,6 +129,17 @@ serve(async (req) => {
         // Helper to call Mendix Deploy API
         const callMendix = async (method: "start" | "stop") => {
           const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}/${method}`;
+          
+          // Prepare request body - start requires AutoSyncDb parameter
+          const body = method === "start" ? JSON.stringify({ "AutoSyncDb": true }) : "";
+          
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Calling Mendix API to ${method} environment ${action.environment_name}`,
+          });
+
           const resp = await fetch(url, {
             method: "POST",
             headers: {
@@ -137,11 +148,31 @@ serve(async (req) => {
               "Mendix-ApiKey": credential.api_key || credential.pat || "",
               "Content-Type": "application/json",
             },
+            body: body,
           });
+
           if (!resp.ok) {
-            const t = await resp.text();
-            throw new Error(`${method} failed: ${resp.status} ${t}`);
+            let errorText;
+            try {
+              const contentType = resp.headers.get("content-type");
+              if (contentType && contentType.includes("application/json")) {
+                const errorData = await resp.json();
+                errorText = errorData.message || errorData.error || JSON.stringify(errorData);
+              } else {
+                errorText = await resp.text();
+              }
+            } catch {
+              errorText = `HTTP ${resp.status} ${resp.statusText}`;
+            }
+            throw new Error(`Failed to ${method} environment: ${errorText}`);
           }
+
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Successfully ${method === "start" ? "started" : "stopped"} environment ${action.environment_name}`,
+          });
         };
 
         switch (action.action_type) {
