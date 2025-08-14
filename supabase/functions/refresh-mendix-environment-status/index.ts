@@ -74,7 +74,7 @@ serve(async (req) => {
         .from('mendix_environments')
         .select('environment_id')
         .eq('app_id', appId)
-        .eq('environment_name', environmentName)
+        .ilike('environment_name', environmentName)
         .eq('user_id', user.id)
         .single();
         
