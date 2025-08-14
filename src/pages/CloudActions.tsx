@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { CalendarClock, CloudCog, Loader2, Plus, RefreshCcw, ScrollText, ArrowLeft } from "lucide-react";
+import { CalendarClock, CloudCog, Loader2, Plus, RefreshCcw, ScrollText, ArrowLeft, Trash2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -1076,6 +1076,24 @@ export default function CloudActionsPage() {
     }
   };
 
+  const deleteAction = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this cloud action?")) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("cloud_actions")
+        .delete()
+        .eq("id", id);
+      if (error) throw error;
+      toast({ title: "Action deleted successfully" });
+      await load();
+    } catch (e: any) {
+      toast({ title: "Delete failed", description: e.message, variant: "destructive" });
+    }
+  };
+
   return (
     <main className="min-h-screen bg-background">
       <header className="border-b border-border bg-card/50 sticky top-0 z-10">
@@ -1169,6 +1187,14 @@ export default function CloudActionsPage() {
                       <Button variant="outline" size="sm" onClick={() => cancel(a.id)}>Cancel</Button>
                     </>
                   )}
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => deleteAction(a.id)}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </TableCell>
               </TableRow>
             ))}
