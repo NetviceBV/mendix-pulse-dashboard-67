@@ -443,7 +443,7 @@ serve(async (req) => {
 
             await callMendix("stop");
 
-            const stopSuccess = await pollEnvironmentStatus(
+            const targetStopSuccess = await pollEnvironmentStatus(
               action.credential_id,
               action.app_id,
               action.environment_name,
@@ -452,7 +452,7 @@ serve(async (req) => {
               jwt
             );
 
-            if (!stopSuccess) {
+            if (!targetStopSuccess) {
               throw new Error("Target environment failed to stop within timeout period");
             }
 
