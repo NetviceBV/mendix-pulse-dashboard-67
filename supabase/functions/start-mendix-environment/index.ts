@@ -37,19 +37,6 @@ serve(async (req) => {
       throw new Error('Missing required parameters');
     }
 
-    // Check if environment is production (block production starts for safety)
-    if (environmentName && environmentName.toLowerCase() === 'production') {
-      return new Response(
-        JSON.stringify({ 
-          error: 'Starting production environments is not allowed for safety reasons',
-          success: false 
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }, 
-          status: 403 
-        }
-      );
-    }
 
     // Get user's credentials
     const { data: credentials, error: credError } = await supabase

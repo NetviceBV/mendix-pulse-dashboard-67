@@ -85,22 +85,6 @@ serve(async (req) => {
     for (const action of actions) {
       processed++;
 
-      // Safety: never operate on production environment
-      if (action.environment_name.toLowerCase() === "production") {
-        await supabase
-          .from("cloud_actions")
-          .update({ status: "failed", completed_at: new Date().toISOString(), error_message: "Operation blocked on production environment" })
-          .eq("id", action.id)
-          .eq("user_id", user.id);
-        await supabase.from("cloud_action_logs").insert({
-          user_id: user.id,
-          action_id: action.id,
-          level: "error",
-          message: "Blocked operation on production environment",
-        });
-        failed++;
-        continue;
-      }
 
       // Mark as running
       await supabase
