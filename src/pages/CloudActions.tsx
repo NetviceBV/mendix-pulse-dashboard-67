@@ -792,6 +792,8 @@ export default function CloudActionsPage() {
   const [loading, setLoading] = useState(true);
   const [actions, setActions] = useState<CloudActionRow[]>([]);
   const [apps, setApps] = useState<App[]>([]);
+  const [isRunningAll, setIsRunningAll] = useState(false);
+  const [runningActionId, setRunningActionId] = useState<string | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -841,6 +843,13 @@ export default function CloudActionsPage() {
   const appName = (app_id: string) => apps.find(a => a.app_id === app_id)?.app_name || app_id;
 
   const triggerRunner = async (actionId?: string) => {
+    // Set loading state
+    if (actionId) {
+      setRunningActionId(actionId);
+    } else {
+      setIsRunningAll(true);
+    }
+
     try {
       const { error } = await supabase.functions.invoke("run-cloud-actions", {
         body: actionId ? { actionId, processAllDue: false } : { processAllDue: true },
@@ -850,6 +859,13 @@ export default function CloudActionsPage() {
       await load();
     } catch (e: any) {
       toast({ title: "Runner failed", description: e.message, variant: "destructive" });
+    } finally {
+      // Clear loading state
+      if (actionId) {
+        setRunningActionId(null);
+      } else {
+        setIsRunningAll(false);
+      }
     }
   };
 
@@ -887,8 +903,13 @@ export default function CloudActionsPage() {
                 <ArrowLeft className="mr-2 h-4 w-4"/> Back to Dashboard
               </Link>
             </Button>
-            <Button variant="outline" onClick={() => triggerRunner()}>
-              <RefreshCcw className="mr-2 h-4 w-4"/> Run due now
+            <Button variant="outline" onClick={() => triggerRunner()} disabled={isRunningAll}>
+              {isRunningAll ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin"/>
+              ) : (
+                <RefreshCcw className="mr-2 h-4 w-4"/>
+              )}
+              {isRunningAll ? "Running..." : "Run due now"}
             </Button>
             <AddCloudActionDialog onCreated={load} />
           </div>
@@ -942,7 +963,17 @@ export default function CloudActionsPage() {
                   <LogsDialog actionId={a.id} />
                   {a.status === "scheduled" && (
                     <>
-                      <Button variant="outline" size="sm" onClick={() => triggerRunner(a.id)}>Run now</Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => triggerRunner(a.id)}
+                        disabled={runningActionId === a.id}
+                      >
+                        {runningActionId === a.id ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin"/>
+                        ) : null}
+                        {runningActionId === a.id ? "Running..." : "Run now"}
+                      </Button>
                       <Button variant="outline" size="sm" onClick={() => cancel(a.id)}>Cancel</Button>
                     </>
                   )}
