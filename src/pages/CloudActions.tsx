@@ -709,20 +709,17 @@ const form = useForm<FormValues>({
               <div>
                 <span className="text-muted-foreground">App:</span> {appId ? (apps.find(a => a.app_id === appId)?.app_name || appId) : "—"}
               </div>
-              {actionType === "transport" && (
-                <div>
-                  <span className="text-muted-foreground">Source environment:</span> {form.watch("sourceEnvironmentName") || "—"}
-                </div>
-              )}
-              <div>
-                <span className="text-muted-foreground">Target environment:</span> {form.watch("environmentName") || "—"}
-              </div>
               <div className="capitalize">
                 <span className="text-muted-foreground">Action:</span> {actionType.replace("_", " ")}
               </div>
               <div>
                 <span className="text-muted-foreground">When:</span> {runWhen === "now" ? "Now" : `${form.watch("scheduledDate") ? format(form.watch("scheduledDate") as Date, "PPP") : "—"} ${form.watch("scheduledTime") || ""}`}
               </div>
+              {actionType === "transport" && (
+                <div>
+                  <span className="text-muted-foreground">Source environment:</span> {form.watch("sourceEnvironmentName") || "—"}
+                </div>
+              )}
               {actionType === "deploy" && (
                 <>
                   <div>
@@ -737,6 +734,9 @@ const form = useForm<FormValues>({
                   </div>
                 </>
               )}
+              <div>
+                <span className="text-muted-foreground">Target environment:</span> {form.watch("environmentName") || "—"}
+              </div>
             </div>
           </aside>
         </div>
