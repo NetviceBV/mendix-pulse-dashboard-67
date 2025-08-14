@@ -103,24 +103,23 @@ const FormSchema = z
       // Validate retry until datetime
       if (val.retryUntilDate && val.retryUntilTime) {
         const retryUntil = parse(val.retryUntilTime, "HH:mm", val.retryUntilDate);
-        const now = new Date();
         
-        // Retry until must be at least 5 minutes from now
-        if (retryUntil <= new Date(now.getTime() + 5 * 60 * 1000)) {
-          ctx.addIssue({ code: "custom", message: "Must be at least 5 minutes from now", path: ["retryUntilTime"] });
-        }
-        
-        // Retry until cannot exceed 24 hours
-        if (retryUntil > new Date(now.getTime() + 24 * 60 * 60 * 1000)) {
-          ctx.addIssue({ code: "custom", message: "Cannot exceed 24 hours", path: ["retryUntilTime"] });
-        }
-        
-        // If scheduled, retry until must be after scheduled time
+        // Determine the base time for validation (either now or scheduled time)
+        let baseTime = new Date();
         if (val.runWhen === "schedule" && val.scheduledDate && val.scheduledTime) {
-          const scheduledAt = parse(val.scheduledTime, "HH:mm", val.scheduledDate);
-          if (retryUntil <= scheduledAt) {
-            ctx.addIssue({ code: "custom", message: "Must be after scheduled time", path: ["retryUntilTime"] });
-          }
+          baseTime = parse(val.scheduledTime, "HH:mm", val.scheduledDate);
+        }
+        
+        // Retry until must be at least 5 minutes from base time
+        if (retryUntil <= new Date(baseTime.getTime() + 5 * 60 * 1000)) {
+          const fromText = val.runWhen === "schedule" ? "scheduled time" : "now";
+          ctx.addIssue({ code: "custom", message: `Must be at least 5 minutes from ${fromText}`, path: ["retryUntilTime"] });
+        }
+        
+        // Retry until cannot exceed 24 hours from base time
+        if (retryUntil > new Date(baseTime.getTime() + 24 * 60 * 60 * 1000)) {
+          const fromText = val.runWhen === "schedule" ? "scheduled time" : "now";
+          ctx.addIssue({ code: "custom", message: `Cannot exceed 24 hours from ${fromText}`, path: ["retryUntilTime"] });
         }
       }
       
@@ -557,13 +556,126 @@ const form = useForm<FormValues>({
               />
 
               {runWhen === "schedule" && (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="scheduledDate"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-col">
+                          <FormLabel>Schedule date</FormLabel>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <FormControl>
+                                <Button
+                                  variant={"outline"}
+                                  className={cn(
+                                    "justify-start text-left font-normal",
+                                    !field.value && "text-muted-foreground"
+                                  )}
+                                >
+                                  {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                                </Button>
+                              </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={field.value}
+                                onSelect={field.onChange}
+                                disabled={{ before: startOfToday() }}
+                                initialFocus
+                                className={cn("p-3 pointer-events-auto")}
+                              />
+                            </PopoverContent>
+                          </Popover>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="scheduledTime"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Schedule time</FormLabel>
+                          <FormControl>
+                            <Input type="time" value={field.value} onChange={field.onChange} min={minTime} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="retryUntilDate"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-col">
+                          <FormLabel>Retry deadline (date)</FormLabel>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <FormControl>
+                                <Button
+                                  variant={"outline"}
+                                  className={cn(
+                                    "justify-start text-left font-normal",
+                                    !field.value && "text-muted-foreground"
+                                  )}
+                                >
+                                  {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                                </Button>
+                              </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={field.value}
+                                onSelect={field.onChange}
+                                disabled={{ before: startOfToday() }}
+                                initialFocus
+                                className={cn("p-3 pointer-events-auto")}
+                              />
+                            </PopoverContent>
+                          </Popover>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="retryUntilTime"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Retry deadline (time)</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="time" 
+                              value={field.value} 
+                              onChange={field.onChange} 
+                              min={minRetryTime}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </>
+              )}
+
+              {runWhen === "now" && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
-                    name="scheduledDate"
+                    name="retryUntilDate"
                     render={({ field }) => (
                       <FormItem className="flex flex-col">
-                        <FormLabel>Schedule date</FormLabel>
+                        <FormLabel>Retry deadline (date)</FormLabel>
                         <Popover>
                           <PopoverTrigger asChild>
                             <FormControl>
@@ -596,12 +708,17 @@ const form = useForm<FormValues>({
 
                   <FormField
                     control={form.control}
-                    name="scheduledTime"
+                    name="retryUntilTime"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Schedule time</FormLabel>
+                        <FormLabel>Retry deadline (time)</FormLabel>
                         <FormControl>
-                          <Input type="time" value={field.value} onChange={field.onChange} min={minTime} />
+                          <Input 
+                            type="time" 
+                            value={field.value} 
+                            onChange={field.onChange} 
+                            min={minRetryTime}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -745,63 +862,6 @@ const form = useForm<FormValues>({
                 )}
               />
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="retryUntilDate"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>Retry until (date)</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant={"outline"}
-                              className={cn(
-                                "justify-start text-left font-normal",
-                                !field.value && "text-muted-foreground"
-                              )}
-                            >
-                              {field.value ? format(field.value, "PPP") : <span>Auto-populated</span>}
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            onSelect={field.onChange}
-                            disabled={{ before: startOfToday() }}
-                            initialFocus
-                            className={cn("p-3 pointer-events-auto")}
-                          />
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="retryUntilTime"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Retry until (time)</FormLabel>
-                      <FormControl>
-                        <Input 
-                          type="time" 
-                          value={field.value} 
-                          onChange={field.onChange} 
-                          min={minRetryTime}
-                          placeholder="Auto-populated"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
 
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>
