@@ -33,13 +33,13 @@ serve(async (req) => {
     }
 
     // Parse request body
-    const { credentialId, appId, environmentId } = await req.json();
+    const { credentialId, appId, environmentId, environmentName } = await req.json();
 
-    if (!credentialId || !appId || !environmentId) {
-      throw new Error('Missing required parameters: credentialId, appId, environmentId');
+    if (!credentialId || !appId || (!environmentId && !environmentName)) {
+      throw new Error('Missing required parameters: credentialId, appId, and either environmentId or environmentName');
     }
 
-    console.log(`Refreshing environment status for app: ${appId}, environment: ${environmentId}`);
+    console.log(`Refreshing environment status for app: ${appId}, environment: ${environmentId || environmentName}`);
 
     // Get credentials from the database (ensure they belong to the user)
     const { data: credential, error: credError } = await supabase
@@ -66,7 +66,26 @@ serve(async (req) => {
     }
 
     const projectId = appData.project_id;
-    console.log(`Using project_id: ${projectId} for app: ${appId}, environment: ${environmentId}`);
+    
+    // If we only have environment name, we need to find the environment_id from the database
+    let actualEnvironmentId = environmentId;
+    if (!environmentId && environmentName) {
+      const { data: envData, error: envError } = await supabase
+        .from('mendix_environments')
+        .select('environment_id')
+        .eq('app_id', appId)
+        .eq('environment_name', environmentName)
+        .eq('user_id', user.id)
+        .single();
+        
+      if (envError || !envData) {
+        throw new Error(`Environment not found for app: ${appId}, environment: ${environmentName}`);
+      }
+      
+      actualEnvironmentId = envData.environment_id;
+    }
+    
+    console.log(`Using project_id: ${projectId} for app: ${appId}, environment: ${actualEnvironmentId}`);
 
     // Prepare headers for Mendix API call
     const headers: Record<string, string> = {
@@ -82,7 +101,7 @@ serve(async (req) => {
     }
 
     // Use V4 API exclusively for environment status retrieval with project_id (UUID)
-    const mendixResponse = await fetch(`https://cloud.home.mendix.com/api/v4/apps/${projectId}/environments/${environmentId}`, {
+    const mendixResponse = await fetch(`https://cloud.home.mendix.com/api/v4/apps/${projectId}/environments/${actualEnvironmentId}`, {
       method: 'GET',
       headers
     });
@@ -92,7 +111,7 @@ serve(async (req) => {
     }
 
     const environmentData = await mendixResponse.json();
-    console.log(`Successfully fetched environment status for ${environmentId}`);
+    console.log(`Successfully fetched environment status for ${actualEnvironmentId}`);
     console.log('Full API response:', JSON.stringify(environmentData));
 
     // Update the environment in the database with fresh data
@@ -104,7 +123,7 @@ serve(async (req) => {
         url: environmentData.url,
         updated_at: new Date().toISOString()
       })
-      .eq('environment_id', environmentId)
+      .eq('environment_id', actualEnvironmentId)
       .eq('app_id', appId)
       .eq('user_id', user.id);
 
@@ -116,7 +135,7 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         environment: {
-          id: environmentData.id || environmentId,
+          id: environmentData.id || actualEnvironmentId,
           name: environmentData.name,
           status: environmentData.state || 'unknown',
           url: environmentData.url,

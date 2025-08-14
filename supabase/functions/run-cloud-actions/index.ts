@@ -180,7 +180,7 @@ serve(async (req) => {
         const pollEnvironmentStatus = async (
           credentialId: string,
           appId: string,
-          environmentId: string,
+          environmentName: string,
           targetStatus: string,
           retryUntil: Date,
           authToken: string
@@ -188,18 +188,18 @@ serve(async (req) => {
           let attempts = 0;
           const maxAttempts = 100; // Safety limit to prevent infinite loops
           
-          console.log(`Starting to poll environment status for ${appId}/${environmentId}, target: ${targetStatus}, deadline: ${retryUntil.toISOString()}`);
+          console.log(`Starting to poll environment status for ${appId}/${environmentName}, target: ${targetStatus}, deadline: ${retryUntil.toISOString()}`);
           
           while (new Date() < retryUntil && attempts < maxAttempts) {
             attempts++;
             
             try {
-              // Call refresh environment status function
+              // Call refresh environment status function with environment name
               const { data: statusData, error: statusError } = await supabase.functions.invoke(
                 "refresh-mendix-environment-status",
                 {
                   headers: { Authorization: `Bearer ${authToken}` },
-                  body: { credentialId, appId, environmentId },
+                  body: { credentialId, appId, environmentName },
                 }
               );
 
@@ -217,7 +217,7 @@ serve(async (req) => {
                 continue;
               }
 
-              const currentStatus = statusData?.status;
+              const currentStatus = statusData?.environment?.status;
               const deadline = retryUntil.toISOString().substring(0, 19) + 'Z';
               
               console.log(`Poll attempt ${attempts}: Current status = ${currentStatus}, Target = ${targetStatus}`);
