@@ -21,7 +21,8 @@ import {
   FileText,
   Copy,
   Check,
-  Shield
+  Shield,
+  Play
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import LogsViewer from "./LogsViewer";
@@ -123,6 +124,7 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
   
   const [environmentStatuses, setEnvironmentStatuses] = useState<Record<string, { status: string; loading: boolean }>>({});
   const [environmentErrorCounts, setEnvironmentErrorCounts] = useState<Record<string, number>>({});
+  const [environmentLoading, setEnvironmentLoading] = useState<Record<string, boolean>>({});
   const [microflowsDialogOpen, setMicroflowsDialogOpen] = useState(false);
   const [microflowsData, setMicroflowsData] = useState<MicroflowsResponse | null>(null);
   const [microflowsLoading, setMicroflowsLoading] = useState(false);
@@ -595,61 +597,106 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                           
                           {/* Action buttons */}
                           <div className="flex flex-wrap gap-2 pt-2">
-                            {/* Only show start/stop buttons for non-production environments */}
-                            {env.environment_name.toLowerCase() !== 'production' && (
-                              <>
-                                {getEnvironmentStatus(env)?.toLowerCase() === 'stopped' && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-8"
-                                    disabled={loading || isEnvironmentLoading(env)}
-                                    onClick={async (e) => {
-                                      e.stopPropagation();
-                                      try {
-                                        const envKey = env.environment_id || env.id;
-                                        setEnvironmentStatuses(prev => ({ 
-                                          ...prev, 
-                                          [envKey]: { status: 'starting...', loading: true } 
-                                        }));
-                                        
-                                        await startEnvironment(app.app_id, env.environment_name);
-                                        await handleRefreshEnvironment(env);
-                                      } catch (error) {
-                                        const envKey = env.environment_id || env.id;
-                                        setEnvironmentStatuses(prev => ({ 
-                                          ...prev, 
-                                          [envKey]: { status: env.status, loading: false } 
-                                        }));
-                                      }
-                                    }}
-                                  >
-                                    {loading || isEnvironmentLoading(env) ? (
-                                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                                    ) : (
-                                      <CheckCircle className="w-3 h-3 mr-1" />
-                                    )}
-                                    Start Environment
-                                  </Button>
+                            {/* Start/Stop buttons with production warnings */}
+                            {getEnvironmentStatus(env)?.toLowerCase() === 'stopped' && (
+                              <Button
+                                size="sm"
+                                variant={env.environment_name.toLowerCase() === 'production' ? 'destructive' : 'outline'}
+                                className={cn(
+                                  "h-8",
+                                  env.environment_name.toLowerCase() === 'production' && "border-destructive/50 bg-destructive/10 text-destructive hover:bg-destructive/20"
                                 )}
-                                
-                                {getEnvironmentStatus(env)?.toLowerCase() === 'running' && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-8"
-                                    disabled={loading || isEnvironmentLoading(env)}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setPendingStopEnv({ id: env.environment_id, name: env.environment_name, appId: app.app_id });
-                                      setStopDialogOpen(true);
-                                    }}
-                                  >
-                                    <XCircle className="w-3 h-3 mr-1" />
-                                    Stop Environment
-                                  </Button>
+                                disabled={loading || isEnvironmentLoading(env)}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  
+                                  // Show confirmation for production environments
+                                  if (env.environment_name.toLowerCase() === 'production') {
+                                    if (!confirm(`⚠️ WARNING: You are about to start the PRODUCTION environment "${env.environment_name}". This will affect live users. Are you sure you want to continue?`)) {
+                                      return;
+                                    }
+                                  }
+                                  
+                                   try {
+                                     const envKey = env.environment_id || env.id;
+                                     
+                                     // Check if we have credentials by trying to get them
+                                     const { data: credentials, error } = await supabase
+                                       .from('mendix_credentials')
+                                       .select('*')
+                                       .limit(1);
+                                     
+                                     if (error || !credentials || credentials.length === 0) {
+                                       toast({
+                                         title: "Error",
+                                         description: "No credentials available. Please check your settings.",
+                                         variant: "destructive",
+                                       });
+                                       return;
+                                     }
+                                    
+                                    setEnvironmentLoading((prev) => ({
+                                      ...prev,
+                                      [envKey]: true,
+                                    }));
+                                    
+                                    await startEnvironment(app.app_name, env.environment_name);
+                                    toast({
+                                      title: "Success",
+                                      description: `Starting environment ${env.environment_name}`,
+                                    });
+                                    
+                                    // Refresh status after a short delay
+                                    setTimeout(() => {
+                                      handleRefreshEnvironment(env);
+                                    }, 3000);
+                                  } catch (error) {
+                                    console.error('Error starting environment:', error);
+                                    toast({
+                                      title: "Error", 
+                                      description: `Failed to start environment: ${error.message}`,
+                                      variant: "destructive",
+                                    });
+                                  } finally {
+                                    const envKey = env.environment_id || env.id;
+                                    setEnvironmentLoading((prev) => ({
+                                      ...prev,
+                                      [envKey]: false,
+                                    }));
+                                  }
+                                }}
+                              >
+                                <Play className="w-3 h-3 mr-1" />
+                                {env.environment_name.toLowerCase() === 'production' ? '⚠️ Start Production' : 'Start Environment'}
+                              </Button>
+                            )}
+                            
+                            {getEnvironmentStatus(env)?.toLowerCase() === 'running' && (
+                              <Button
+                                size="sm"
+                                variant={env.environment_name.toLowerCase() === 'production' ? 'destructive' : 'outline'}
+                                className={cn(
+                                  "h-8",
+                                  env.environment_name.toLowerCase() === 'production' && "border-destructive/50 bg-destructive/10 text-destructive hover:bg-destructive/20"
                                 )}
-                              </>
+                                disabled={loading || isEnvironmentLoading(env)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  
+                                  // Show enhanced confirmation for production environments
+                                  if (env.environment_name.toLowerCase() === 'production') {
+                                    if (!confirm(`🚨 CRITICAL WARNING: You are about to STOP the PRODUCTION environment "${env.environment_name}". This will make the application unavailable to all users. Are you absolutely sure you want to continue?`)) {
+                                      return;
+                                    }
+                                  }
+                                  
+                                  setPendingStopEnv({ id: env.environment_id, name: env.environment_name, appId: app.app_id });
+                                  setStopDialogOpen(true);
+                                }}
+                              >
+                                <XCircle className="w-3 h-3 mr-1" />
+                                {env.environment_name.toLowerCase() === 'production' ? '🚨 Stop Production' : 'Stop Environment'}
+                              </Button>
                             )}
                             
                             <Button
