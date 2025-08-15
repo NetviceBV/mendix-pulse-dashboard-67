@@ -443,7 +443,7 @@ async function processActionsInBackground(
           const maxPackageBuildAttempts = 60; // 30 minutes timeout (30 * 60 * 1000) / 30 seconds polling interval
           let newPackageStatusUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/packages/${newPackageId}`;
 
-          while (packageStatus !== "Available" && packageBuildAttempts < maxPackageBuildAttempts) {
+          while (packageStatus !== "Succeeded" && packageBuildAttempts < maxPackageBuildAttempts) {
             packageBuildAttempts++;
 
             await supabase.from("cloud_action_logs").insert({
@@ -481,13 +481,13 @@ async function processActionsInBackground(
               throw new Error(`Package build failed: ${packageStatusData.Error}`);
             }
 
-            if (packageStatus !== "Available") {
+            if (packageStatus !== "Succeeded") {
               // Wait 30 seconds before next poll
               await new Promise(resolve => setTimeout(resolve, 30000));
             }
           }
 
-          if (packageStatus !== "Available") {
+          if (packageStatus !== "Succeeded") {
             throw new Error(`Timeout waiting for package to build. Current status: ${packageStatus}`);
           }
 
