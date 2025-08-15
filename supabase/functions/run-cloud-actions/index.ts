@@ -559,7 +559,7 @@ async function processActionsInBackground(
           // Step 3: Poll for transport completion by checking environment status
           let transportAttempts = 0;
           const maxTransportAttempts = 60; // 30 minutes timeout
-          let environmentStatusUrl = `https://deploy.mendix.com/api/4/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}`;
+          let environmentStatusUrl = `https://deploy.mendix.com/api/4/apps/${encodeURIComponent(action.project_id)}/environments/${encodeURIComponent(action.environment_name)}`;
           let isTransportComplete = false;
 
           await supabase.from("cloud_action_logs").insert({
@@ -798,7 +798,7 @@ async function processActionsInBackground(
           // Poll for transport completion by checking environment status
           let transportActionAttempts = 0;
           const maxTransportActionAttempts = 60; // 30 minutes timeout
-          let transportActionEnvironmentStatusUrl = `https://deploy.mendix.com/api/4/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}`;
+          let transportActionEnvironmentStatusUrl = `https://deploy.mendix.com/api/4/apps/${encodeURIComponent(action.project_id)}/environments/${encodeURIComponent(action.environment_name)}`;
           let isTransportActionComplete = false;
 
           await supabase.from("cloud_action_logs").insert({
