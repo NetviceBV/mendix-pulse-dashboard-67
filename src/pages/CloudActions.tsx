@@ -80,6 +80,9 @@ const FormSchema = z
       branchName: z.string().optional(),
       revisionId: z.string().optional(),
       revision: z.string().optional(),
+      version: z.string().optional(),
+      description: z.string().optional(),
+      comment: z.string().optional(),
       actionType: ActionType,
       runWhen: z.enum(["now", "schedule"]).default("now"),
       scheduledDate: z.date().optional(),
@@ -146,6 +149,9 @@ const form = useForm<FormValues>({
       branchName: "",
       revisionId: "",
       revision: "",
+      version: "",
+      description: "",
+      comment: "",
       actionType: "start",
       runWhen: "now",
       scheduledDate: undefined,
@@ -395,11 +401,15 @@ const form = useForm<FormValues>({
 
       if (values.actionType === "transport") {
         payload.sourceEnvironmentName = values.sourceEnvironmentName;
+        payload.comment = values.comment;
       }
 
       if (values.actionType === "deploy") {
         payload.branchName = values.branchName;
         payload.revisionId = values.revisionId;
+        payload.version = values.version;
+        payload.description = values.description;
+        payload.comment = values.comment;
         const selectedRevision = revisions.find(r => r.id === values.revisionId);
         if (selectedRevision) {
           payload.revisionMessage = selectedRevision.message;
@@ -859,11 +869,67 @@ const form = useForm<FormValues>({
                         <FormMessage />
                       </FormItem>
                     )}
-                  />
-                </>
-              )}
+                   />
+                   
+                   <FormField
+                     control={form.control}
+                     name="version"
+                     render={({ field }) => (
+                       <FormItem>
+                         <FormLabel>Version (optional)</FormLabel>
+                         <FormControl>
+                           <Input 
+                             placeholder="e.g., 1.0.0 (auto-generated if empty)"
+                             value={field.value || ""}
+                             onChange={field.onChange}
+                           />
+                         </FormControl>
+                         <FormMessage />
+                       </FormItem>
+                     )}
+                   />
+                   
+                   <FormField
+                     control={form.control}
+                     name="description"
+                     render={({ field }) => (
+                       <FormItem>
+                         <FormLabel>Description (optional)</FormLabel>
+                         <FormControl>
+                           <Input 
+                             placeholder="Package description"
+                             value={field.value || ""}
+                             onChange={field.onChange}
+                           />
+                         </FormControl>
+                         <FormMessage />
+                       </FormItem>
+                     )}
+                   />
+                 </>
+               )}
 
-               <FormField
+               {(actionType === "transport" || actionType === "deploy") && (
+                 <FormField
+                   control={form.control}
+                   name="comment"
+                   render={({ field }) => (
+                     <FormItem>
+                       <FormLabel>Backup comment (optional)</FormLabel>
+                       <FormControl>
+                         <Input 
+                           placeholder="Custom backup comment (defaults to 'PintosoftOps Initiated Snapshot')"
+                           value={field.value || ""}
+                           onChange={field.onChange}
+                         />
+                       </FormControl>
+                       <FormMessage />
+                     </FormItem>
+                   )}
+                 />
+               )}
+
+                <FormField
                 control={form.control}
                 name="environmentName"
                 render={({ field }) => (
