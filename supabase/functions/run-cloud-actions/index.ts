@@ -162,9 +162,38 @@ async function processActionsInBackground(
 
       const projectId = appData.project_id;
 
+      // CRITICAL: Environment name normalization for Mendix API case sensitivity
+      // Mendix Deploy API expects environment names with proper capitalization:
+      // - "Production" (not "production")  
+      // - "Acceptance" (not "acceptance")
+      // - "Test" (not "test")
+      const normalizeEnvironmentName = (envName: string): string => {
+        const normalized = envName.toLowerCase();
+        switch (normalized) {
+          case 'production':
+            return 'Production';
+          case 'acceptance':
+            return 'Acceptance';
+          case 'test':
+            return 'Test';
+          default:
+            // For custom environment names, capitalize first letter
+            return envName.charAt(0).toUpperCase() + envName.slice(1).toLowerCase();
+        }
+      };
+
+      const normalizedEnvironmentName = normalizeEnvironmentName(action.environment_name);
+      
+      await supabase.from("cloud_action_logs").insert({
+        user_id: user.id,
+        action_id: action.id,
+        level: "info",
+        message: `Using normalized environment name: "${normalizedEnvironmentName}" (original: "${action.environment_name}")`,
+      });
+
       // Helper to call Mendix Deploy API
       const callMendix = async (method: "start" | "stop") => {
-        const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}/${method}`;
+        const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(normalizedEnvironmentName)}/${method}`;
         
         // Prepare request body - start requires AutoSyncDb parameter
         const body = method === "start" ? JSON.stringify({ "AutoSyncDb": true }) : "";
@@ -173,7 +202,7 @@ async function processActionsInBackground(
           user_id: user.id,
           action_id: action.id,
           level: "info",
-          message: `Calling Mendix API to ${method} environment ${action.environment_name}`,
+          message: `Calling Mendix API to ${method} environment ${normalizedEnvironmentName} (original: ${action.environment_name})`,
         });
 
         const resp = await fetch(url, {
@@ -207,7 +236,7 @@ async function processActionsInBackground(
           user_id: user.id,
           action_id: action.id,
           level: "info",
-          message: `Successfully ${method === "start" ? "started" : "stopped"} environment ${action.environment_name}`,
+          message: `Successfully ${method === "start" ? "started" : "stopped"} environment ${normalizedEnvironmentName}`,
         });
       };
 
@@ -321,7 +350,7 @@ async function processActionsInBackground(
           const startActionSuccess = await pollEnvironmentStatus(
             action.credential_id,
             action.app_id,
-            action.environment_name,
+            normalizedEnvironmentName,
             "running",
             startRetryUntil,
             jwt
@@ -352,7 +381,7 @@ async function processActionsInBackground(
           const restartStopSuccess = await pollEnvironmentStatus(
             action.credential_id,
             action.app_id,
-            action.environment_name,
+            normalizedEnvironmentName,
             "stopped",
             restartRetryUntil,
             jwt
@@ -383,7 +412,7 @@ async function processActionsInBackground(
           const restartActionSuccess = await pollEnvironmentStatus(
             action.credential_id,
             action.app_id,
-            action.environment_name,
+            normalizedEnvironmentName,
             "running",
             restartRetryUntil,
             jwt
@@ -514,7 +543,7 @@ async function processActionsInBackground(
           });
 
           // Step 2: Transport the package to the target environment
-          const transportUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}/transport`;
+          const transportUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(normalizedEnvironmentName)}/transport`;
           
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
@@ -592,7 +621,7 @@ async function processActionsInBackground(
           const deployStopSuccess = await pollEnvironmentStatus(
             action.credential_id,
             action.app_id,
-            action.environment_name,
+            normalizedEnvironmentName,
             "stopped",
             deployRetryUntil,
             jwt
@@ -610,7 +639,14 @@ async function processActionsInBackground(
           });
 
           // Step 4: Create a backup of the environment
-          const backupUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}/backups`;
+          const backupUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(normalizedEnvironmentName)}/backups`;
+          
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Creating backup on environment: ${normalizedEnvironmentName} (URL: ${backupUrl})`,
+          });
           const backupResp = await fetch(backupUrl, {
             method: "POST",
             headers: {
@@ -643,7 +679,7 @@ async function processActionsInBackground(
           let backupStatus = "Creating";
           let backupAttempts = 0;
           const maxBackupAttempts = 60; // 30 minutes timeout (30 * 60 * 1000) / 30 seconds polling interval
-          let backupStatusUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}/backups/${backupId}`;
+          let backupStatusUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(normalizedEnvironmentName)}/backups/${backupId}`;
 
           while (backupStatus !== "Available" && backupAttempts < maxBackupAttempts) {
             backupAttempts++;
@@ -721,7 +757,7 @@ async function processActionsInBackground(
           const deployStartSuccess = await pollEnvironmentStatus(
             action.credential_id,
             action.app_id,
-            action.environment_name,
+            normalizedEnvironmentName,
             "running",
             deployRetryUntil,
             jwt
@@ -754,7 +790,7 @@ async function processActionsInBackground(
             message: `Starting transport of package ${packageId} to ${action.environment_name}`,
           });
 
-          const transportActionUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}/transport`;
+          const transportActionUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(normalizedEnvironmentName)}/transport`;
           const transportActionResp = await fetch(transportActionUrl, {
             method: "POST",
             headers: {
@@ -799,7 +835,7 @@ async function processActionsInBackground(
           // Poll for transport completion by checking environment status
           let transportActionAttempts = 0;
           const maxTransportActionAttempts = 60; // 30 minutes timeout
-          let transportActionEnvironmentStatusUrl = `https://deploy.mendix.com/api/4/apps/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(action.environment_name)}`;
+          let transportActionEnvironmentStatusUrl = `https://deploy.mendix.com/api/4/apps/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(normalizedEnvironmentName)}`;
           let isTransportActionComplete = false;
 
           await supabase.from("cloud_action_logs").insert({
