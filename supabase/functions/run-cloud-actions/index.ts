@@ -499,13 +499,13 @@ async function processActionsInBackground(
           });
 
           // Step 2: Transport the package to the target environment
-          const transportUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}/packages/${newPackageId}/transport`;
+          const transportUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}/transport`;
           
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
             action_id: action.id,
             level: "info",
-            message: `Initiating transport to ${transportUrl}`,
+            message: `Initiating transport to ${transportUrl} with PackageId: ${newPackageId}`,
           });
 
           const transportResp = await fetch(transportUrl, {
@@ -517,7 +517,7 @@ async function processActionsInBackground(
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              Description: deployComment || `Transported by PintosoftOps on ${new Date().toISOString()}`,
+              PackageId: newPackageId,
             }),
           });
 
