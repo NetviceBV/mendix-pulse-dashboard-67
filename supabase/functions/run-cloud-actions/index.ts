@@ -597,13 +597,13 @@ serve(async (req) => {
             }
 
             const backupData = await backupResp.json();
-            const snapshotId = backupData.SnapshotId;
+            const deploySnapshotId = backupData.SnapshotId;
 
             await supabase.from("cloud_action_logs").insert({
               user_id: user.id,
               action_id: action.id,
               level: "info",
-              message: `Backup created with ID: ${snapshotId}`,
+              message: `Backup created with ID: ${deploySnapshotId}`,
             });
 
             // Step 8: Start target environment
@@ -838,13 +838,13 @@ serve(async (req) => {
             }
 
             const snapshotData = await snapshotResp.json();
-            const snapshotId = snapshotData.snapshot_id;
+            const transportSnapshotId = snapshotData.snapshot_id;
 
             await supabase.from("cloud_action_logs").insert({
               user_id: user.id,
               action_id: action.id,
               level: "info",
-              message: `Backup creation started: ${snapshotId}`,
+              message: `Backup creation started: ${transportSnapshotId}`,
             });
 
             // Step 6: Poll backup completion
@@ -857,7 +857,7 @@ serve(async (req) => {
               await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
 
               try {
-                const statusUrl = `https://deploy.mendix.com/api/v2/apps/${appData.project_id}/environments/${envData.environment_id}/snapshots/${snapshotId}`;
+                const statusUrl = `https://deploy.mendix.com/api/v2/apps/${appData.project_id}/environments/${envData.environment_id}/snapshots/${transportSnapshotId}`;
                 const statusResp = await fetch(statusUrl, {
                   headers: {
                     Accept: "application/json",
