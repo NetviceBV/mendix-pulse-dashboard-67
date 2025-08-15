@@ -1014,7 +1014,7 @@ async function processActionsInBackground(
 
           // Create backup using V2 API (requires project_id and environment_id)
           const transportBackupUrl = `https://deploy.mendix.com/api/2/apps/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(transportEnvironmentId)}/snapshots`;
-          const backupResp = await fetch(transportBackupUrl, {
+          const transportBackupResp = await fetch(transportBackupUrl, {
             method: "POST",
             headers: {
               Accept: "application/json",
@@ -1027,12 +1027,12 @@ async function processActionsInBackground(
             }),
           });
 
-          if (!backupResp.ok) {
-            const errorText = await backupResp.text();
+          if (!transportBackupResp.ok) {
+            const errorText = await transportBackupResp.text();
             throw new Error(`Failed to create backup: ${errorText}`);
           }
 
-          const transportBackupData = await backupResp.json();
+          const transportBackupData = await transportBackupResp.json();
           const transportSnapshotId = transportBackupData.SnapshotId;
 
           await supabase.from("cloud_action_logs").insert({
