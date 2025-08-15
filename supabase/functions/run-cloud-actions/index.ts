@@ -794,15 +794,15 @@ async function processActionsInBackground(
           break;
 
         case "transport":
-          const transportActionPayload = action.payload as { sourceEnvironment?: string; description?: string } || {};
-          const { sourceEnvironment, description: transportDescription } = transportActionPayload;
+          const transportActionPayload = action.payload as { sourceEnvironmentName?: string; description?: string } || {};
+          const { sourceEnvironmentName, description: transportDescription } = transportActionPayload;
 
-          if (!sourceEnvironment) {
+          if (!sourceEnvironmentName) {
             throw new Error("Source environment is required for transport action");
           }
 
           const transportRetryUntil = action.retry_until ? new Date(action.retry_until) : new Date(Date.now() + 90 * 60 * 1000); // Default 90 minutes
-          const normalizedSourceEnvironmentName = normalizeEnvironmentName(sourceEnvironment);
+          const normalizedSourceEnvironmentName = normalizeEnvironmentName(sourceEnvironmentName);
 
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
