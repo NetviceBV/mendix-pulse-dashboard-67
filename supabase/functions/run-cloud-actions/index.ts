@@ -257,6 +257,27 @@ serve(async (req) => {
         switch (action.action_type) {
           case "start":
             await callMendix("start");
+            await supabase.from("cloud_action_logs").insert({
+              user_id: user.id,
+              action_id: action.id,
+              level: "info",
+              message: "Start command sent, waiting for environment to start...",
+            });
+            
+            // Poll to verify environment started
+            const retryUntil = action.retry_until ? new Date(action.retry_until) : new Date(Date.now() + 30 * 60 * 1000);
+            const startSuccess = await pollEnvironmentStatus(
+              action.credential_id,
+              action.app_id,
+              action.environment_name,
+              "running",
+              retryUntil,
+              jwt
+            );
+            
+            if (!startSuccess) {
+              throw new Error("Environment failed to start within timeout period");
+            }
             break;
           case "stop":
             await callMendix("stop");
@@ -296,6 +317,27 @@ serve(async (req) => {
             
             // Step 3: Start the environment
             await callMendix("start");
+            
+            await supabase.from("cloud_action_logs").insert({
+              user_id: user.id,
+              action_id: action.id,
+              level: "info",
+              message: "Start command sent, waiting for environment to start...",
+            });
+            
+            // Poll to verify environment started
+            const startSuccess = await pollEnvironmentStatus(
+              action.credential_id,
+              action.app_id,
+              action.environment_name,
+              "running",
+              retryUntil,
+              jwt
+            );
+            
+            if (!startSuccess) {
+              throw new Error("Environment failed to start within timeout period");
+            }
             break;
           case "deploy":
             await supabase.from("cloud_action_logs").insert({
@@ -571,6 +613,28 @@ serve(async (req) => {
             });
 
             await callMendix("start");
+
+            await supabase.from("cloud_action_logs").insert({
+              user_id: user.id,
+              action_id: action.id,
+              level: "info",
+              message: "Start command sent, waiting for environment to start...",
+            });
+            
+            // Poll to verify environment started
+            const retryUntil = action.retry_until ? new Date(action.retry_until) : new Date(Date.now() + 30 * 60 * 1000);
+            const startSuccess = await pollEnvironmentStatus(
+              action.credential_id,
+              action.app_id,
+              action.environment_name,
+              "running",
+              retryUntil,
+              jwt
+            );
+            
+            if (!startSuccess) {
+              throw new Error("Target environment failed to start within timeout period");
+            }
 
             await supabase.from("cloud_action_logs").insert({
               user_id: user.id,
