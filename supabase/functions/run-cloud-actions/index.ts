@@ -655,8 +655,8 @@ async function processActionsInBackground(
           }
 
           const environmentId = environmentData.environment_id;
-          const projectId = environmentData.mendix_apps.project_id;
-          const backupUrl = `https://deploy.mendix.com/api/v2/apps/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(environmentId)}/snapshots`;
+          const targetProjectId = environmentData.mendix_apps.project_id;
+          const backupUrl = `https://deploy.mendix.com/api/v2/apps/${encodeURIComponent(targetProjectId)}/environments/${encodeURIComponent(environmentId)}/snapshots`;
           
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
@@ -697,7 +697,7 @@ async function processActionsInBackground(
           let backupStatus = "queued";
           let backupAttempts = 0;
           const maxBackupAttempts = 60; // 30 minutes timeout
-          let backupStatusUrl = `https://deploy.mendix.com/api/v2/apps/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(environmentId)}/snapshots/${backupId}`;
+          let backupStatusUrl = `https://deploy.mendix.com/api/v2/apps/${encodeURIComponent(targetProjectId)}/environments/${encodeURIComponent(environmentId)}/snapshots/${backupId}`;
 
           while (backupStatus !== "completed" && backupAttempts < maxBackupAttempts) {
             backupAttempts++;
