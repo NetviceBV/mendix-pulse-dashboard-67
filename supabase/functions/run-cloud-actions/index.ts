@@ -571,94 +571,42 @@ async function processActionsInBackground(
             message: `Package transport started: ${newPackageId}`,
           });
 
-          // Step 3: Poll for transport completion by checking environment status
-          let transportAttempts = 0;
-          const maxTransportAttempts = 60; // 30 minutes timeout
-          let environmentStatusUrl = `https://deploy.mendix.com/api/4/apps/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(action.environment_name)}`;
-          let isTransportComplete = false;
-
+          // Step 3: Stop the environment before backup
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
             action_id: action.id,
             level: "info",
-            message: `Starting transport completion check for PackageId: ${newPackageId}`,
+            message: `Stopping environment before backup`,
           });
 
-          while (!isTransportComplete && transportAttempts < maxTransportAttempts) {
-            transportAttempts++;
+          await callMendix("stop");
 
-            await supabase.from("cloud_action_logs").insert({
-              user_id: user.id,
-              action_id: action.id,
-              level: "info",
-              message: `Checking environment status for transport completion (attempt ${transportAttempts})`,
-            });
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Stop command sent, polling for completion`,
+          });
 
-            const environmentStatusResp = await fetch(environmentStatusUrl, {
-              method: "GET",
-              headers: {
-                Accept: "application/json",
-                "Mendix-Username": credential.username,
-                "Mendix-ApiKey": credential.api_key || credential.pat || "",
-              },
-            });
-
-            if (!environmentStatusResp.ok) {
-              let errorDetails = `HTTP ${environmentStatusResp.status}: ${environmentStatusResp.statusText}`;
-              try {
-                const errorText = await environmentStatusResp.text();
-                if (errorText) {
-                  errorDetails += ` - ${errorText}`;
-                }
-              } catch (parseError) {
-                errorDetails += ` - Unable to parse error response: ${parseError.message}`;
-              }
-              
-              await supabase.from("cloud_action_logs").insert({
-                user_id: user.id,
-                action_id: action.id,
-                level: "error",
-                message: `Failed to get environment status: ${errorDetails}`,
-              });
-              
-              throw new Error(`Failed to get environment status: ${errorDetails}`);
-            }
-
-            const environmentData = await environmentStatusResp.json();
-            const currentPackageId = environmentData.PackageId;
-            const environmentStatus = environmentData.Status;
-
-            await supabase.from("cloud_action_logs").insert({
-              user_id: user.id,
-              action_id: action.id,
-              level: "info",
-              message: `Environment status: ${environmentStatus}, Current PackageId: ${currentPackageId}, Target PackageId: ${newPackageId}`,
-            });
-
-            // Check if the transport is complete by verifying the package ID
-            if (currentPackageId === newPackageId) {
-              isTransportComplete = true;
-              await supabase.from("cloud_action_logs").insert({
-                user_id: user.id,
-                action_id: action.id,
-                level: "info",
-                message: `Transport completed successfully - PackageId ${newPackageId} is now active on environment`,
-              });
-            } else {
-              // Wait 30 seconds before next poll
-              await new Promise(resolve => setTimeout(resolve, 30000));
-            }
-          }
-
-          if (!isTransportComplete) {
-            throw new Error(`Timeout waiting for transport to complete. PackageId ${newPackageId} was not found on the environment after ${transportAttempts} attempts.`);
+          // Poll until environment is stopped
+          const deployStopSuccess = await pollEnvironmentStatus(
+            action.credential_id,
+            action.app_id,
+            action.environment_name,
+            "stopped",
+            deployRetryUntil,
+            jwt
+          );
+          
+          if (!deployStopSuccess) {
+            throw new Error("Environment failed to stop within timeout period");
           }
 
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
             action_id: action.id,
             level: "info",
-            message: `Package transport completed successfully: ${newPackageId}`,
+            message: `Environment stopped successfully, transport completed for package: ${newPackageId}`,
           });
 
           // Step 4: Create a backup of the environment
@@ -750,6 +698,44 @@ async function processActionsInBackground(
             action_id: action.id,
             level: "info",
             message: `Backup completed successfully: ${backupId}`,
+          });
+
+          // Step 6: Start the environment after backup
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Starting environment after backup completion`,
+          });
+
+          await callMendix("start");
+
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Start command sent, polling for completion`,
+          });
+
+          // Poll until environment is started
+          const deployStartSuccess = await pollEnvironmentStatus(
+            action.credential_id,
+            action.app_id,
+            action.environment_name,
+            "running",
+            deployRetryUntil,
+            jwt
+          );
+          
+          if (!deployStartSuccess) {
+            throw new Error("Environment failed to start within timeout period");
+          }
+
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Environment started successfully, deploy completed`,
           });
           break;
 
