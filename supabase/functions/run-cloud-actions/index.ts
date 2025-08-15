@@ -342,7 +342,7 @@ serve(async (req) => {
           case "deploy":
             // Extract deploy parameters from payload
             const deployPayload = action.payload as { branchName?: string; revisionId?: string; version?: string; description?: string; comment?: string } || {};
-            const { branchName, revisionId, version, description, comment } = deployPayload;
+            const { branchName, revisionId, version, description, comment: deployComment } = deployPayload;
             
             if (!branchName || !revisionId) {
               throw new Error("Branch name and revision are required for deploy action");
@@ -587,7 +587,7 @@ serve(async (req) => {
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                Comment: comment || "PintosoftOps Initiated Snapshot",
+                Comment: deployComment || "PintosoftOps Initiated Snapshot",
               }),
             });
 
@@ -641,7 +641,7 @@ serve(async (req) => {
             // Extract source and target environments from payload
             const payload = action.payload as { sourceEnvironmentName?: string; comment?: string } || {};
             const sourceEnvironment = payload.sourceEnvironmentName;
-            const comment = payload.comment || "PintosoftOps Initiated Snapshot";
+            const transportComment = payload.comment || "PintosoftOps Initiated Snapshot";
             
             if (!sourceEnvironment) {
               throw new Error("Source environment is required for transport action");
@@ -829,7 +829,7 @@ serve(async (req) => {
                 "Mendix-ApiKey": credential.api_key || credential.pat || "",
                 "Content-Type": "application/json",
               },
-              body: JSON.stringify({ comment }),
+              body: JSON.stringify({ comment: transportComment }),
             });
 
             if (!snapshotResp.ok) {
