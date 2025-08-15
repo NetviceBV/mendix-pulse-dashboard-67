@@ -469,7 +469,7 @@ serve(async (req) => {
               .from("mendix_environments")
               .select("environment_id")
               .eq("app_id", action.app_id)
-              .eq("environment_name", action.environment_name)
+              .ilike("environment_name", action.environment_name)
               .eq("user_id", user.id)
               .maybeSingle();
 
