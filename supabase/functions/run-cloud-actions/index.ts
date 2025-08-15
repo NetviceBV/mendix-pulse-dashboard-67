@@ -351,7 +351,7 @@ serve(async (req) => {
             // Extract source and target environments from payload
             const payload = action.payload as { sourceEnvironmentName?: string; comment?: string } || {};
             const sourceEnvironment = payload.sourceEnvironmentName;
-            const comment = payload.comment || `Transport from ${sourceEnvironment} to ${action.environment_name}`;
+            const comment = payload.comment || "PintosoftOps Initiated Snapshot";
             
             if (!sourceEnvironment) {
               throw new Error("Source environment is required for transport action");
