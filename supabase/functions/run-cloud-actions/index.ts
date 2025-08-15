@@ -247,7 +247,7 @@ async function processActionsInBackground(
         environmentName: string,
         targetStatus: string,
         retryUntil: Date,
-        authToken: string
+        userId: string
       ): Promise<boolean> => {
         let attempts = 0;
         const maxAttempts = 100; // Safety limit to prevent infinite loops
@@ -258,12 +258,11 @@ async function processActionsInBackground(
           attempts++;
           
           try {
-            // Call refresh environment status function with environment name
+            // Call refresh environment status function with service role authentication
             const { data: statusData, error: statusError } = await supabase.functions.invoke(
               "refresh-mendix-environment-status",
               {
-                headers: { Authorization: `Bearer ${authToken}` },
-                body: { credentialId, appId, environmentName },
+                body: { credentialId, appId, environmentName, userId },
               }
             );
 
@@ -353,7 +352,7 @@ async function processActionsInBackground(
             normalizedEnvironmentName,
             "running",
             startRetryUntil,
-            jwt
+            action.user_id
           );
           
           if (!startActionSuccess) {
@@ -384,7 +383,7 @@ async function processActionsInBackground(
             normalizedEnvironmentName,
             "stopped",
             restartRetryUntil,
-            jwt
+            action.user_id
           );
           
           if (!restartStopSuccess) {
@@ -415,7 +414,7 @@ async function processActionsInBackground(
             normalizedEnvironmentName,
             "running",
             restartRetryUntil,
-            jwt
+            action.user_id
           );
           
           if (!restartActionSuccess) {
@@ -624,7 +623,7 @@ async function processActionsInBackground(
             normalizedEnvironmentName,
             "stopped",
             deployRetryUntil,
-            jwt
+            action.user_id
           );
           
           if (!deployStopSuccess) {
@@ -760,7 +759,7 @@ async function processActionsInBackground(
             normalizedEnvironmentName,
             "running",
             deployRetryUntil,
-            jwt
+            action.user_id
           );
           
           if (!deployStartSuccess) {

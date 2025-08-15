@@ -18,22 +18,35 @@ serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get the JWT from the Authorization header
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      throw new Error('No authorization header');
-    }
+    // Parse request body first to check for service role calls
+    const { credentialId, appId, environmentId, environmentName, userId } = await req.json();
 
-    // Verify the JWT and get user
-    const jwt = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(jwt);
-    
-    if (authError || !user) {
-      throw new Error('Invalid token');
-    }
+    let user_id: string;
+    let isServiceRoleCall = false;
 
-    // Parse request body
-    const { credentialId, appId, environmentId, environmentName } = await req.json();
+    // Check if this is a service role call (internal function call)
+    if (userId) {
+      // This is an internal call from another edge function with service role
+      user_id = userId;
+      isServiceRoleCall = true;
+      console.log(`Service role call for user: ${user_id}`);
+    } else {
+      // This is a direct client call - verify JWT
+      const authHeader = req.headers.get('Authorization');
+      if (!authHeader) {
+        throw new Error('No authorization header');
+      }
+
+      const jwt = authHeader.replace('Bearer ', '');
+      const { data: { user }, error: authError } = await supabase.auth.getUser(jwt);
+      
+      if (authError || !user) {
+        throw new Error('Invalid token');
+      }
+      
+      user_id = user.id;
+      console.log(`Client call for user: ${user_id}`);
+    }
 
     if (!credentialId || !appId || (!environmentId && !environmentName)) {
       throw new Error('Missing required parameters: credentialId, appId, and either environmentId or environmentName');
@@ -46,7 +59,7 @@ serve(async (req) => {
       .from('mendix_credentials')
       .select('*')
       .eq('id', credentialId)
-      .eq('user_id', user.id)
+      .eq('user_id', user_id)
       .single();
 
     if (credError || !credential) {
@@ -58,7 +71,7 @@ serve(async (req) => {
       .from('mendix_apps')
       .select('project_id')
       .eq('app_id', appId)
-      .eq('user_id', user.id)
+      .eq('user_id', user_id)
       .single();
 
     if (appError || !appData || !appData.project_id) {
@@ -75,7 +88,7 @@ serve(async (req) => {
         .select('environment_id')
         .eq('app_id', appId)
         .ilike('environment_name', environmentName)
-        .eq('user_id', user.id)
+        .eq('user_id', user_id)
         .single();
         
       if (envError || !envData) {
@@ -125,7 +138,7 @@ serve(async (req) => {
       })
       .eq('environment_id', actualEnvironmentId)
       .eq('app_id', appId)
-      .eq('user_id', user.id);
+      .eq('user_id', user_id);
 
     if (updateError) {
       console.error('Error updating environment in database:', updateError);
