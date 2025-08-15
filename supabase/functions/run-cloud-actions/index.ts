@@ -947,12 +947,12 @@ async function processActionsInBackground(
             message: `Step 4: Creating backup of target environment ${normalizedEnvironmentName}`,
           });
 
-          // Use environment ID from database (already retrieved at lines 642-658)
+          // Use environment ID from database (already retrieved at lines 807-824)
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
             action_id: action.id,
             level: "info",
-            message: `Using environment ID from database for backup: ${environmentId}`,
+            message: `Using environment ID from database for backup: ${transportEnvironmentId}`,
           });
 
           // Create backup using V2 API (requires project_id and environment_id)
