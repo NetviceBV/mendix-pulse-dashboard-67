@@ -244,6 +244,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "fk_mendix_environments_app_id"
+            columns: ["app_id"]
+            isOneToOne: false
+            referencedRelation: "mendix_apps"
+            referencedColumns: ["app_id"]
+          },
+          {
             foreignKeyName: "mendix_environments_credential_id_fkey"
             columns: ["credential_id"]
             isOneToOne: false
