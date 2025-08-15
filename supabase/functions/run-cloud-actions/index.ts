@@ -265,13 +265,13 @@ serve(async (req) => {
             });
             
             // Poll to verify environment started
-            const retryUntil = action.retry_until ? new Date(action.retry_until) : new Date(Date.now() + 30 * 60 * 1000);
+            const startRetryUntil = action.retry_until ? new Date(action.retry_until) : new Date(Date.now() + 30 * 60 * 1000);
             const startSuccess = await pollEnvironmentStatus(
               action.credential_id,
               action.app_id,
               action.environment_name,
               "running",
-              retryUntil,
+              startRetryUntil,
               jwt
             );
             
@@ -293,14 +293,14 @@ serve(async (req) => {
             });
             
             // Step 2: Poll until stopped (with timeout based on retry_until)
-            const retryUntil = action.retry_until ? new Date(action.retry_until) : new Date(Date.now() + 30 * 60 * 1000); // Default 30 minutes
+            const restartRetryUntil = action.retry_until ? new Date(action.retry_until) : new Date(Date.now() + 30 * 60 * 1000); // Default 30 minutes
             
             const stopSuccess = await pollEnvironmentStatus(
               action.credential_id,
               action.app_id,
               action.environment_name, // Using environment_name as environment_id
               "stopped",
-              retryUntil,
+              restartRetryUntil,
               jwt
             );
             
@@ -331,7 +331,7 @@ serve(async (req) => {
               action.app_id,
               action.environment_name,
               "running",
-              retryUntil,
+              restartRetryUntil,
               jwt
             );
             
@@ -912,13 +912,13 @@ serve(async (req) => {
             });
             
             // Poll to verify environment started
-            const retryUntil = action.retry_until ? new Date(action.retry_until) : new Date(Date.now() + 30 * 60 * 1000);
+            const transportStartRetryUntil = action.retry_until ? new Date(action.retry_until) : new Date(Date.now() + 30 * 60 * 1000);
             const startSuccess = await pollEnvironmentStatus(
               action.credential_id,
               action.app_id,
               action.environment_name,
               "running",
-              retryUntil,
+              transportStartRetryUntil,
               jwt
             );
             
