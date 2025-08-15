@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { CalendarClock, CloudCog, Loader2, Plus, RefreshCcw, ScrollText, ArrowLeft, Trash2 } from "lucide-react";
+import { CalendarClock, CloudCog, Loader2, Plus, RefreshCcw, ScrollText, ArrowLeft, Trash2, Edit } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { useRef, useCallback } from "react";
 import { z } from "zod";
@@ -19,6 +20,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { cn } from "@/lib/utils";
 import { format, startOfToday, isSameDay, parse } from "date-fns";
 import { Link } from "react-router-dom";
+import { EditCloudActionDialog } from "@/components/EditCloudActionDialog";
 
 
 interface CloudActionRow {
@@ -1264,6 +1266,7 @@ export default function CloudActionsPage() {
                   <LogsDialog actionId={a.id} />
                   {a.status === "scheduled" && (
                     <>
+                      <EditCloudActionDialog action={a} onUpdated={load} />
                       <Button 
                         variant="outline" 
                         size="sm" 
