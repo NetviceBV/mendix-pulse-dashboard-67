@@ -380,15 +380,406 @@ async function processActionsInBackground(
           break;
 
         case "deploy":
-        case "transport":
-          // For now, log that these complex operations are not yet implemented in background mode
+          // Extract deploy parameters from payload
+          const deployPayload = action.payload as { branchName?: string; revisionId?: string; version?: string; description?: string; comment?: string } || {};
+          const { branchName, revisionId, version, description, comment: deployComment } = deployPayload;
+          
+          if (!branchName || !revisionId) {
+            throw new Error("Branch name and revision are required for deploy action");
+          }
+
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
             action_id: action.id,
-            level: "warning",
-            message: `${action.action_type} operations are not yet implemented in background processing mode`,
+            level: "info",
+            message: `Starting deploy from branch ${branchName}, revision ${revisionId} to ${action.environment_name}`,
           });
-          throw new Error(`${action.action_type} operations are not yet implemented in background processing mode`);
+
+          const deployRetryUntil = action.retry_until ? new Date(action.retry_until) : new Date(Date.now() + 90 * 60 * 1000); // Default 90 minutes
+
+          // Step 1: Create package from branch and revision
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Creating package from branch: ${branchName}, revision: ${revisionId}`,
+          });
+
+          const createPackageUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/packages`;
+          const createPackageResp = await fetch(createPackageUrl, {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Mendix-Username": credential.username,
+              "Mendix-ApiKey": credential.api_key || credential.pat || "",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              Branch: branchName,
+              Revision: revisionId,
+              Version: version || `1.0.${Date.now()}`,
+              Description: description || "PintosoftOps Deploy Package",
+            }),
+          });
+
+          if (!createPackageResp.ok) {
+            const errorText = await createPackageResp.text();
+            throw new Error(`Failed to create package: ${errorText}`);
+          }
+
+          const createPackageData = await createPackageResp.json();
+          const newPackageId = createPackageData.PackageId;
+
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Package creation started: ${newPackageId}`,
+          });
+
+          // Poll for package build completion and transport logic
+          let packageStatus = "Building";
+          let packageBuildAttempts = 0;
+          const maxPackageBuildAttempts = 60; // 30 minutes timeout (30 * 60 * 1000) / 30 seconds polling interval
+          let newPackageStatusUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/packages/${newPackageId}`;
+
+          while (packageStatus !== "Available" && packageBuildAttempts < maxPackageBuildAttempts) {
+            packageBuildAttempts++;
+
+            await supabase.from("cloud_action_logs").insert({
+              user_id: user.id,
+              action_id: action.id,
+              level: "info",
+              message: `Checking package status (attempt ${packageBuildAttempts}): ${packageStatus}`,
+            });
+
+            const packageStatusResp = await fetch(newPackageStatusUrl, {
+              method: "GET",
+              headers: {
+                Accept: "application/json",
+                "Mendix-Username": credential.username,
+                "Mendix-ApiKey": credential.api_key || credential.pat || "",
+              },
+            });
+
+            if (!packageStatusResp.ok) {
+              const errorText = await packageStatusResp.text();
+              throw new Error(`Failed to get package status: ${errorText}`);
+            }
+
+            const packageStatusData = await packageStatusResp.json();
+            packageStatus = packageStatusData.Status;
+
+            await supabase.from("cloud_action_logs").insert({
+              user_id: user.id,
+              action_id: action.id,
+              level: "info",
+              message: `Package status (attempt ${packageBuildAttempts}): ${packageStatus}`,
+            });
+
+            if (packageStatus === "Failed") {
+              throw new Error(`Package build failed: ${packageStatusData.Error}`);
+            }
+
+            if (packageStatus !== "Available") {
+              // Wait 30 seconds before next poll
+              await new Promise(resolve => setTimeout(resolve, 30000));
+            }
+          }
+
+          if (packageStatus !== "Available") {
+            throw new Error(`Timeout waiting for package to build. Current status: ${packageStatus}`);
+          }
+
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Package built successfully, starting transport: ${newPackageId}`,
+          });
+
+          // Step 2: Transport the package to the target environment
+          const transportUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}/packages/${newPackageId}/transport`;
+          const transportResp = await fetch(transportUrl, {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Mendix-Username": credential.username,
+              "Mendix-ApiKey": credential.api_key || credential.pat || "",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              Description: deployComment || `Transported by PintosoftOps on ${new Date().toISOString()}`,
+            }),
+          });
+
+          if (!transportResp.ok) {
+            const errorText = await transportResp.text();
+            throw new Error(`Failed to transport package: ${errorText}`);
+          }
+
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Package transport started: ${newPackageId}`,
+          });
+
+          // Step 3: Poll for transport completion
+          let transportStatus = "Transporting";
+          let transportAttempts = 0;
+          const maxTransportAttempts = 60; // 30 minutes timeout (30 * 60 * 1000) / 30 seconds polling interval
+          let transportStatusUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}/transports/latest`;
+
+          while (transportStatus !== "Completed" && transportAttempts < maxTransportAttempts) {
+            transportAttempts++;
+
+            await supabase.from("cloud_action_logs").insert({
+              user_id: user.id,
+              action_id: action.id,
+              level: "info",
+              message: `Checking transport status (attempt ${transportAttempts}): ${transportStatus}`,
+            });
+
+            const transportStatusResp = await fetch(transportStatusUrl, {
+              method: "GET",
+              headers: {
+                Accept: "application/json",
+                "Mendix-Username": credential.username,
+                "Mendix-ApiKey": credential.api_key || credential.pat || "",
+              },
+            });
+
+            if (!transportStatusResp.ok) {
+              const errorText = await transportStatusResp.text();
+              throw new Error(`Failed to get transport status: ${errorText}`);
+            }
+
+            const transportStatusData = await transportStatusResp.json();
+            transportStatus = transportStatusData.Status;
+
+            await supabase.from("cloud_action_logs").insert({
+              user_id: user.id,
+              action_id: action.id,
+              level: "info",
+              message: `Transport status (attempt ${transportAttempts}): ${transportStatus}`,
+            });
+
+            if (transportStatus === "Failed") {
+              throw new Error(`Transport failed: ${transportStatusData.Error}`);
+            }
+
+            if (transportStatus !== "Completed") {
+              // Wait 30 seconds before next poll
+              await new Promise(resolve => setTimeout(resolve, 30000));
+            }
+          }
+
+          if (transportStatus !== "Completed") {
+            throw new Error(`Timeout waiting for transport to complete. Current status: ${transportStatus}`);
+          }
+
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Package transport completed successfully: ${newPackageId}`,
+          });
+
+          // Step 4: Create a backup of the environment
+          const backupUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}/backups`;
+          const backupResp = await fetch(backupUrl, {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Mendix-Username": credential.username,
+              "Mendix-ApiKey": credential.api_key || credential.pat || "",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              Description: `Backup created by PintosoftOps before deploy on ${new Date().toISOString()}`,
+            }),
+          });
+
+          if (!backupResp.ok) {
+            const errorText = await backupResp.text();
+            throw new Error(`Failed to create backup: ${errorText}`);
+          }
+
+          const backupData = await backupResp.json();
+          const backupId = backupData.Id;
+
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Backup creation started: ${backupId}`,
+          });
+
+          // Step 5: Poll for backup completion
+          let backupStatus = "Creating";
+          let backupAttempts = 0;
+          const maxBackupAttempts = 60; // 30 minutes timeout (30 * 60 * 1000) / 30 seconds polling interval
+          let backupStatusUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}/backups/${backupId}`;
+
+          while (backupStatus !== "Available" && backupAttempts < maxBackupAttempts) {
+            backupAttempts++;
+
+            await supabase.from("cloud_action_logs").insert({
+              user_id: user.id,
+              action_id: action.id,
+              level: "info",
+              message: `Checking backup status (attempt ${backupAttempts}): ${backupStatus}`,
+            });
+
+            const backupStatusResp = await fetch(backupStatusUrl, {
+              method: "GET",
+              headers: {
+                Accept: "application/json",
+                "Mendix-Username": credential.username,
+                "Mendix-ApiKey": credential.api_key || credential.pat || "",
+              },
+            });
+
+            if (!backupStatusResp.ok) {
+              const errorText = await backupStatusResp.text();
+              throw new Error(`Failed to get backup status: ${errorText}`);
+            }
+
+            const backupStatusData = await backupStatusResp.json();
+            backupStatus = backupStatusData.Status;
+
+            await supabase.from("cloud_action_logs").insert({
+              user_id: user.id,
+              action_id: action.id,
+              level: "info",
+              message: `Backup status (attempt ${backupAttempts}): ${backupStatus}`,
+            });
+
+            if (backupStatus === "Failed") {
+              throw new Error(`Backup failed: ${backupStatusData.Error}`);
+            }
+
+            if (backupStatus !== "Available") {
+              // Wait 30 seconds before next poll
+              await new Promise(resolve => setTimeout(resolve, 30000));
+            }
+          }
+
+          if (backupStatus !== "Available") {
+            throw new Error(`Timeout waiting for backup to complete. Current status: ${backupStatus}`);
+          }
+
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Backup completed successfully: ${backupId}`,
+          });
+          break;
+
+        case "transport":
+          const transportActionPayload = action.payload as { packageId?: string; description?: string } || {};
+          const { packageId, description: transportDescription } = transportActionPayload;
+
+          if (!packageId) {
+            throw new Error("Package ID is required for transport action");
+          }
+
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Starting transport of package ${packageId} to ${action.environment_name}`,
+          });
+
+          const transportActionUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}/packages/${packageId}/transport`;
+          const transportActionResp = await fetch(transportActionUrl, {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Mendix-Username": credential.username,
+              "Mendix-ApiKey": credential.api_key || credential.pat || "",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              Description: transportDescription || `Transported by PintosoftOps on ${new Date().toISOString()}`,
+            }),
+          });
+
+          if (!transportActionResp.ok) {
+            const errorText = await transportActionResp.text();
+            throw new Error(`Failed to transport package: ${errorText}`);
+          }
+
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Package transport started: ${packageId}`,
+          });
+
+          // Poll for transport completion
+          let transportActionStatus = "Transporting";
+          let transportActionAttempts = 0;
+          const maxTransportActionAttempts = 60; // 30 minutes timeout (30 * 60 * 1000) / 30 seconds polling interval
+          let transportActionStatusUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}/transports/latest`;
+
+          while (transportActionStatus !== "Completed" && transportActionAttempts < maxTransportActionAttempts) {
+            transportActionAttempts++;
+
+            await supabase.from("cloud_action_logs").insert({
+              user_id: user.id,
+              action_id: action.id,
+              level: "info",
+              message: `Checking transport status (attempt ${transportActionAttempts}): ${transportActionStatus}`,
+            });
+
+            const transportActionStatusResp = await fetch(transportActionStatusUrl, {
+              method: "GET",
+              headers: {
+                Accept: "application/json",
+                "Mendix-Username": credential.username,
+                "Mendix-ApiKey": credential.api_key || credential.pat || "",
+              },
+            });
+
+            if (!transportActionStatusResp.ok) {
+              const errorText = await transportActionStatusResp.text();
+              throw new Error(`Failed to get transport status: ${errorText}`);
+            }
+
+            const transportActionStatusData = await transportActionStatusResp.json();
+            transportActionStatus = transportActionStatusData.Status;
+
+            await supabase.from("cloud_action_logs").insert({
+              user_id: user.id,
+              action_id: action.id,
+              level: "info",
+              message: `Transport status (attempt ${transportActionAttempts}): ${transportActionStatus}`,
+            });
+
+            if (transportActionStatus === "Failed") {
+              throw new Error(`Transport failed: ${transportActionStatusData.Error}`);
+            }
+
+            if (transportActionStatus !== "Completed") {
+              // Wait 30 seconds before next poll
+              await new Promise(resolve => setTimeout(resolve, 30000));
+            }
+          }
+
+          if (transportActionStatus !== "Completed") {
+            throw new Error(`Timeout waiting for transport to complete. Current status: ${transportActionStatus}`);
+          }
+
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Package transport completed successfully: ${packageId}`,
+          });
+          break;
 
         default:
           throw new Error(`Unknown action type: ${action.action_type}`);
