@@ -556,23 +556,30 @@ async function processActionsInBackground(
             message: `Package transport started: ${newPackageId}`,
           });
 
-          // Step 3: Poll for transport completion
-          let transportStatus = "Transporting";
+          // Step 3: Poll for transport completion by checking environment status
           let transportAttempts = 0;
-          const maxTransportAttempts = 60; // 30 minutes timeout (30 * 60 * 1000) / 30 seconds polling interval
-          let transportStatusUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}/transports/latest`;
+          const maxTransportAttempts = 60; // 30 minutes timeout
+          let environmentStatusUrl = `https://deploy.mendix.com/api/4/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}`;
+          let isTransportComplete = false;
 
-          while (transportStatus !== "Completed" && transportAttempts < maxTransportAttempts) {
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Starting transport completion check for PackageId: ${newPackageId}`,
+          });
+
+          while (!isTransportComplete && transportAttempts < maxTransportAttempts) {
             transportAttempts++;
 
             await supabase.from("cloud_action_logs").insert({
               user_id: user.id,
               action_id: action.id,
               level: "info",
-              message: `Checking transport status (attempt ${transportAttempts}): ${transportStatus}`,
+              message: `Checking environment status for transport completion (attempt ${transportAttempts})`,
             });
 
-            const transportStatusResp = await fetch(transportStatusUrl, {
+            const environmentStatusResp = await fetch(environmentStatusUrl, {
               method: "GET",
               headers: {
                 Accept: "application/json",
@@ -581,33 +588,55 @@ async function processActionsInBackground(
               },
             });
 
-            if (!transportStatusResp.ok) {
-              const errorText = await transportStatusResp.text();
-              throw new Error(`Failed to get transport status: ${errorText}`);
+            if (!environmentStatusResp.ok) {
+              let errorDetails = `HTTP ${environmentStatusResp.status}: ${environmentStatusResp.statusText}`;
+              try {
+                const errorText = await environmentStatusResp.text();
+                if (errorText) {
+                  errorDetails += ` - ${errorText}`;
+                }
+              } catch (parseError) {
+                errorDetails += ` - Unable to parse error response: ${parseError.message}`;
+              }
+              
+              await supabase.from("cloud_action_logs").insert({
+                user_id: user.id,
+                action_id: action.id,
+                level: "error",
+                message: `Failed to get environment status: ${errorDetails}`,
+              });
+              
+              throw new Error(`Failed to get environment status: ${errorDetails}`);
             }
 
-            const transportStatusData = await transportStatusResp.json();
-            transportStatus = transportStatusData.Status;
+            const environmentData = await environmentStatusResp.json();
+            const currentPackageId = environmentData.PackageId;
+            const environmentStatus = environmentData.Status;
 
             await supabase.from("cloud_action_logs").insert({
               user_id: user.id,
               action_id: action.id,
               level: "info",
-              message: `Transport status (attempt ${transportAttempts}): ${transportStatus}`,
+              message: `Environment status: ${environmentStatus}, Current PackageId: ${currentPackageId}, Target PackageId: ${newPackageId}`,
             });
 
-            if (transportStatus === "Failed") {
-              throw new Error(`Transport failed: ${transportStatusData.Error}`);
-            }
-
-            if (transportStatus !== "Completed") {
+            // Check if the transport is complete by verifying the package ID
+            if (currentPackageId === newPackageId) {
+              isTransportComplete = true;
+              await supabase.from("cloud_action_logs").insert({
+                user_id: user.id,
+                action_id: action.id,
+                level: "info",
+                message: `Transport completed successfully - PackageId ${newPackageId} is now active on environment`,
+              });
+            } else {
               // Wait 30 seconds before next poll
               await new Promise(resolve => setTimeout(resolve, 30000));
             }
           }
 
-          if (transportStatus !== "Completed") {
-            throw new Error(`Timeout waiting for transport to complete. Current status: ${transportStatus}`);
+          if (!isTransportComplete) {
+            throw new Error(`Timeout waiting for transport to complete. PackageId ${newPackageId} was not found on the environment after ${transportAttempts} attempts.`);
           }
 
           await supabase.from("cloud_action_logs").insert({
@@ -724,7 +753,7 @@ async function processActionsInBackground(
             message: `Starting transport of package ${packageId} to ${action.environment_name}`,
           });
 
-          const transportActionUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}/packages/${packageId}/transport`;
+          const transportActionUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}/transport`;
           const transportActionResp = await fetch(transportActionUrl, {
             method: "POST",
             headers: {
@@ -734,13 +763,29 @@ async function processActionsInBackground(
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              Description: transportDescription || `Transported by PintosoftOps on ${new Date().toISOString()}`,
+              PackageId: packageId,
             }),
           });
 
           if (!transportActionResp.ok) {
-            const errorText = await transportActionResp.text();
-            throw new Error(`Failed to transport package: ${errorText}`);
+            let errorDetails = `HTTP ${transportActionResp.status}: ${transportActionResp.statusText}`;
+            try {
+              const errorText = await transportActionResp.text();
+              if (errorText) {
+                errorDetails += ` - ${errorText}`;
+              }
+            } catch (parseError) {
+              errorDetails += ` - Unable to parse error response: ${parseError.message}`;
+            }
+            
+            await supabase.from("cloud_action_logs").insert({
+              user_id: user.id,
+              action_id: action.id,
+              level: "error",
+              message: `Transport failed: ${errorDetails}`,
+            });
+            
+            throw new Error(`Failed to transport package: ${errorDetails}`);
           }
 
           await supabase.from("cloud_action_logs").insert({
@@ -750,23 +795,30 @@ async function processActionsInBackground(
             message: `Package transport started: ${packageId}`,
           });
 
-          // Poll for transport completion
-          let transportActionStatus = "Transporting";
+          // Poll for transport completion by checking environment status
           let transportActionAttempts = 0;
-          const maxTransportActionAttempts = 60; // 30 minutes timeout (30 * 60 * 1000) / 30 seconds polling interval
-          let transportActionStatusUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}/transports/latest`;
+          const maxTransportActionAttempts = 60; // 30 minutes timeout
+          let transportActionEnvironmentStatusUrl = `https://deploy.mendix.com/api/4/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}`;
+          let isTransportActionComplete = false;
 
-          while (transportActionStatus !== "Completed" && transportActionAttempts < maxTransportActionAttempts) {
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Starting transport completion check for PackageId: ${packageId}`,
+          });
+
+          while (!isTransportActionComplete && transportActionAttempts < maxTransportActionAttempts) {
             transportActionAttempts++;
 
             await supabase.from("cloud_action_logs").insert({
               user_id: user.id,
               action_id: action.id,
               level: "info",
-              message: `Checking transport status (attempt ${transportActionAttempts}): ${transportActionStatus}`,
+              message: `Checking environment status for transport completion (attempt ${transportActionAttempts})`,
             });
 
-            const transportActionStatusResp = await fetch(transportActionStatusUrl, {
+            const transportActionEnvironmentStatusResp = await fetch(transportActionEnvironmentStatusUrl, {
               method: "GET",
               headers: {
                 Accept: "application/json",
@@ -775,33 +827,55 @@ async function processActionsInBackground(
               },
             });
 
-            if (!transportActionStatusResp.ok) {
-              const errorText = await transportActionStatusResp.text();
-              throw new Error(`Failed to get transport status: ${errorText}`);
+            if (!transportActionEnvironmentStatusResp.ok) {
+              let errorDetails = `HTTP ${transportActionEnvironmentStatusResp.status}: ${transportActionEnvironmentStatusResp.statusText}`;
+              try {
+                const errorText = await transportActionEnvironmentStatusResp.text();
+                if (errorText) {
+                  errorDetails += ` - ${errorText}`;
+                }
+              } catch (parseError) {
+                errorDetails += ` - Unable to parse error response: ${parseError.message}`;
+              }
+              
+              await supabase.from("cloud_action_logs").insert({
+                user_id: user.id,
+                action_id: action.id,
+                level: "error",
+                message: `Failed to get environment status: ${errorDetails}`,
+              });
+              
+              throw new Error(`Failed to get environment status: ${errorDetails}`);
             }
 
-            const transportActionStatusData = await transportActionStatusResp.json();
-            transportActionStatus = transportActionStatusData.Status;
+            const transportActionEnvironmentData = await transportActionEnvironmentStatusResp.json();
+            const currentTransportPackageId = transportActionEnvironmentData.PackageId;
+            const transportActionEnvironmentStatus = transportActionEnvironmentData.Status;
 
             await supabase.from("cloud_action_logs").insert({
               user_id: user.id,
               action_id: action.id,
               level: "info",
-              message: `Transport status (attempt ${transportActionAttempts}): ${transportActionStatus}`,
+              message: `Environment status: ${transportActionEnvironmentStatus}, Current PackageId: ${currentTransportPackageId}, Target PackageId: ${packageId}`,
             });
 
-            if (transportActionStatus === "Failed") {
-              throw new Error(`Transport failed: ${transportActionStatusData.Error}`);
-            }
-
-            if (transportActionStatus !== "Completed") {
+            // Check if the transport is complete by verifying the package ID
+            if (currentTransportPackageId === packageId) {
+              isTransportActionComplete = true;
+              await supabase.from("cloud_action_logs").insert({
+                user_id: user.id,
+                action_id: action.id,
+                level: "info",
+                message: `Transport completed successfully - PackageId ${packageId} is now active on environment`,
+              });
+            } else {
               // Wait 30 seconds before next poll
               await new Promise(resolve => setTimeout(resolve, 30000));
             }
           }
 
-          if (transportActionStatus !== "Completed") {
-            throw new Error(`Timeout waiting for transport to complete. Current status: ${transportActionStatus}`);
+          if (!isTransportActionComplete) {
+            throw new Error(`Timeout waiting for transport to complete. PackageId ${packageId} was not found on the environment after ${transportActionAttempts} attempts.`);
           }
 
           await supabase.from("cloud_action_logs").insert({
