@@ -1002,18 +1002,18 @@ async function processActionsInBackground(
             throw new Error(`Failed to get environment details for backup: ${errorText}`);
           }
 
-          const environmentData = await environmentStatusResp.json();
-          const environmentId = environmentData.EnvironmentId;
+          const transportEnvironmentData = await environmentStatusResp.json();
+          const transportEnvironmentId = transportEnvironmentData.EnvironmentId;
 
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
             action_id: action.id,
             level: "info",
-            message: `Retrieved environment ID for backup: ${environmentId}`,
+            message: `Retrieved environment ID for backup: ${transportEnvironmentId}`,
           });
 
           // Create backup using V2 API (requires project_id and environment_id)
-          const backupUrl = `https://deploy.mendix.com/api/2/apps/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(environmentId)}/snapshots`;
+          const backupUrl = `https://deploy.mendix.com/api/2/apps/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(transportEnvironmentId)}/snapshots`;
           const backupResp = await fetch(backupUrl, {
             method: "POST",
             headers: {
@@ -1032,14 +1032,14 @@ async function processActionsInBackground(
             throw new Error(`Failed to create backup: ${errorText}`);
           }
 
-          const backupData = await backupResp.json();
-          const snapshotId = backupData.SnapshotId;
+          const transportBackupData = await backupResp.json();
+          const transportSnapshotId = transportBackupData.SnapshotId;
 
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
             action_id: action.id,
             level: "info",
-            message: `Backup initiated: SnapshotId ${snapshotId}`,
+            message: `Backup initiated: SnapshotId ${transportSnapshotId}`,
           });
 
           // Step 6: Poll for backup completion
@@ -1050,14 +1050,14 @@ async function processActionsInBackground(
             message: `Step 6: Polling for backup completion`,
           });
 
-          let backupAttempts = 0;
-          const maxBackupAttempts = 120; // 1 hour timeout
+          let transportBackupAttempts = 0;
+          const maxTransportBackupAttempts = 120; // 1 hour timeout
           let isBackupComplete = false;
 
-          while (!isBackupComplete && backupAttempts < maxBackupAttempts && new Date() < transportRetryUntil) {
-            backupAttempts++;
+          while (!isBackupComplete && transportBackupAttempts < maxTransportBackupAttempts && new Date() < transportRetryUntil) {
+            transportBackupAttempts++;
 
-            const snapshotStatusUrl = `https://deploy.mendix.com/api/2/apps/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(environmentId)}/snapshots/${encodeURIComponent(snapshotId)}`;
+            const snapshotStatusUrl = `https://deploy.mendix.com/api/2/apps/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(transportEnvironmentId)}/snapshots/${encodeURIComponent(transportSnapshotId)}`;
             const snapshotStatusResp = await fetch(snapshotStatusUrl, {
               method: "GET",
               headers: {
@@ -1075,7 +1075,7 @@ async function processActionsInBackground(
                 user_id: user.id,
                 action_id: action.id,
                 level: "info",
-                message: `Backup check (attempt ${backupAttempts}): Snapshot state = ${snapshotState}`,
+                message: `Backup check (attempt ${transportBackupAttempts}): Snapshot state = ${snapshotState}`,
               });
 
               if (snapshotState === "Completed") {
@@ -1084,13 +1084,13 @@ async function processActionsInBackground(
                   user_id: user.id,
                   action_id: action.id,
                   level: "info",
-                  message: `Backup completed successfully: SnapshotId ${snapshotId}`,
+                  message: `Backup completed successfully: SnapshotId ${transportSnapshotId}`,
                 });
                 break;
               }
 
               if (snapshotState === "Failed") {
-                throw new Error(`Backup creation failed for SnapshotId ${snapshotId}`);
+                throw new Error(`Backup creation failed for SnapshotId ${transportSnapshotId}`);
               }
             }
 
@@ -1099,7 +1099,7 @@ async function processActionsInBackground(
           }
 
           if (!isBackupComplete) {
-            throw new Error(`Timeout waiting for backup to complete. SnapshotId ${snapshotId} after ${backupAttempts} attempts.`);
+            throw new Error(`Timeout waiting for backup to complete. SnapshotId ${transportSnapshotId} after ${transportBackupAttempts} attempts.`);
           }
 
           // Step 7: Start target environment
