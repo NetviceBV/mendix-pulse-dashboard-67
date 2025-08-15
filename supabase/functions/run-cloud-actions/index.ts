@@ -295,7 +295,7 @@ serve(async (req) => {
             // Step 2: Poll until stopped (with timeout based on retry_until)
             const restartRetryUntil = action.retry_until ? new Date(action.retry_until) : new Date(Date.now() + 30 * 60 * 1000); // Default 30 minutes
             
-            const stopSuccess = await pollEnvironmentStatus(
+            const restartStopSuccess = await pollEnvironmentStatus(
               action.credential_id,
               action.app_id,
               action.environment_name, // Using environment_name as environment_id
@@ -304,7 +304,7 @@ serve(async (req) => {
               jwt
             );
             
-            if (!stopSuccess) {
+            if (!restartStopSuccess) {
               throw new Error("Environment failed to stop within timeout period");
             }
             
@@ -556,7 +556,7 @@ serve(async (req) => {
             await callMendix("stop");
 
             // Step 6: Poll until stopped
-            const stopSuccess = await pollEnvironmentStatus(
+            const deployStopSuccess = await pollEnvironmentStatus(
               action.credential_id,
               action.app_id,
               action.environment_name,
@@ -565,7 +565,7 @@ serve(async (req) => {
               jwt
             );
 
-            if (!stopSuccess) {
+            if (!deployStopSuccess) {
               throw new Error("Environment failed to stop within timeout period");
             }
 
