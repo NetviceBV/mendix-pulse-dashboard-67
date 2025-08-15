@@ -59,6 +59,8 @@ verify_jwt = false
 import_map = "./import_map.json"
 request_timeout_ms = 900000
 
+[functions.run-cloud-actions-backup]
+
 [functions.get-mendix-branches]
 
 [functions.get-mendix-packages]
