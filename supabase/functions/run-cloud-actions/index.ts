@@ -500,6 +500,14 @@ async function processActionsInBackground(
 
           // Step 2: Transport the package to the target environment
           const transportUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}/packages/${newPackageId}/transport`;
+          
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Initiating transport to ${transportUrl}`,
+          });
+
           const transportResp = await fetch(transportUrl, {
             method: "POST",
             headers: {
@@ -513,9 +521,32 @@ async function processActionsInBackground(
             }),
           });
 
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Transport response status: ${transportResp.status} ${transportResp.statusText}`,
+          });
+
           if (!transportResp.ok) {
-            const errorText = await transportResp.text();
-            throw new Error(`Failed to transport package: ${errorText}`);
+            let errorDetails = `HTTP ${transportResp.status}: ${transportResp.statusText}`;
+            try {
+              const errorText = await transportResp.text();
+              if (errorText) {
+                errorDetails += ` - ${errorText}`;
+              }
+            } catch (parseError) {
+              errorDetails += ` - Unable to parse error response: ${parseError.message}`;
+            }
+            
+            await supabase.from("cloud_action_logs").insert({
+              user_id: user.id,
+              action_id: action.id,
+              level: "error",
+              message: `Transport failed: ${errorDetails}`,
+            });
+            
+            throw new Error(`Failed to transport package: ${errorDetails}`);
           }
 
           await supabase.from("cloud_action_logs").insert({
