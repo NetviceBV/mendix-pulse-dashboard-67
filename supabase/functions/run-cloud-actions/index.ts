@@ -147,6 +147,21 @@ async function processActionsInBackground(
       if (credError || !creds) throw new Error("Credentials not found");
       const credential = creds as MendixCredential;
 
+      // Get project_id from mendix_apps table for v4 API calls
+      const { data: appData, error: appError } = await supabase
+        .from("mendix_apps")
+        .select("project_id")
+        .eq("app_id", action.app_id)
+        .eq("credential_id", action.credential_id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (appError || !appData?.project_id) {
+        throw new Error(`Failed to get project_id for app ${action.app_id}: ${appError?.message}`);
+      }
+
+      const projectId = appData.project_id;
+
       // Helper to call Mendix Deploy API
       const callMendix = async (method: "start" | "stop") => {
         const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(action.environment_name)}/${method}`;
@@ -559,7 +574,7 @@ async function processActionsInBackground(
           // Step 3: Poll for transport completion by checking environment status
           let transportAttempts = 0;
           const maxTransportAttempts = 60; // 30 minutes timeout
-          let environmentStatusUrl = `https://deploy.mendix.com/api/4/apps/${encodeURIComponent(action.project_id)}/environments/${encodeURIComponent(action.environment_name)}`;
+          let environmentStatusUrl = `https://deploy.mendix.com/api/4/apps/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(action.environment_name)}`;
           let isTransportComplete = false;
 
           await supabase.from("cloud_action_logs").insert({
@@ -798,7 +813,7 @@ async function processActionsInBackground(
           // Poll for transport completion by checking environment status
           let transportActionAttempts = 0;
           const maxTransportActionAttempts = 60; // 30 minutes timeout
-          let transportActionEnvironmentStatusUrl = `https://deploy.mendix.com/api/4/apps/${encodeURIComponent(action.project_id)}/environments/${encodeURIComponent(action.environment_name)}`;
+          let transportActionEnvironmentStatusUrl = `https://deploy.mendix.com/api/4/apps/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(action.environment_name)}`;
           let isTransportActionComplete = false;
 
           await supabase.from("cloud_action_logs").insert({
