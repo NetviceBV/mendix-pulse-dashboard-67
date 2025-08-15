@@ -644,7 +644,7 @@ async function processActionsInBackground(
             .select("environment_id")
             .eq("app_id", action.app_id)
             .eq("environment_name", normalizedEnvironmentName)
-            .eq("user_id", action.user_id)
+            .eq("user_id", user.id)
             .single();
 
           if (envError || !environmentData?.environment_id) {
