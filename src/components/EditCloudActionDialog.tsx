@@ -81,10 +81,25 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
     package_id: z.string().optional(),
     branch: z.string().optional(),
     revision: z.string().optional(),
-    version: z.string().optional(),
+    versionMajor: z.number().min(0).optional(),
+    versionMinor: z.number().min(0).optional(),
+    versionPatch: z.number().min(0).optional(),
     description: z.string().optional(),
     comment: z.string().optional(),
   });
+
+  // Parse existing version string into major, minor, patch
+  const parseVersion = (versionString: string) => {
+    if (!versionString) return { major: undefined, minor: undefined, patch: undefined };
+    const parts = versionString.split('.').map(p => parseInt(p, 10));
+    return {
+      major: parts[0] || undefined,
+      minor: parts[1] || undefined,
+      patch: parts[2] || undefined,
+    };
+  };
+
+  const parsedVersion = parseVersion(action.payload?.version || "");
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -99,7 +114,9 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
       package_id: action.payload?.package_id || "",
       branch: action.payload?.branch || "",
       revision: action.payload?.revision || "",
-      version: action.payload?.version || "",
+      versionMajor: parsedVersion.major,
+      versionMinor: parsedVersion.minor,
+      versionPatch: parsedVersion.patch,
       description: action.payload?.description || "",
       comment: action.payload?.comment || "",
     },
@@ -110,6 +127,19 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
       loadCredentials();
       loadApps();
       loadEnvironments();
+      
+      // If this is a deploy action, load branches and revisions immediately
+      if (action.action_type === "deploy" && action.credential_id && action.app_id) {
+        loadBranches();
+        if (action.payload?.branch) {
+          loadRevisions();
+        }
+      }
+      
+      // If this is a transport action, load packages immediately
+      if (action.action_type === "transport" && action.credential_id && action.app_id) {
+        loadPackages();
+      }
     }
   }, [open]);
 
@@ -260,8 +290,11 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
       if (values.revision && values.action_type === "deploy") {
         payload.revision = values.revision;
       }
-      if (values.version && values.action_type === "deploy") {
-        payload.version = values.version;
+      if (values.action_type === "deploy" && (values.versionMajor !== undefined || values.versionMinor !== undefined || values.versionPatch !== undefined)) {
+        const major = values.versionMajor || 0;
+        const minor = values.versionMinor || 0;
+        const patch = values.versionPatch || 0;
+        payload.version = `${major}.${minor}.${patch}`;
       }
       if (values.description && values.action_type === "deploy") {
         payload.description = values.description;
@@ -555,22 +588,65 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="version"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Version</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="e.g., 1.0.0"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <div className="grid grid-cols-3 gap-2">
+                  <FormField
+                    control={form.control}
+                    name="versionMajor"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Major</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="0"
+                            placeholder="1"
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="versionMinor"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Minor</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="versionPatch"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Patch</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
 
                 <FormField
                   control={form.control}

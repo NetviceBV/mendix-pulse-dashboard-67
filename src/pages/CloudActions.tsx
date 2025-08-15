@@ -82,7 +82,9 @@ const FormSchema = z
       branchName: z.string().optional(),
       revisionId: z.string().optional(),
       revision: z.string().optional(),
-      version: z.string().optional(),
+      versionMajor: z.number().min(0).optional(),
+      versionMinor: z.number().min(0).optional(),
+      versionPatch: z.number().min(0).optional(),
       description: z.string().optional(),
       comment: z.string().optional(),
       actionType: ActionType,
@@ -151,7 +153,9 @@ const form = useForm<FormValues>({
       branchName: "",
       revisionId: "",
       revision: "",
-      version: "",
+      versionMajor: undefined,
+      versionMinor: undefined,
+      versionPatch: undefined,
       description: "",
       comment: "",
       actionType: "start",
@@ -409,7 +413,12 @@ const form = useForm<FormValues>({
       if (values.actionType === "deploy") {
         payload.branchName = values.branchName;
         payload.revisionId = values.revisionId;
-        payload.version = values.version;
+        if (values.versionMajor !== undefined || values.versionMinor !== undefined || values.versionPatch !== undefined) {
+          const major = values.versionMajor || 0;
+          const minor = values.versionMinor || 0;
+          const patch = values.versionPatch || 0;
+          payload.version = `${major}.${minor}.${patch}`;
+        }
         payload.description = values.description;
         payload.comment = values.comment;
         const selectedRevision = revisions.find(r => r.id === values.revisionId);
@@ -873,23 +882,65 @@ const form = useForm<FormValues>({
                     )}
                    />
                    
-                   <FormField
-                     control={form.control}
-                     name="version"
-                     render={({ field }) => (
-                       <FormItem>
-                         <FormLabel>Version (optional)</FormLabel>
-                         <FormControl>
-                           <Input 
-                             placeholder="e.g., 1.0.0 (auto-generated if empty)"
-                             value={field.value || ""}
-                             onChange={field.onChange}
-                           />
-                         </FormControl>
-                         <FormMessage />
-                       </FormItem>
-                     )}
-                   />
+                   <div className="grid grid-cols-3 gap-2">
+                     <FormField
+                       control={form.control}
+                       name="versionMajor"
+                       render={({ field }) => (
+                         <FormItem>
+                           <FormLabel>Major</FormLabel>
+                           <FormControl>
+                             <Input
+                               type="number"
+                               min="0"
+                               placeholder="1"
+                               {...field}
+                               onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                             />
+                           </FormControl>
+                           <FormMessage />
+                         </FormItem>
+                       )}
+                     />
+                     <FormField
+                       control={form.control}
+                       name="versionMinor"
+                       render={({ field }) => (
+                         <FormItem>
+                           <FormLabel>Minor</FormLabel>
+                           <FormControl>
+                             <Input
+                               type="number"
+                               min="0"
+                               placeholder="0"
+                               {...field}
+                               onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                             />
+                           </FormControl>
+                           <FormMessage />
+                         </FormItem>
+                       )}
+                     />
+                     <FormField
+                       control={form.control}
+                       name="versionPatch"
+                       render={({ field }) => (
+                         <FormItem>
+                           <FormLabel>Patch</FormLabel>
+                           <FormControl>
+                             <Input
+                               type="number"
+                               min="0"
+                               placeholder="0"
+                               {...field}
+                               onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                             />
+                           </FormControl>
+                           <FormMessage />
+                         </FormItem>
+                       )}
+                     />
+                   </div>
                    
                    <FormField
                      control={form.control}
