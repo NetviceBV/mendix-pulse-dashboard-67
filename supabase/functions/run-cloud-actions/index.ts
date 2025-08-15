@@ -266,7 +266,7 @@ serve(async (req) => {
             
             // Poll to verify environment started
             const startRetryUntil = action.retry_until ? new Date(action.retry_until) : new Date(Date.now() + 30 * 60 * 1000);
-            const startSuccess = await pollEnvironmentStatus(
+            const startActionSuccess = await pollEnvironmentStatus(
               action.credential_id,
               action.app_id,
               action.environment_name,
@@ -275,7 +275,7 @@ serve(async (req) => {
               jwt
             );
             
-            if (!startSuccess) {
+            if (!startActionSuccess) {
               throw new Error("Environment failed to start within timeout period");
             }
             break;
@@ -326,7 +326,7 @@ serve(async (req) => {
             });
             
             // Poll to verify environment started
-            const startSuccess = await pollEnvironmentStatus(
+            const restartActionSuccess = await pollEnvironmentStatus(
               action.credential_id,
               action.app_id,
               action.environment_name,
@@ -335,7 +335,7 @@ serve(async (req) => {
               jwt
             );
             
-            if (!startSuccess) {
+            if (!restartActionSuccess) {
               throw new Error("Environment failed to start within timeout period");
             }
             break;
@@ -913,7 +913,7 @@ serve(async (req) => {
             
             // Poll to verify environment started
             const transportStartRetryUntil = action.retry_until ? new Date(action.retry_until) : new Date(Date.now() + 30 * 60 * 1000);
-            const startSuccess = await pollEnvironmentStatus(
+            const transportActionSuccess = await pollEnvironmentStatus(
               action.credential_id,
               action.app_id,
               action.environment_name,
@@ -922,7 +922,7 @@ serve(async (req) => {
               jwt
             );
             
-            if (!startSuccess) {
+            if (!transportActionSuccess) {
               throw new Error("Target environment failed to start within timeout period");
             }
 
