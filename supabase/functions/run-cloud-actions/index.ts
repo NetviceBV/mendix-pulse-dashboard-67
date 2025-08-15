@@ -929,7 +929,7 @@ async function processActionsInBackground(
           });
 
           // Get environment ID for backup creation
-          const environmentStatusUrl = `https://deploy.mendix.com/api/4/apps/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(normalizedEnvironmentName)}`;
+          const environmentStatusUrl = `https://deploy.mendix.com/api/4/apps/${encodeURIComponent(targetProjectId)}/environments/${encodeURIComponent(normalizedEnvironmentName)}`;
           const environmentStatusResp = await fetch(environmentStatusUrl, {
             method: "GET",
             headers: {
@@ -955,7 +955,7 @@ async function processActionsInBackground(
           });
 
           // Create backup using V2 API (requires project_id and environment_id)
-          const transportBackupUrl = `https://deploy.mendix.com/api/2/apps/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(transportEnvironmentId)}/snapshots`;
+          const transportBackupUrl = `https://deploy.mendix.com/api/2/apps/${encodeURIComponent(targetProjectId)}/environments/${encodeURIComponent(transportEnvironmentId)}/snapshots`;
           const transportBackupResp = await fetch(transportBackupUrl, {
             method: "POST",
             headers: {
