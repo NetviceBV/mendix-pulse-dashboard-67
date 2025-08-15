@@ -262,7 +262,7 @@ const form = useForm<FormValues>({
 
   useEffect(() => {
     (async () => {
-      if (!appId || !credentialId) { setBranches([]); return; }
+      if (!open || !appId || !credentialId) { setBranches([]); return; }
       setLoadingBranches(true);
       try {
         const { data, error } = await supabase.functions.invoke('get-mendix-branches', {
@@ -278,14 +278,14 @@ const form = useForm<FormValues>({
         setLoadingBranches(false);
       }
     })();
-  }, [appId, credentialId]);
+  }, [open, appId, credentialId]);
 
   const branchName = form.watch("branchName");
 
   // Load revisions when branch changes
   useEffect(() => {
     (async () => {
-      if (!appId || !credentialId || !branchName) { setRevisions([]); return; }
+      if (!open || !appId || !credentialId || !branchName) { setRevisions([]); return; }
       setLoadingRevisions(true);
       try {
         const { data, error } = await supabase.functions.invoke('get-mendix-commits', {
@@ -301,12 +301,12 @@ const form = useForm<FormValues>({
         setLoadingRevisions(false);
       }
     })();
-  }, [appId, credentialId, branchName]);
+  }, [open, appId, credentialId, branchName]);
 
   // Load packages when branch changes (keep for future use)
   useEffect(() => {
     (async () => {
-      if (!appId || !credentialId || !branchName) { setPackages([]); return; }
+      if (!open || !appId || !credentialId || !branchName) { setPackages([]); return; }
       setLoadingPackages(true);
       try {
         const { data, error } = await supabase.functions.invoke('get-mendix-packages', {
@@ -322,7 +322,7 @@ const form = useForm<FormValues>({
         setLoadingPackages(false);
       }
     })();
-  }, [appId, credentialId, branchName]);
+  }, [open, appId, credentialId, branchName]);
 
   const filteredRevisions = useMemo(() => {
     return branchName ? revisions : [];

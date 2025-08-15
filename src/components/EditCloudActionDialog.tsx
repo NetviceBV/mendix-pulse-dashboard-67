@@ -146,30 +146,36 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
   const selectedBranch = form.watch("branch");
 
   useEffect(() => {
-    if (selectedCredentialId && selectedAppId && (selectedActionType === "deploy")) {
+    if (open && selectedCredentialId && selectedAppId && (selectedActionType === "deploy")) {
       loadBranches();
+    } else if (!open) {
+      setBranches([]);
     }
-  }, [selectedCredentialId, selectedAppId, selectedActionType]);
+  }, [open, selectedCredentialId, selectedAppId, selectedActionType]);
 
   useEffect(() => {
-    if (selectedCredentialId && selectedAppId && selectedBranch && (selectedActionType === "deploy")) {
+    if (open && selectedCredentialId && selectedAppId && selectedBranch && (selectedActionType === "deploy")) {
       loadRevisions();
+    } else if (!open) {
+      setRevisions([]);
     }
-  }, [selectedCredentialId, selectedAppId, selectedBranch, selectedActionType]);
+  }, [open, selectedCredentialId, selectedAppId, selectedBranch, selectedActionType]);
 
   useEffect(() => {
-    if (selectedCredentialId && selectedAppId && (selectedActionType === "transport")) {
+    if (open && selectedCredentialId && selectedAppId && (selectedActionType === "transport")) {
       loadPackages();
+    } else if (!open) {
+      setPackages([]);
     }
-  }, [selectedCredentialId, selectedAppId, selectedActionType]);
+  }, [open, selectedCredentialId, selectedAppId, selectedActionType]);
 
   const loadBranches = async () => {
     setLoadingBranches(true);
     try {
       const { data, error } = await supabase.functions.invoke("get-mendix-branches", {
         body: { 
-          credential_id: selectedCredentialId,
-          app_id: selectedAppId
+          credentialId: selectedCredentialId,
+          appId: selectedAppId
         }
       });
       
@@ -192,9 +198,9 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
     try {
       const { data, error } = await supabase.functions.invoke("get-mendix-commits", {
         body: { 
-          credential_id: selectedCredentialId,
-          app_id: selectedAppId,
-          branch: selectedBranch
+          credentialId: selectedCredentialId,
+          appId: selectedAppId,
+          branchName: selectedBranch
         }
       });
       
@@ -217,8 +223,9 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
     try {
       const { data, error } = await supabase.functions.invoke("get-mendix-packages", {
         body: { 
-          credential_id: selectedCredentialId,
-          app_id: selectedAppId
+          credentialId: selectedCredentialId,
+          appId: selectedAppId,
+          branchName: "trunk" // Default branch for packages
         }
       });
       
