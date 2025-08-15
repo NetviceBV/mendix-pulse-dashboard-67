@@ -804,6 +804,25 @@ async function processActionsInBackground(
           const transportRetryUntil = action.retry_until ? new Date(action.retry_until) : new Date(Date.now() + 90 * 60 * 1000); // Default 90 minutes
           const normalizedSourceEnvironmentName = normalizeEnvironmentName(sourceEnvironmentName);
 
+          // Get environment ID and project ID for target environment from database
+          const { data: transportEnvironmentData, error: transportEnvError } = await supabase
+            .from("mendix_environments")
+            .select(`
+              environment_id,
+              mendix_apps!inner(project_id)
+            `)
+            .eq("app_id", action.app_id)
+            .eq("environment_name", normalizedEnvironmentName)
+            .eq("user_id", user.id)
+            .single();
+
+          if (transportEnvError || !transportEnvironmentData?.environment_id || !transportEnvironmentData?.mendix_apps?.project_id) {
+            throw new Error(`Failed to find environment_id or project_id for app ${action.app_id}, environment ${normalizedEnvironmentName}. Error: ${transportEnvError?.message || 'Missing data'}`);
+          }
+
+          const transportEnvironmentId = transportEnvironmentData.environment_id;
+          const transportTargetProjectId = transportEnvironmentData.mendix_apps.project_id;
+
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
             action_id: action.id,
@@ -928,30 +947,12 @@ async function processActionsInBackground(
             message: `Step 4: Creating backup of target environment ${normalizedEnvironmentName}`,
           });
 
-          // Get environment ID for backup creation
-          const environmentStatusUrl = `https://deploy.mendix.com/api/4/apps/${encodeURIComponent(targetProjectId)}/environments/${encodeURIComponent(normalizedEnvironmentName)}`;
-          const environmentStatusResp = await fetch(environmentStatusUrl, {
-            method: "GET",
-            headers: {
-              Accept: "application/json",
-              "Mendix-Username": credential.username,
-              "Mendix-ApiKey": credential.api_key || credential.pat || "",
-            },
-          });
-
-          if (!environmentStatusResp.ok) {
-            const errorText = await environmentStatusResp.text();
-            throw new Error(`Failed to get environment details for backup: ${errorText}`);
-          }
-
-          const transportEnvironmentData = await environmentStatusResp.json();
-          const transportEnvironmentId = transportEnvironmentData.EnvironmentId;
-
+          // Use environment ID from database (already retrieved at lines 642-658)
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
             action_id: action.id,
             level: "info",
-            message: `Retrieved environment ID for backup: ${transportEnvironmentId}`,
+            message: `Using environment ID from database for backup: ${environmentId}`,
           });
 
           // Create backup using V2 API (requires project_id and environment_id)
@@ -999,7 +1000,7 @@ async function processActionsInBackground(
           while (!isBackupComplete && transportBackupAttempts < maxTransportBackupAttempts && new Date() < transportRetryUntil) {
             transportBackupAttempts++;
 
-            const snapshotStatusUrl = `https://deploy.mendix.com/api/2/apps/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(transportEnvironmentId)}/snapshots/${encodeURIComponent(transportSnapshotId)}`;
+            const snapshotStatusUrl = `https://deploy.mendix.com/api/2/apps/${encodeURIComponent(transportTargetProjectId)}/environments/${encodeURIComponent(transportEnvironmentId)}/snapshots/${encodeURIComponent(transportSnapshotId)}`;
             const snapshotStatusResp = await fetch(snapshotStatusUrl, {
               method: "GET",
               headers: {
