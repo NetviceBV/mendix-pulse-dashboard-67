@@ -637,15 +637,30 @@ async function processActionsInBackground(
             message: `Environment stopped successfully, transport completed for package: ${newPackageId}`,
           });
 
-          // Step 4: Create a backup of the environment
-          const backupUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(normalizedEnvironmentName)}/backups`;
+          // Step 4: Get environment ID and create a backup
+          // First fetch the environment_id from our database
+          const { data: environmentData, error: envError } = await supabase
+            .from("mendix_environments")
+            .select("environment_id")
+            .eq("app_id", action.app_id)
+            .eq("environment_name", normalizedEnvironmentName)
+            .eq("user_id", action.user_id)
+            .single();
+
+          if (envError || !environmentData?.environment_id) {
+            throw new Error(`Failed to find environment_id for app ${action.app_id}, environment ${normalizedEnvironmentName}`);
+          }
+
+          const environmentId = environmentData.environment_id;
+          const backupUrl = `https://deploy.mendix.com/api/v2/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(environmentId)}/snapshots`;
           
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
             action_id: action.id,
             level: "info",
-            message: `Creating backup on environment: ${normalizedEnvironmentName} (URL: ${backupUrl})`,
+            message: `Creating backup on environment: ${normalizedEnvironmentName} (ID: ${environmentId})`,
           });
+          
           const backupResp = await fetch(backupUrl, {
             method: "POST",
             headers: {
@@ -655,7 +670,7 @@ async function processActionsInBackground(
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              Description: `Backup created by PintosoftOps before deploy on ${new Date().toISOString()}`,
+              comment: `Backup created by PintosoftOps before deploy on ${new Date().toISOString()}`,
             }),
           });
 
@@ -665,7 +680,7 @@ async function processActionsInBackground(
           }
 
           const backupData = await backupResp.json();
-          const backupId = backupData.Id;
+          const backupId = backupData.snapshot_id;
 
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
@@ -675,12 +690,12 @@ async function processActionsInBackground(
           });
 
           // Step 5: Poll for backup completion
-          let backupStatus = "Creating";
+          let backupStatus = "queued";
           let backupAttempts = 0;
-          const maxBackupAttempts = 60; // 30 minutes timeout (30 * 60 * 1000) / 30 seconds polling interval
-          let backupStatusUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(normalizedEnvironmentName)}/backups/${backupId}`;
+          const maxBackupAttempts = 60; // 30 minutes timeout
+          let backupStatusUrl = `https://deploy.mendix.com/api/v2/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(environmentId)}/snapshots/${backupId}`;
 
-          while (backupStatus !== "Available" && backupAttempts < maxBackupAttempts) {
+          while (backupStatus !== "completed" && backupAttempts < maxBackupAttempts) {
             backupAttempts++;
 
             await supabase.from("cloud_action_logs").insert({
@@ -705,7 +720,7 @@ async function processActionsInBackground(
             }
 
             const backupStatusData = await backupStatusResp.json();
-            backupStatus = backupStatusData.Status;
+            backupStatus = backupStatusData.state;
 
             await supabase.from("cloud_action_logs").insert({
               user_id: user.id,
@@ -714,17 +729,17 @@ async function processActionsInBackground(
               message: `Backup status (attempt ${backupAttempts}): ${backupStatus}`,
             });
 
-            if (backupStatus === "Failed") {
-              throw new Error(`Backup failed: ${backupStatusData.Error}`);
+            if (backupStatus === "failed") {
+              throw new Error(`Backup failed: ${backupStatusData.status_message || "Unknown error"}`);
             }
 
-            if (backupStatus !== "Available") {
+            if (backupStatus !== "completed") {
               // Wait 30 seconds before next poll
               await new Promise(resolve => setTimeout(resolve, 30000));
             }
           }
 
-          if (backupStatus !== "Available") {
+          if (backupStatus !== "completed") {
             throw new Error(`Timeout waiting for backup to complete. Current status: ${backupStatus}`);
           }
 
