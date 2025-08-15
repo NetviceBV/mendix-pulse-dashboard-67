@@ -637,22 +637,26 @@ async function processActionsInBackground(
             message: `Environment stopped successfully, transport completed for package: ${newPackageId}`,
           });
 
-          // Step 4: Get environment ID and create a backup
-          // First fetch the environment_id from our database
+          // Step 4: Get environment ID and project ID, then create a backup
+          // First fetch the environment_id and project_id from our database
           const { data: environmentData, error: envError } = await supabase
             .from("mendix_environments")
-            .select("environment_id")
+            .select(`
+              environment_id,
+              mendix_apps!inner(project_id)
+            `)
             .eq("app_id", action.app_id)
             .eq("environment_name", normalizedEnvironmentName)
             .eq("user_id", user.id)
             .single();
 
-          if (envError || !environmentData?.environment_id) {
-            throw new Error(`Failed to find environment_id for app ${action.app_id}, environment ${normalizedEnvironmentName}`);
+          if (envError || !environmentData?.environment_id || !environmentData?.mendix_apps?.project_id) {
+            throw new Error(`Failed to find environment_id or project_id for app ${action.app_id}, environment ${normalizedEnvironmentName}. Error: ${envError?.message || 'Missing data'}`);
           }
 
           const environmentId = environmentData.environment_id;
-          const backupUrl = `https://deploy.mendix.com/api/v2/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(environmentId)}/snapshots`;
+          const projectId = environmentData.mendix_apps.project_id;
+          const backupUrl = `https://deploy.mendix.com/api/v2/apps/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(environmentId)}/snapshots`;
           
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
@@ -693,7 +697,7 @@ async function processActionsInBackground(
           let backupStatus = "queued";
           let backupAttempts = 0;
           const maxBackupAttempts = 60; // 30 minutes timeout
-          let backupStatusUrl = `https://deploy.mendix.com/api/v2/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(environmentId)}/snapshots/${backupId}`;
+          let backupStatusUrl = `https://deploy.mendix.com/api/v2/apps/${encodeURIComponent(projectId)}/environments/${encodeURIComponent(environmentId)}/snapshots/${backupId}`;
 
           while (backupStatus !== "completed" && backupAttempts < maxBackupAttempts) {
             backupAttempts++;
