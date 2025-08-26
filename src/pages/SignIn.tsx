@@ -13,7 +13,7 @@ interface SignInProps {
 }
 
 const SignIn = ({ onAuthSuccess }: SignInProps) => {
-  const [isSignUpMode, setIsSignUpMode] = useState(false);
+  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
   const [credentials, setCredentials] = useState({
     email: "",
     password: ""
@@ -24,6 +24,42 @@ const SignIn = ({ onAuthSuccess }: SignInProps) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (mode === 'forgot') {
+      if (!credentials.email) {
+        toast({
+          title: "Email required",
+          description: "Please enter your email address",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const { error } = await supabase.auth.resetPasswordForEmail(credentials.email, {
+          redirectTo: `${window.location.origin}/`
+        });
+
+        if (error) throw error;
+
+        toast({
+          title: "Password reset email sent",
+          description: "Check your email for a password reset link"
+        });
+        setMode('signin');
+        setCredentials({ email: credentials.email, password: "" });
+      } catch (error: any) {
+        toast({
+          title: "Password reset failed",
+          description: error.message,
+          variant: "destructive"
+        });
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (!credentials.email || !credentials.password) {
       toast({
         title: "Missing credentials",
@@ -36,7 +72,7 @@ const SignIn = ({ onAuthSuccess }: SignInProps) => {
     setLoading(true);
     
     try {
-      if (isSignUpMode) {
+      if (mode === 'signup') {
         const { data, error } = await supabase.auth.signUp({
           email: credentials.email,
           password: credentials.password,
@@ -76,9 +112,18 @@ const SignIn = ({ onAuthSuccess }: SignInProps) => {
         }
       }
     } catch (error: any) {
+      let errorMessage = error.message;
+      
+      // Provide more helpful error messages
+      if (error.message.includes('Invalid login credentials')) {
+        errorMessage = "Invalid email or password. Please check your credentials and try again.";
+      } else if (error.message.includes('Email not confirmed')) {
+        errorMessage = "Please check your email and click the verification link before signing in.";
+      }
+
       toast({
-        title: isSignUpMode ? "Sign up failed" : "Sign in failed",
-        description: error.message,
+        title: mode === 'signup' ? "Sign up failed" : "Sign in failed",
+        description: errorMessage,
         variant: "destructive"
       });
     } finally {
@@ -94,10 +139,12 @@ const SignIn = ({ onAuthSuccess }: SignInProps) => {
             <Shield className="w-6 h-6 text-primary-foreground" />
           </div>
           <CardTitle className="text-2xl font-bold">
-            {isSignUpMode ? "Sign Up" : "Sign In"}
+            {mode === 'signup' ? "Sign Up" : mode === 'forgot' ? "Reset Password" : "Sign In"}
           </CardTitle>
           <CardDescription>
-            {isSignUpMode ? "Create an account to manage your Mendix applications" : "Sign in to manage your Mendix applications"}
+            {mode === 'signup' ? "Create an account to manage your Mendix applications" : 
+             mode === 'forgot' ? "Enter your email to receive a password reset link" : 
+             "Sign in to manage your Mendix applications"}
           </CardDescription>
         </CardHeader>
         
@@ -121,40 +168,67 @@ const SignIn = ({ onAuthSuccess }: SignInProps) => {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm font-medium">
-                Password
-              </Label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="Enter your password"
-                  value={credentials.password}
-                  onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
-                  className="pl-10"
-                  required
-                />
+            {mode !== 'forgot' && (
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-sm font-medium">
+                  Password
+                </Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="Enter your password"
+                    value={credentials.password}
+                    onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
+                    className="pl-10"
+                    required
+                  />
+                </div>
+                {mode === 'signin' && (
+                  <div className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => setMode('forgot')}
+                      className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
               </div>
-            </div>
+            )}
 
             <Button
               type="submit"
               className="w-full bg-gradient-primary hover:opacity-90 transition-opacity shadow-glow"
               disabled={loading}
             >
-              {loading ? (isSignUpMode ? "Creating account..." : "Signing in...") : (isSignUpMode ? "Sign Up" : "Sign In")}
+              {loading ? 
+                (mode === 'signup' ? "Creating account..." : 
+                 mode === 'forgot' ? "Sending reset email..." : "Signing in...") : 
+                (mode === 'signup' ? "Sign Up" : 
+                 mode === 'forgot' ? "Send Reset Email" : "Sign In")}
             </Button>
 
-            <div className="text-center">
-              <button
-                type="button"
-                onClick={() => setIsSignUpMode(!isSignUpMode)}
-                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {isSignUpMode ? "Already have an account? Sign in" : "Don't have an account? Sign up"}
-              </button>
+            <div className="text-center space-y-2">
+              {mode === 'forgot' ? (
+                <button
+                  type="button"
+                  onClick={() => setMode('signin')}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Back to sign in
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setMode(mode === 'signin' ? 'signup' : 'signin')}
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {mode === 'signin' ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
+                </button>
+              )}
             </div>
           </form>
         </CardContent>
