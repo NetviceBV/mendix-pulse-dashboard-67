@@ -127,7 +127,7 @@ serve(async (req) => {
         // Get deployment info from API if available
         let deploymentInfo = null;
         try {
-          const deployUrl = `https://deploy.mendix.com/api/1/apps/${app.AppId}/packages`;
+          const deployUrl = `https://deploy.mendix.com/api/1/apps/${app.id}/packages`;
           const deployResponse = await fetch(deployUrl, {
             headers: {
               'Accept': 'application/json',
@@ -147,16 +147,16 @@ serve(async (req) => {
             }
           }
         } catch (deployError) {
-          console.log(`Could not fetch deployment info for ${app.Name}:`, deployError.message);
+          console.log(`Could not fetch deployment info for ${app.name}:`, deployError.message);
         }
 
         appResults.push({
           user_id: user.id,
           credential_id: credentialId,
-          app_name: app.Name,
-          app_url: app.Url,
-          project_id: app.ProjectId,
-          app_id: app.AppId,
+          app_name: app.name,
+          app_url: `https://${app.subdomain}.mendixcloud.com`,
+          project_id: app.id,
+          app_id: app.id,
           status: 'healthy', // Will be determined from environments
           environment: 'production', // Will be determined from environments
           version: deploymentInfo?.version || '1.0.0',
@@ -185,14 +185,14 @@ serve(async (req) => {
       for (const app of apps) {
         try {
           // Use V4 API exclusively for environments data
-          const envResponse = await fetch(`https://cloud.home.mendix.com/api/v4/apps/${app.ProjectId}/environments`, {
+          const envResponse = await fetch(`https://cloud.home.mendix.com/api/v4/apps/${app.id}/environments`, {
             method: 'GET',
             headers
           });
 
           if (envResponse.ok) {
             const environments = await envResponse.json();
-            console.log(`Found ${environments.length} environments for app ${app.Name}`);
+            console.log(`Found ${environments.length} environments for app ${app.name}`);
             console.log('Environment structure sample:', JSON.stringify(environments[0], null, 2));
             
             for (const env of environments) {
@@ -220,7 +220,7 @@ serve(async (req) => {
               environmentResults.push({
                 user_id: user.id,
                 credential_id: credentialId,
-                app_id: app.AppId,
+                app_id: app.id,
                 environment_id: env.environmentId || env.EnvironmentId || env.id || env.Id,
                 environment_name: envName,
                 status: (env.status || env.Status || 'unknown').toLowerCase(),
@@ -230,10 +230,10 @@ serve(async (req) => {
               });
             }
           } else {
-            console.log(`No environments found for app ${app.Name}: ${envResponse.status}`);
+            console.log(`No environments found for app ${app.name}: ${envResponse.status}`);
           }
         } catch (envError) {
-          console.error(`Error fetching environments for app ${app.Name}:`, envError);
+          console.error(`Error fetching environments for app ${app.name}:`, envError);
         }
       }
 
