@@ -260,17 +260,65 @@ serve(async (req) => {
         }
       }
 
-      // Store environment results
+      // Store environment results with detailed logging and validation
       if (environmentResults.length > 0) {
-        const { error: envInsertError } = await supabase
-          .from('mendix_environments')
-          .insert(environmentResults);
+        console.log(`Attempting to store ${environmentResults.length} environments`);
+        console.log('Environment data being inserted:', JSON.stringify(environmentResults, null, 2));
+        
+        // Validate each environment record before insertion
+        const validatedResults = environmentResults.map((env, index) => {
+          console.log(`Validating environment ${index + 1}:`, {
+            user_id: env.user_id,
+            credential_id: env.credential_id,
+            app_id: env.app_id,
+            environment_name: env.environment_name,
+            has_user_id: !!env.user_id,
+            has_credential_id: !!env.credential_id,
+            has_app_id: !!env.app_id,
+            has_environment_name: !!env.environment_name
+          });
+          
+          // Ensure required fields are present and properly formatted
+          return {
+            user_id: env.user_id,
+            credential_id: env.credential_id,
+            app_id: env.app_id,
+            environment_id: env.environment_id || null,
+            environment_name: env.environment_name,
+            status: env.status || 'unknown',
+            url: env.url || null,
+            model_version: env.model_version || null,
+            runtime_version: env.runtime_version || null,
+            warning_count: 0,
+            error_count: 0
+          };
+        });
 
-        if (envInsertError) {
-          console.error('Error storing environment results:', envInsertError);
-        } else {
-          console.log(`Successfully stored ${environmentResults.length} environments`);
+        try {
+          const { data: insertedData, error: envInsertError } = await supabase
+            .from('mendix_environments')
+            .insert(validatedResults)
+            .select();
+
+          if (envInsertError) {
+            console.error('Database insertion error details:', {
+              error: envInsertError,
+              message: envInsertError.message,
+              details: envInsertError.details,
+              hint: envInsertError.hint,
+              code: envInsertError.code
+            });
+            console.error('Data that failed to insert:', JSON.stringify(validatedResults, null, 2));
+          } else {
+            console.log(`Successfully inserted ${insertedData?.length || 0} environments into database`);
+            console.log('Inserted environment IDs:', insertedData?.map(env => env.id));
+          }
+        } catch (insertionError) {
+          console.error('Unexpected error during environment insertion:', insertionError);
+          console.error('Stack trace:', insertionError.stack);
         }
+      } else {
+        console.log('No environment results to store');
       }
     }
 
