@@ -177,7 +177,7 @@ serve(async (req) => {
       for (const app of apps) {
         try {
           // Use V4 API exclusively for environments data
-          const envResponse = await fetch(`https://deploy.mendix.com/api/4/apps/${app.AppId}/environments`, {
+          const envResponse = await fetch(`https://cloud.home.mendix.com/api/v4/apps/${app.ProjectId}/environments`, {
             method: 'GET',
             headers
           });
