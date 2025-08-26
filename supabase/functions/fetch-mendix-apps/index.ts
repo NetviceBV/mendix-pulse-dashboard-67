@@ -295,6 +295,18 @@ serve(async (req) => {
         });
 
         try {
+          // Test service role permissions first
+          console.log('Testing service role permissions...');
+          console.log('Service role context:', {
+            hasServiceKey: !!Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
+            sampleEnvironment: validatedResults[0] ? {
+              user_id: validatedResults[0].user_id,
+              credential_id: validatedResults[0].credential_id,
+              app_id: validatedResults[0].app_id,
+              environment_name: validatedResults[0].environment_name
+            } : 'No environments to insert'
+          });
+
           const { data: insertedData, error: envInsertError } = await supabase
             .from('mendix_environments')
             .insert(validatedResults)
@@ -308,14 +320,38 @@ serve(async (req) => {
               hint: envInsertError.hint,
               code: envInsertError.code
             });
-            console.error('Data that failed to insert:', JSON.stringify(validatedResults, null, 2));
+            console.error('First 2 records that failed to insert:', JSON.stringify(validatedResults.slice(0, 2), null, 2));
+            
+            // If this fails, return an error response
+            return new Response(JSON.stringify({ 
+              error: 'Failed to store environment data', 
+              details: envInsertError.message,
+              environments_attempted: environmentResults.length
+            }), {
+              status: 500,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+            });
           } else {
             console.log(`Successfully inserted ${insertedData?.length || 0} environments into database`);
-            console.log('Inserted environment IDs:', insertedData?.map(env => env.id));
+            console.log('Sample inserted environment:', insertedData?.[0] ? {
+              id: insertedData[0].id,
+              environment_name: insertedData[0].environment_name,
+              app_id: insertedData[0].app_id,
+              status: insertedData[0].status
+            } : 'None');
           }
         } catch (insertionError) {
           console.error('Unexpected error during environment insertion:', insertionError);
-          console.error('Stack trace:', insertionError.stack);
+          console.error('Stack trace:', insertionError instanceof Error ? insertionError.stack : 'No stack trace');
+          
+          // Return error response for unexpected errors
+          return new Response(JSON.stringify({ 
+            error: 'Unexpected error during environment insertion', 
+            details: insertionError instanceof Error ? insertionError.message : String(insertionError)
+          }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          });
         }
       } else {
         console.log('No environment results to store');
