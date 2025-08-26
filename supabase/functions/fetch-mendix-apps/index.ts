@@ -184,59 +184,76 @@ serve(async (req) => {
 
       for (const app of apps) {
         try {
-          // Use V4 API exclusively for environments data
-          const envResponse = await fetch(`https://cloud.home.mendix.com/api/v4/apps/${app.id}/environments`, {
+          // Step 1: Get list of environments for the app
+          const envListResponse = await fetch(`https://cloud.home.mendix.com/api/v4/apps/${app.id}/environments`, {
             method: 'GET',
             headers
           });
 
-          if (envResponse.ok) {
-            const envResponseData = await envResponse.json();
-            console.log('Full environments API response:', JSON.stringify(envResponseData, null, 2));
+          if (envListResponse.ok) {
+            const envListData = await envListResponse.json();
+            console.log(`Environment list for app ${app.name}:`, JSON.stringify(envListData, null, 2));
             
-            // Handle nested response structure from v4 API
-            const environments = envResponseData.environments || envResponseData || [];
+            // Extract environments array from response
+            const environments = envListData.Environments || envListData.environments || [];
             console.log(`Found ${environments.length} environments for app ${app.name}`);
-            if (environments.length > 0) {
-              console.log('Environment structure sample:', JSON.stringify(environments[0], null, 2));
-            }
             
+            // Step 2: Get detailed info for each environment
             for (const env of environments) {
-              // Try multiple field names for environment name (v4 vs v1 API differences)
-              let envName = env.name || env.environmentName || env.Name || env.Mode || env.Type || env.mode;
-              
-              // If no environment name found, use intelligent fallback
-              if (!envName) {
-                if (env.Production === true) {
-                  envName = 'production';
-                } else if (env.url && env.url.includes('sandbox')) {
-                  envName = 'sandbox';
-                } else if (env.url && env.url.includes('accp')) {
-                  envName = 'acceptance';
-                } else if (env.url && env.url.includes('test')) {
-                  envName = 'test';
+              try {
+                const envDetailResponse = await fetch(`https://cloud.home.mendix.com/api/v4/apps/${app.id}/environments/${env.id}`, {
+                  method: 'GET',
+                  headers
+                });
+
+                if (envDetailResponse.ok) {
+                  const envDetail = await envDetailResponse.json();
+                  console.log(`Environment detail for ${env.name}:`, JSON.stringify(envDetail, null, 2));
+                  
+                  environmentResults.push({
+                    user_id: user.id,
+                    credential_id: credentialId,
+                    app_id: app.id,
+                    environment_id: envDetail.id || env.id,
+                    environment_name: (envDetail.name || env.name).toLowerCase().trim(),
+                    status: (envDetail.state || envDetail.status || 'unknown').toLowerCase(),
+                    url: envDetail.url || env.url,
+                    model_version: envDetail.modelVersion,
+                    runtime_version: envDetail.runtimeVersion
+                  });
                 } else {
-                  envName = 'unknown';
+                  console.log(`Failed to get detail for environment ${env.id}: ${envDetailResponse.status}`);
+                  // Fallback to basic environment info from list
+                  environmentResults.push({
+                    user_id: user.id,
+                    credential_id: credentialId,
+                    app_id: app.id,
+                    environment_id: env.id,
+                    environment_name: (env.name).toLowerCase().trim(),
+                    status: (env.state || env.status || 'unknown').toLowerCase(),
+                    url: env.url,
+                    model_version: null,
+                    runtime_version: null
+                  });
                 }
+              } catch (envDetailError) {
+                console.error(`Error fetching detail for environment ${env.id}:`, envDetailError);
+                // Fallback to basic environment info
+                environmentResults.push({
+                  user_id: user.id,
+                  credential_id: credentialId,
+                  app_id: app.id,
+                  environment_id: env.id,
+                  environment_name: (env.name).toLowerCase().trim(),
+                  status: (env.state || env.status || 'unknown').toLowerCase(),
+                  url: env.url,
+                  model_version: null,
+                  runtime_version: null
+                });
               }
-              
-              // Convert to lowercase and normalize
-              envName = envName.toLowerCase().trim();
-              
-              environmentResults.push({
-                user_id: user.id,
-                credential_id: credentialId,
-                app_id: app.id,
-                environment_id: env.environmentId || env.EnvironmentId || env.id || env.Id,
-                environment_name: envName,
-                status: (env.status || env.Status || 'unknown').toLowerCase(),
-                url: env.url || env.Url,
-                model_version: env.modelVersion || env.ModelVersion,
-                runtime_version: env.runtimeVersion || env.RuntimeVersion
-              });
             }
           } else {
-            console.log(`No environments found for app ${app.name}: ${envResponse.status}`);
+            console.log(`No environments found for app ${app.name}: ${envListResponse.status}`);
           }
         } catch (envError) {
           console.error(`Error fetching environments for app ${app.name}:`, envError);
