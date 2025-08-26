@@ -86,8 +86,16 @@ serve(async (req) => {
       });
     }
 
-    const apps = await mendixResponse.json();
+    const response = await mendixResponse.json();
+    console.log('Full Mendix API response:', JSON.stringify(response, null, 2));
+    
+    // Parse apps from the response structure
+    const apps = response.apps || response || [];
     console.log(`Successfully fetched ${apps.length} apps from Mendix`);
+    
+    if (!apps || apps.length === 0) {
+      console.log('No apps found in response. Response structure:', Object.keys(response));
+    }
 
     // Clear previous results for this credential
     const { error: deleteAppsError } = await supabase
