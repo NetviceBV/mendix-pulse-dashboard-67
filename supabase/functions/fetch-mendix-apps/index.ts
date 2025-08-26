@@ -63,21 +63,15 @@ serve(async (req) => {
 
     console.log(`Making API call for credential: ${credential.username}`);
 
-    // Make the API call to Mendix using both API key and PAT if available
-    const headers: Record<string, string> = {
-      'Mendix-Username': credential.username,
-    };
-
-    if (credential.api_key) {
-      headers['Mendix-ApiKey'] = credential.api_key;
-    }
+    // Make the API call to Mendix using PAT authentication only
+    const headers: Record<string, string> = {};
 
     if (credential.pat) {
       headers['Authorization'] = `MxToken ${credential.pat}`;
     }
 
     // Use V4 API exclusively for data retrieval
-    const mendixResponse = await fetch('https://deploy.mendix.com/api/4/apps', {
+    const mendixResponse = await fetch('https://cloud.home.mendix.com/api/v4/apps', {
       method: 'GET',
       headers
     });
