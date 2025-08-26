@@ -122,41 +122,7 @@ serve(async (req) => {
     if (apps.length > 0) {
       console.log(`Processing ${apps.length} apps with parallel processing...`);
       
-      // Helper function to fetch deployment info with timeout
-      const fetchDeploymentInfo = async (app: any): Promise<any> => {
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
-          
-          const deployUrl = `https://deploy.mendix.com/api/1/apps/${app.id}/packages`;
-          const deployResponse = await fetch(deployUrl, {
-            headers: {
-              'Accept': 'application/json',
-              'Mendix-Username': credential.username,
-              'Mendix-ApiKey': credential.api_key || credential.pat || ''
-            },
-            signal: controller.signal
-          });
-          
-          clearTimeout(timeoutId);
-          
-          if (deployResponse.ok) {
-            const packages = await deployResponse.json();
-            if (packages && packages.length > 0) {
-              const latestPackage = packages[0];
-              return {
-                version: latestPackage.Version || '1.0.0',
-                created: latestPackage.Created
-              };
-            }
-          }
-        } catch (deployError) {
-          console.log(`Could not fetch deployment info for ${app.name}:`, deployError.message);
-        }
-        return null;
-      };
-
-      // Process apps in parallel with deployment info
+      // Process apps in parallel without deployment info to avoid timeouts
       const BATCH_SIZE = 8; // Process 8 apps concurrently
       const appResults = [];
       
@@ -165,7 +131,6 @@ serve(async (req) => {
         console.log(`Processing app batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(apps.length/BATCH_SIZE)} (${batch.length} apps)`);
         
         const batchPromises = batch.map(async (app: any) => {
-          const deploymentInfo = await fetchDeploymentInfo(app);
           return {
             user_id: user.id,
             credential_id: credentialId,
@@ -175,10 +140,10 @@ serve(async (req) => {
             app_id: app.id,
             status: 'healthy', // Will be determined from environments
             environment: 'production', // Will be determined from environments
-            version: deploymentInfo?.version || '1.0.0',
+            version: '1.0.0', // Default version without packages API call
             active_users: 0, // Real monitoring data not available yet
             error_count: 0, // Real monitoring data not available yet
-            last_deployed: deploymentInfo?.created || null
+            last_deployed: null // Not available without packages API call
           };
         });
         
