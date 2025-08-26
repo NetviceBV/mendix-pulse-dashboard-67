@@ -191,9 +191,15 @@ serve(async (req) => {
           });
 
           if (envResponse.ok) {
-            const environments = await envResponse.json();
+            const envResponseData = await envResponse.json();
+            console.log('Full environments API response:', JSON.stringify(envResponseData, null, 2));
+            
+            // Handle nested response structure from v4 API
+            const environments = envResponseData.environments || envResponseData || [];
             console.log(`Found ${environments.length} environments for app ${app.name}`);
-            console.log('Environment structure sample:', JSON.stringify(environments[0], null, 2));
+            if (environments.length > 0) {
+              console.log('Environment structure sample:', JSON.stringify(environments[0], null, 2));
+            }
             
             for (const env of environments) {
               // Try multiple field names for environment name (v4 vs v1 API differences)
