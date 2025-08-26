@@ -120,27 +120,31 @@ serve(async (req) => {
 
     // Store the new app results and fetch environments
     if (apps.length > 0) {
-      // Process each app individually to get real deployment data
-      const appResults = [];
+      console.log(`Processing ${apps.length} apps with parallel processing...`);
       
-      for (const app of apps) {
-        // Get deployment info from API if available
-        let deploymentInfo = null;
+      // Helper function to fetch deployment info with timeout
+      const fetchDeploymentInfo = async (app: any): Promise<any> => {
         try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
+          
           const deployUrl = `https://deploy.mendix.com/api/1/apps/${app.id}/packages`;
           const deployResponse = await fetch(deployUrl, {
             headers: {
               'Accept': 'application/json',
               'Mendix-Username': credential.username,
               'Mendix-ApiKey': credential.api_key || credential.pat || ''
-            }
+            },
+            signal: controller.signal
           });
+          
+          clearTimeout(timeoutId);
           
           if (deployResponse.ok) {
             const packages = await deployResponse.json();
             if (packages && packages.length > 0) {
               const latestPackage = packages[0];
-              deploymentInfo = {
+              return {
                 version: latestPackage.Version || '1.0.0',
                 created: latestPackage.Created
               };
@@ -149,20 +153,57 @@ serve(async (req) => {
         } catch (deployError) {
           console.log(`Could not fetch deployment info for ${app.name}:`, deployError.message);
         }
+        return null;
+      };
 
-        appResults.push({
-          user_id: user.id,
-          credential_id: credentialId,
-          app_name: app.name,
-          app_url: `https://${app.subdomain}.mendixcloud.com`,
-          project_id: app.id,
-          app_id: app.id,
-          status: 'healthy', // Will be determined from environments
-          environment: 'production', // Will be determined from environments
-          version: deploymentInfo?.version || '1.0.0',
-          active_users: 0, // Real monitoring data not available yet
-          error_count: 0, // Real monitoring data not available yet
-          last_deployed: deploymentInfo?.created || null
+      // Process apps in parallel with deployment info
+      const BATCH_SIZE = 8; // Process 8 apps concurrently
+      const appResults = [];
+      
+      for (let i = 0; i < apps.length; i += BATCH_SIZE) {
+        const batch = apps.slice(i, i + BATCH_SIZE);
+        console.log(`Processing app batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(apps.length/BATCH_SIZE)} (${batch.length} apps)`);
+        
+        const batchPromises = batch.map(async (app: any) => {
+          const deploymentInfo = await fetchDeploymentInfo(app);
+          return {
+            user_id: user.id,
+            credential_id: credentialId,
+            app_name: app.name,
+            app_url: `https://${app.subdomain}.mendixcloud.com`,
+            project_id: app.id,
+            app_id: app.id,
+            status: 'healthy', // Will be determined from environments
+            environment: 'production', // Will be determined from environments
+            version: deploymentInfo?.version || '1.0.0',
+            active_users: 0, // Real monitoring data not available yet
+            error_count: 0, // Real monitoring data not available yet
+            last_deployed: deploymentInfo?.created || null
+          };
+        });
+        
+        const batchResults = await Promise.allSettled(batchPromises);
+        batchResults.forEach((result, index) => {
+          if (result.status === 'fulfilled') {
+            appResults.push(result.value);
+          } else {
+            console.error(`Failed to process app ${batch[index].name}:`, result.reason);
+            // Add fallback app data
+            appResults.push({
+              user_id: user.id,
+              credential_id: credentialId,
+              app_name: batch[index].name,
+              app_url: `https://${batch[index].subdomain}.mendixcloud.com`,
+              project_id: batch[index].id,
+              app_id: batch[index].id,
+              status: 'healthy',
+              environment: 'production',
+              version: '1.0.0',
+              active_users: 0,
+              error_count: 0,
+              last_deployed: null
+            });
+          }
         });
       }
 
@@ -178,39 +219,44 @@ serve(async (req) => {
         });
       }
 
-      // Fetch environments for each app
-      console.log('Fetching environments for apps...');
-      const environmentResults = [];
-
-      for (const app of apps) {
+      // Helper function to fetch environments for a single app
+      const fetchAppEnvironments = async (app: any): Promise<any[]> => {
+        const results: any[] = [];
         try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+          
           // Step 1: Get list of environments for the app
           const envListResponse = await fetch(`https://cloud.home.mendix.com/api/v4/apps/${app.id}/environments`, {
             method: 'GET',
-            headers
+            headers,
+            signal: controller.signal
           });
+
+          clearTimeout(timeoutId);
 
           if (envListResponse.ok) {
             const envListData = await envListResponse.json();
-            console.log(`Environment list for app ${app.name}:`, JSON.stringify(envListData, null, 2));
-            
-            // Extract environments array from response
             const environments = envListData.Environments || envListData.environments || [];
             console.log(`Found ${environments.length} environments for app ${app.name}`);
             
-            // Step 2: Get detailed info for each environment
-            for (const env of environments) {
+            // Process environments in parallel for this app
+            const envPromises = environments.map(async (env: any) => {
               try {
+                const envController = new AbortController();
+                const envTimeoutId = setTimeout(() => envController.abort(), 8000); // 8 second timeout
+                
                 const envDetailResponse = await fetch(`https://cloud.home.mendix.com/api/v4/apps/${app.id}/environments/${env.id}`, {
                   method: 'GET',
-                  headers
+                  headers,
+                  signal: envController.signal
                 });
+
+                clearTimeout(envTimeoutId);
 
                 if (envDetailResponse.ok) {
                   const envDetail = await envDetailResponse.json();
-                  console.log(`Environment detail for ${env.name}:`, JSON.stringify(envDetail, null, 2));
-                  
-                  environmentResults.push({
+                  return {
                     user_id: user.id,
                     credential_id: credentialId,
                     app_id: app.id,
@@ -220,11 +266,10 @@ serve(async (req) => {
                     url: envDetail.url || env.url,
                     model_version: envDetail.modelVersion,
                     runtime_version: envDetail.runtimeVersion
-                  });
+                  };
                 } else {
-                  console.log(`Failed to get detail for environment ${env.id}: ${envDetailResponse.status}`);
                   // Fallback to basic environment info from list
-                  environmentResults.push({
+                  return {
                     user_id: user.id,
                     credential_id: credentialId,
                     app_id: app.id,
@@ -234,12 +279,12 @@ serve(async (req) => {
                     url: env.url,
                     model_version: null,
                     runtime_version: null
-                  });
+                  };
                 }
               } catch (envDetailError) {
                 console.error(`Error fetching detail for environment ${env.id}:`, envDetailError);
                 // Fallback to basic environment info
-                environmentResults.push({
+                return {
                   user_id: user.id,
                   credential_id: credentialId,
                   app_id: app.id,
@@ -249,15 +294,43 @@ serve(async (req) => {
                   url: env.url,
                   model_version: null,
                   runtime_version: null
-                });
+                };
               }
-            }
+            });
+            
+            const envResults = await Promise.allSettled(envPromises);
+            envResults.forEach((result) => {
+              if (result.status === 'fulfilled' && result.value) {
+                results.push(result.value);
+              }
+            });
           } else {
             console.log(`No environments found for app ${app.name}: ${envListResponse.status}`);
           }
         } catch (envError) {
           console.error(`Error fetching environments for app ${app.name}:`, envError);
         }
+        return results;
+      };
+
+      // Fetch environments for all apps in parallel batches
+      console.log('Fetching environments for all apps in parallel...');
+      const environmentResults: any[] = [];
+      
+      for (let i = 0; i < apps.length; i += BATCH_SIZE) {
+        const batch = apps.slice(i, i + BATCH_SIZE);
+        console.log(`Fetching environments for batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(apps.length/BATCH_SIZE)} (${batch.length} apps)`);
+        
+        const batchPromises = batch.map(fetchAppEnvironments);
+        const batchResults = await Promise.allSettled(batchPromises);
+        
+        batchResults.forEach((result, index) => {
+          if (result.status === 'fulfilled') {
+            environmentResults.push(...result.value);
+          } else {
+            console.error(`Failed to fetch environments for app ${batch[index].name}:`, result.reason);
+          }
+        });
       }
 
       // Store environment results with detailed logging and validation
