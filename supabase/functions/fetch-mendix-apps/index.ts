@@ -137,7 +137,7 @@ serve(async (req) => {
             app_name: app.name,
             app_url: `https://${app.subdomain}.mendixcloud.com`,
             project_id: app.id,
-            app_id: app.id,
+            app_id: app.subdomain,
             status: 'healthy', // Will be determined from environments
             environment: 'production', // Will be determined from environments
             version: '1.0.0', // Default version without packages API call
