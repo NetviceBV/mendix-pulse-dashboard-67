@@ -97,26 +97,7 @@ serve(async (req) => {
       console.log('No apps found in response. Response structure:', Object.keys(response));
     }
 
-    // Clear previous results for this credential
-    const { error: deleteAppsError } = await supabase
-      .from('mendix_apps')
-      .delete()
-      .eq('credential_id', credentialId)
-      .eq('user_id', user.id);
-
-    if (deleteAppsError) {
-      console.error('Error deleting previous app results:', deleteAppsError);
-    }
-
-    const { error: deleteEnvsError } = await supabase
-      .from('mendix_environments')
-      .delete()
-      .eq('credential_id', credentialId)
-      .eq('user_id', user.id);
-
-    if (deleteEnvsError) {
-      console.error('Error deleting previous environment results:', deleteEnvsError);
-    }
+    // Note: Using upsert strategy instead of delete to preserve existing data and avoid foreign key constraints
 
     // Store the new app results and fetch environments
     if (apps.length > 0) {
@@ -172,12 +153,16 @@ serve(async (req) => {
         });
       }
 
-      const { error: insertError } = await supabase
+      // Use upsert to update existing apps or insert new ones
+      const { error: upsertError } = await supabase
         .from('mendix_apps')
-        .insert(appResults);
+        .upsert(appResults, { 
+          onConflict: 'app_id,credential_id',
+          ignoreDuplicates: false 
+        });
 
-      if (insertError) {
-        console.error('Error storing app results:', insertError);
+      if (upsertError) {
+        console.error('Error upserting app results:', upsertError);
         return new Response(JSON.stringify({ error: 'Failed to store app results' }), {
           status: 500,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -345,37 +330,41 @@ serve(async (req) => {
             } : 'No environments to insert'
           });
 
-          const { data: insertedData, error: envInsertError } = await supabase
+          // Use upsert for environments to update existing or insert new ones
+          const { data: upsertedData, error: envUpsertError } = await supabase
             .from('mendix_environments')
-            .insert(validatedResults)
+            .upsert(validatedResults, { 
+              onConflict: 'app_id,environment_name,credential_id',
+              ignoreDuplicates: false 
+            })
             .select();
 
-          if (envInsertError) {
-            console.error('Database insertion error details:', {
-              error: envInsertError,
-              message: envInsertError.message,
-              details: envInsertError.details,
-              hint: envInsertError.hint,
-              code: envInsertError.code
+          if (envUpsertError) {
+            console.error('Database upsert error details:', {
+              error: envUpsertError,
+              message: envUpsertError.message,
+              details: envUpsertError.details,
+              hint: envUpsertError.hint,
+              code: envUpsertError.code
             });
-            console.error('First 2 records that failed to insert:', JSON.stringify(validatedResults.slice(0, 2), null, 2));
+            console.error('First 2 records that failed to upsert:', JSON.stringify(validatedResults.slice(0, 2), null, 2));
             
             // If this fails, return an error response
             return new Response(JSON.stringify({ 
               error: 'Failed to store environment data', 
-              details: envInsertError.message,
+              details: envUpsertError.message,
               environments_attempted: environmentResults.length
             }), {
               status: 500,
               headers: { ...corsHeaders, 'Content-Type': 'application/json' }
             });
           } else {
-            console.log(`Successfully inserted ${insertedData?.length || 0} environments into database`);
-            console.log('Sample inserted environment:', insertedData?.[0] ? {
-              id: insertedData[0].id,
-              environment_name: insertedData[0].environment_name,
-              app_id: insertedData[0].app_id,
-              status: insertedData[0].status
+            console.log(`Successfully upserted ${upsertedData?.length || 0} environments into database`);
+            console.log('Sample upserted environment:', upsertedData?.[0] ? {
+              id: upsertedData[0].id,
+              environment_name: upsertedData[0].environment_name,
+              app_id: upsertedData[0].app_id,
+              status: upsertedData[0].status
             } : 'None');
           }
         } catch (insertionError) {
