@@ -897,7 +897,7 @@ export default function CloudActionsPage() {
           .limit(200),
         supabase
           .from("mendix_apps")
-          .select("id, app_id, app_name, credential_id"),
+          .select("id, app_id, app_name, credential_id, project_id"),
       ]);
       setActions((actions || []) as any);
       setApps((apps || []) as any);
