@@ -713,7 +713,7 @@ const form = useForm<FormValues>({
                   )}
                 />
 
-                {(actionType === "deploy" || actionType === "transport") && (
+                {actionType === "deploy" && (
                   <>
                     <FormField
                       control={form.control}
@@ -765,6 +765,49 @@ const form = useForm<FormValues>({
                   </>
                 )}
 
+                {actionType === "transport" && (
+                  <>
+                    <FormField
+                      control={form.control}
+                      name="sourceEnvironmentName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Source Environment</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder={loadingEnvs ? "Loading environments..." : "Select source environment"} />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {filteredEnvs.map((env) => (
+                                <SelectItem key={env.id} value={env.environment_name}>
+                                  {env.environment_name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="comment"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Comment (Optional)</FormLabel>
+                          <FormControl>
+                            <Textarea {...field} placeholder="Optional comment for the transport action" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </>
+                )}
+
                 {/* Submit button in the form column */}
                 <Button type="submit" className="w-full" disabled={isSubmitting}>
                   {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -785,10 +828,16 @@ const form = useForm<FormValues>({
                 <div className="bg-muted/50 p-3 rounded-md space-y-2 text-xs">
                   <div><span className="font-medium">Action:</span> {actionType || "Not selected"}</div>
                   <div><span className="font-medium">Environment:</span> {form.watch("environmentName") || "Not selected"}</div>
-                  {(actionType === "deploy" || actionType === "transport") && (
+                  {actionType === "deploy" && (
                     <>
                       <div><span className="font-medium">Branch:</span> {branchName || "Not selected"}</div>
                       <div><span className="font-medium">Revision:</span> {form.watch("revisionId") ? `${form.watch("revisionId")?.slice(0, 8)}...` : "Not selected"}</div>
+                    </>
+                  )}
+                  {actionType === "transport" && (
+                    <>
+                      <div><span className="font-medium">Source Environment:</span> {form.watch("sourceEnvironmentName") || "Not selected"}</div>
+                      <div><span className="font-medium">Target Environment:</span> {form.watch("environmentName") || "Not selected"}</div>
                     </>
                   )}
                   <div><span className="font-medium">Run:</span> {(() => {
