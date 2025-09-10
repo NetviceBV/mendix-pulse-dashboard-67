@@ -70,12 +70,12 @@ serve(async (req) => {
     const { data: appData, error: appError } = await supabase
       .from('mendix_apps')
       .select('project_id')
-      .eq('app_id', appId)
+      .eq('project_id', appId)
       .eq('user_id', user_id)
       .single();
 
     if (appError || !appData || !appData.project_id) {
-      throw new Error(`App not found or missing project_id for app: ${appId}`);
+      throw new Error(`App not found or missing project_id for project_id: ${appId}`);
     }
 
     const projectId = appData.project_id;
