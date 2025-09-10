@@ -644,19 +644,19 @@ async function processActionsInBackground(
             .from("mendix_environments")
             .select(`
               environment_id,
-              mendix_apps!inner(project_id)
+              app_id
             `)
-            .eq("mendix_apps.project_id", action.app_id)
+            .eq("app_id", action.app_id)
             .eq("environment_name", normalizedEnvironmentName)
             .eq("user_id", user.id)
             .single();
 
-          if (envError || !environmentData?.environment_id || !environmentData?.mendix_apps?.project_id) {
-            throw new Error(`Failed to find environment_id or project_id for app ${action.app_id}, environment ${normalizedEnvironmentName}. Error: ${envError?.message || 'Missing data'}`);
+          if (envError || !environmentData?.environment_id || !environmentData?.app_id) {
+            throw new Error(`Failed to find environment_id for app ${action.app_id}, environment ${normalizedEnvironmentName}. Error: ${envError?.message || 'Missing data'}`);
           }
 
           const environmentId = environmentData.environment_id;
-          const targetProjectId = environmentData.mendix_apps.project_id;
+          const targetProjectId = environmentData.app_id;
           const backupUrl = `https://deploy.mendix.com/api/v2/apps/${encodeURIComponent(targetProjectId)}/environments/${encodeURIComponent(environmentId)}/snapshots`;
           
           await supabase.from("cloud_action_logs").insert({
@@ -810,19 +810,19 @@ async function processActionsInBackground(
             .from("mendix_environments")
             .select(`
               environment_id,
-              mendix_apps!inner(project_id)
+              app_id
             `)
-            .eq("mendix_apps.project_id", action.app_id)
+            .eq("app_id", action.app_id)
             .eq("environment_name", normalizedEnvironmentName)
             .eq("user_id", user.id)
             .single();
 
-          if (transportEnvError || !transportEnvironmentData?.environment_id || !transportEnvironmentData?.mendix_apps?.project_id) {
-            throw new Error(`Failed to find environment_id or project_id for app ${action.app_id}, environment ${normalizedEnvironmentName}. Error: ${transportEnvError?.message || 'Missing data'}`);
+          if (transportEnvError || !transportEnvironmentData?.environment_id || !transportEnvironmentData?.app_id) {
+            throw new Error(`Failed to find environment_id for app ${action.app_id}, environment ${normalizedEnvironmentName}. Error: ${transportEnvError?.message || 'Missing data'}`);
           }
 
           const transportEnvironmentId = transportEnvironmentData.environment_id;
-          const transportTargetProjectId = transportEnvironmentData.mendix_apps.project_id;
+          const transportTargetProjectId = transportEnvironmentData.app_id;
 
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
