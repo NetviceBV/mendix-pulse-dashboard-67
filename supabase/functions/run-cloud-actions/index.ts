@@ -151,13 +151,13 @@ async function processActionsInBackground(
       const { data: appData, error: appError } = await supabase
         .from("mendix_apps")
         .select("project_id")
-        .eq("app_id", action.app_id)
+        .eq("project_id", action.app_id)
         .eq("credential_id", action.credential_id)
         .eq("user_id", user.id)
         .maybeSingle();
 
       if (appError || !appData?.project_id) {
-        throw new Error(`Failed to get project_id for app ${action.app_id}: ${appError?.message}`);
+        throw new Error(`Failed to find app with project_id ${action.app_id}: ${appError?.message}`);
       }
 
       const projectId = appData.project_id;
