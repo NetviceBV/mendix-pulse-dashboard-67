@@ -39,7 +39,7 @@ interface CloudActionRow {
 }
 
 interface Credential { id: string; name: string; }
-interface App { id: string; app_id: string; app_name: string; credential_id: string; }
+interface App { id: string; app_id: string; app_name: string; credential_id: string; project_id: string; }
 interface Env { id: string; app_id: string; environment_name: string; }
 
 const statusColor: Record<string, string> = {
@@ -234,7 +234,7 @@ const form = useForm<FormValues>({
       try {
         const { data, error } = await supabase
           .from("mendix_apps")
-          .select("id, app_id, app_name, credential_id")
+          .select("id, app_id, app_name, credential_id, project_id")
           .eq("credential_id", credentialId)
           .order("app_name", { ascending: true });
         if (!error) setApps((data || []) as any);
@@ -563,9 +563,9 @@ const form = useForm<FormValues>({
                       </FormControl>
                       <SelectContent>
                         {filteredApps.map((a) => (
-                          <SelectItem key={a.app_id} value={a.app_id}>
-                            {a.app_name}
-                          </SelectItem>
+                           <SelectItem key={a.app_id} value={a.project_id}>
+                             {a.app_name}
+                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
