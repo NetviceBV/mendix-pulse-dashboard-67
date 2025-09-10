@@ -16,7 +16,8 @@ const SignIn = ({ onAuthSuccess }: SignInProps) => {
   const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
   const [credentials, setCredentials] = useState({
     email: "",
-    password: ""
+    password: "",
+    fullName: ""
   });
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
@@ -47,7 +48,7 @@ const SignIn = ({ onAuthSuccess }: SignInProps) => {
           description: "Check your email for a password reset link"
         });
         setMode('signin');
-        setCredentials({ email: credentials.email, password: "" });
+        setCredentials({ ...credentials, password: "", fullName: "" });
       } catch (error: any) {
         toast({
           title: "Password reset failed",
@@ -60,10 +61,10 @@ const SignIn = ({ onAuthSuccess }: SignInProps) => {
       return;
     }
 
-    if (!credentials.email || !credentials.password) {
+    if (!credentials.email || !credentials.password || (mode === 'signup' && !credentials.fullName)) {
       toast({
         title: "Missing credentials",
-        description: "Please fill in all required fields",
+        description: `Please fill in all required fields${mode === 'signup' ? ' including full name' : ''}`,
         variant: "destructive"
       });
       return;
@@ -77,7 +78,10 @@ const SignIn = ({ onAuthSuccess }: SignInProps) => {
           email: credentials.email,
           password: credentials.password,
           options: {
-            emailRedirectTo: `${window.location.origin}/`
+            emailRedirectTo: `${window.location.origin}/`,
+            data: {
+              full_name: credentials.fullName
+            }
           }
         });
 
@@ -119,6 +123,12 @@ const SignIn = ({ onAuthSuccess }: SignInProps) => {
         errorMessage = "Invalid email or password. Please check your credentials and try again.";
       } else if (error.message.includes('Email not confirmed')) {
         errorMessage = "Please check your email and click the verification link before signing in.";
+      } else if (error.message.includes('User already registered')) {
+        errorMessage = "An account with this email already exists. Please sign in instead.";
+      } else if (error.message.includes('Password should be at least')) {
+        errorMessage = "Password must be at least 6 characters long.";
+      } else if (error.message.includes('Signup requires a valid password')) {
+        errorMessage = "Please enter a valid password (at least 6 characters).";
       }
 
       toast({
@@ -168,10 +178,30 @@ const SignIn = ({ onAuthSuccess }: SignInProps) => {
               </div>
             </div>
 
+            {mode === 'signup' && (
+              <div className="space-y-2">
+                <Label htmlFor="fullName" className="text-sm font-medium">
+                  Full Name
+                </Label>
+                <div className="relative">
+                  <User className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="fullName"
+                    type="text"
+                    placeholder="Enter your full name"
+                    value={credentials.fullName}
+                    onChange={(e) => setCredentials({ ...credentials, fullName: e.target.value })}
+                    className="pl-10"
+                    required
+                  />
+                </div>
+              </div>
+            )}
+
             {mode !== 'forgot' && (
               <div className="space-y-2">
                 <Label htmlFor="password" className="text-sm font-medium">
-                  Password
+                  Password {mode === 'signup' && <span className="text-muted-foreground text-xs">(minimum 6 characters)</span>}
                 </Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
@@ -182,6 +212,7 @@ const SignIn = ({ onAuthSuccess }: SignInProps) => {
                     value={credentials.password}
                     onChange={(e) => setCredentials({ ...credentials, password: e.target.value })}
                     className="pl-10"
+                    minLength={6}
                     required
                   />
                 </div>
