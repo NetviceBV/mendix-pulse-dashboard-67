@@ -147,20 +147,21 @@ async function processActionsInBackground(
       if (credError || !creds) throw new Error("Credentials not found");
       const credential = creds as MendixCredential;
 
-      // Get project_id from mendix_apps table for v4 API calls
+      // Get project_id and app_id from mendix_apps table
       const { data: appData, error: appError } = await supabase
         .from("mendix_apps")
-        .select("project_id")
+        .select("project_id, app_id")
         .eq("project_id", action.app_id)
         .eq("credential_id", action.credential_id)
         .eq("user_id", user.id)
         .maybeSingle();
 
-      if (appError || !appData?.project_id) {
+      if (appError || !appData?.project_id || !appData?.app_id) {
         throw new Error(`Failed to find app with project_id ${action.app_id}: ${appError?.message}`);
       }
 
       const projectId = appData.project_id;
+      const appSubdomain = appData.app_id; // This is the subdomain used for Mendix Deploy API v1 calls
 
       // CRITICAL: Environment name normalization for Mendix API case sensitivity
       // Mendix Deploy API expects environment names with proper capitalization:
@@ -193,7 +194,7 @@ async function processActionsInBackground(
 
       // Helper to call Mendix Deploy API
       const callMendix = async (method: "start" | "stop") => {
-        const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(normalizedEnvironmentName)}/${method}`;
+        const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(appSubdomain)}/environments/${encodeURIComponent(normalizedEnvironmentName)}/${method}`;
         
         // Prepare request body - start requires AutoSyncDb parameter
         const body = method === "start" ? JSON.stringify({ "AutoSyncDb": true }) : "";
@@ -448,7 +449,7 @@ async function processActionsInBackground(
             message: `Creating package from branch: ${branchName}, revision: ${revisionId}`,
           });
 
-          const createPackageUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/packages`;
+          const createPackageUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(appSubdomain)}/packages`;
           const createPackageResp = await fetch(createPackageUrl, {
             method: "POST",
             headers: {
@@ -484,7 +485,7 @@ async function processActionsInBackground(
           let packageStatus = "Building";
           let packageBuildAttempts = 0;
           const maxPackageBuildAttempts = 60; // 30 minutes timeout (30 * 60 * 1000) / 30 seconds polling interval
-          let newPackageStatusUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/packages/${newPackageId}`;
+          let newPackageStatusUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(appSubdomain)}/packages/${newPackageId}`;
 
           while (packageStatus !== "Succeeded" && packageBuildAttempts < maxPackageBuildAttempts) {
             packageBuildAttempts++;
@@ -542,7 +543,7 @@ async function processActionsInBackground(
           });
 
           // Step 2: Transport the package to the target environment
-          const transportUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(normalizedEnvironmentName)}/transport`;
+          const transportUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(appSubdomain)}/environments/${encodeURIComponent(normalizedEnvironmentName)}/transport`;
           
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
@@ -838,7 +839,7 @@ async function processActionsInBackground(
             message: `Step 1: Retrieving package from source environment ${normalizedSourceEnvironmentName}`,
           });
 
-          const sourcePackageUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(normalizedSourceEnvironmentName)}/package?url=true`;
+          const sourcePackageUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(appSubdomain)}/environments/${encodeURIComponent(normalizedSourceEnvironmentName)}/package?url=true`;
           const sourcePackageResp = await fetch(sourcePackageUrl, {
             method: "GET",
             headers: {
@@ -881,7 +882,7 @@ async function processActionsInBackground(
             message: `Step 2: Transporting package ${sourcePackageId} to target environment ${normalizedEnvironmentName}`,
           });
 
-          const transportActionUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(normalizedEnvironmentName)}/transport`;
+          const transportActionUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(appSubdomain)}/environments/${encodeURIComponent(normalizedEnvironmentName)}/transport`;
           const transportActionResp = await fetch(transportActionUrl, {
             method: "POST",
             headers: {
