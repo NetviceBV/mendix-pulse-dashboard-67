@@ -703,9 +703,9 @@ const form = useForm<FormValues>({
                         <SelectContent>
                           <SelectItem value="start">Start</SelectItem>
                           <SelectItem value="stop">Stop</SelectItem>
+                          <SelectItem value="restart">Restart</SelectItem>
                           <SelectItem value="deploy">Deploy</SelectItem>
                           <SelectItem value="transport">Transport</SelectItem>
-                          <SelectItem value="backup">Backup</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
