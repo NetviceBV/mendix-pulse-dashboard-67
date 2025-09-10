@@ -646,7 +646,7 @@ async function processActionsInBackground(
               environment_id,
               mendix_apps!inner(project_id)
             `)
-            .eq("app_id", action.app_id)
+            .eq("mendix_apps.project_id", action.app_id)
             .eq("environment_name", normalizedEnvironmentName)
             .eq("user_id", user.id)
             .single();
@@ -812,7 +812,7 @@ async function processActionsInBackground(
               environment_id,
               mendix_apps!inner(project_id)
             `)
-            .eq("app_id", action.app_id)
+            .eq("mendix_apps.project_id", action.app_id)
             .eq("environment_name", normalizedEnvironmentName)
             .eq("user_id", user.id)
             .single();
