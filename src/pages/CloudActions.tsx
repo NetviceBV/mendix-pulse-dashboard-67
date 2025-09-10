@@ -913,7 +913,7 @@ export default function CloudActionsPage() {
     load();
   }, []);
 
-  const appName = (app_id: string) => apps.find(a => a.app_id === app_id)?.app_name || app_id;
+  const appName = (app_id: string) => apps.find(a => a.project_id === app_id)?.app_name || app_id;
 
   const triggerRunner = async (actionId?: string) => {
     // Set loading state
