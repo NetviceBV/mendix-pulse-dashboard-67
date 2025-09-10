@@ -65,13 +65,13 @@ serve(async (req) => {
     const { data: appRow, error: appError } = await supabase
       .from("mendix_apps")
       .select("project_id")
-      .eq("app_id", appId)
+      .eq("project_id", appId)
       .eq("user_id", user.id)
       .maybeSingle();
 
     if (appError || !appRow?.project_id) {
       return new Response(
-        JSON.stringify({ error: `Project ID not found for app ${appId}. Try Fetch Apps first.` }),
+        JSON.stringify({ error: `Project ID not found for project ${appId}. Try Fetch Apps first.` }),
         { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
