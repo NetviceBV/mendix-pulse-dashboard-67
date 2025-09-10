@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { format, startOfToday, isSameDay, parse } from "date-fns";
 import { Link } from "react-router-dom";
 import { EditCloudActionDialog } from "@/components/EditCloudActionDialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 
 interface CloudActionRow {
@@ -509,7 +510,7 @@ const form = useForm<FormValues>({
           <Plus className="mr-2 h-4 w-4" /> Add Cloud Action
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CloudCog className="h-5 w-5" /> New Cloud Action
@@ -517,111 +518,109 @@ const form = useForm<FormValues>({
           <DialogDescription>Plan and queue a cloud action for your Mendix environment.</DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-6 md:grid-cols-[1fr_280px]">
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-              <FormField
-                control={form.control}
-                name="credentialId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Credential</FormLabel>
-                    <Select value={field.value} onValueChange={(v) => field.onChange(v)}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select credential" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {credentials.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+        <ScrollArea className="max-h-[calc(90vh-8rem)] pr-4">
+          <div className="grid gap-6 md:grid-cols-[1fr_280px]">
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+                <FormField
+                  control={form.control}
+                  name="credentialId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Credential</FormLabel>
+                      <Select value={field.value} onValueChange={(v) => field.onChange(v)}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select credential" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {credentials.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="appId"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Application</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={(v) => field.onChange(v)}
-                      disabled={!credentialId}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder={credentialId ? "Select app (filtered)" : "Select credential first"} />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {filteredApps.map((a) => (
-                           <SelectItem key={a.app_id} value={a.project_id}>
-                             {a.app_name}
-                           </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-
-              <FormField
-                control={form.control}
-                name="runWhen"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="flex items-center gap-2"><CalendarClock className="h-4 w-4" />When to run</FormLabel>
-                    <FormControl>
-                      <RadioGroup
-                        className="grid grid-cols-2 gap-2"
+                <FormField
+                  control={form.control}
+                  name="appId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Application</FormLabel>
+                      <Select
                         value={field.value}
-                        onValueChange={field.onChange}
+                        onValueChange={(v) => field.onChange(v)}
+                        disabled={!credentialId}
                       >
-                        <div className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2">
-                          <RadioGroupItem value="now" id="run-now" />
-                          <label htmlFor="run-now" className="text-sm">Run now</label>
-                        </div>
-                        <div className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2">
-                          <RadioGroupItem value="schedule" id="run-schedule" />
-                          <label htmlFor="run-schedule" className="text-sm">Schedule</label>
-                        </div>
-                      </RadioGroup>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={credentialId ? "Select app (filtered)" : "Select credential first"} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {filteredApps.map((a) => (
+                             <SelectItem key={a.app_id} value={a.project_id}>
+                               {a.app_name}
+                             </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              {runWhen === "schedule" && (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                <FormField
+                  control={form.control}
+                  name="runWhen"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center gap-2"><CalendarClock className="h-4 w-4" />When to run</FormLabel>
+                      <FormControl>
+                        <RadioGroup
+                          className="grid grid-cols-2 gap-2"
+                          value={field.value}
+                          onValueChange={field.onChange}
+                        >
+                          <div className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2">
+                            <RadioGroupItem value="now" id="run-now" />
+                            <label htmlFor="run-now" className="text-sm">Run now</label>
+                          </div>
+                          <div className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2">
+                            <RadioGroupItem value="schedule" id="run-schedule" />
+                            <label htmlFor="run-schedule" className="text-sm">Schedule</label>
+                          </div>
+                        </RadioGroup>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {runWhen === "schedule" && (
+                  <>
                     <FormField
                       control={form.control}
                       name="scheduledDate"
                       render={({ field }) => (
-                        <FormItem className="flex flex-col">
-                          <FormLabel>Schedule date</FormLabel>
+                        <FormItem>
+                          <FormLabel>Scheduled Date</FormLabel>
                           <Popover>
                             <PopoverTrigger asChild>
                               <FormControl>
                                 <Button
-                                  variant={"outline"}
-                                  className={cn(
-                                    "justify-start text-left font-normal",
-                                    !field.value && "text-muted-foreground"
-                                  )}
+                                  variant="outline"
+                                  className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}
                                 >
                                   {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
+                                  <CalendarClock className="ml-auto h-4 w-4 opacity-50" />
                                 </Button>
                               </FormControl>
                             </PopoverTrigger>
@@ -630,9 +629,8 @@ const form = useForm<FormValues>({
                                 mode="single"
                                 selected={field.value}
                                 onSelect={field.onChange}
-                                disabled={{ before: startOfToday() }}
+                                disabled={(date) => date < startOfToday()}
                                 initialFocus
-                                className={cn("p-3 pointer-events-auto")}
                               />
                             </PopoverContent>
                           </Popover>
@@ -646,175 +644,40 @@ const form = useForm<FormValues>({
                       name="scheduledTime"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Schedule time</FormLabel>
+                          <FormLabel>Time (HH:MM)</FormLabel>
                           <FormControl>
-                            <Input type="time" value={field.value} onChange={field.onChange} min={minTime} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="retryUntilDate"
-                      render={({ field }) => (
-                        <FormItem className="flex flex-col">
-                          <FormLabel>Retry deadline (date)</FormLabel>
-                          <Popover>
-                            <PopoverTrigger asChild>
-                              <FormControl>
-                                <Button
-                                  variant={"outline"}
-                                  className={cn(
-                                    "justify-start text-left font-normal",
-                                    !field.value && "text-muted-foreground"
-                                  )}
-                                >
-                                  {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
-                                </Button>
-                              </FormControl>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
-                              <Calendar
-                                mode="single"
-                                selected={field.value}
-                                onSelect={field.onChange}
-                                disabled={{ before: startOfToday() }}
-                                initialFocus
-                                className={cn("p-3 pointer-events-auto")}
-                              />
-                            </PopoverContent>
-                          </Popover>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="retryUntilTime"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Retry deadline (time)</FormLabel>
-                          <FormControl>
-                            <Input 
-                              type="time" 
-                              value={field.value} 
-                              onChange={field.onChange} 
-                              min={minRetryTime}
+                            <Input
+                              {...field}
+                              type="time"
+                              placeholder="14:30"
                             />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                  </div>
-                </>
-              )}
-
-              {runWhen === "now" && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="retryUntilDate"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-col">
-                        <FormLabel>Retry deadline (date)</FormLabel>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button
-                                variant={"outline"}
-                                className={cn(
-                                  "justify-start text-left font-normal",
-                                  !field.value && "text-muted-foreground"
-                                )}
-                              >
-                                {field.value ? format(field.value, "PPP") : <span>Pick a date</span>}
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                              mode="single"
-                              selected={field.value}
-                              onSelect={field.onChange}
-                              disabled={{ before: startOfToday() }}
-                              initialFocus
-                              className={cn("p-3 pointer-events-auto")}
-                            />
-                          </PopoverContent>
-                        </Popover>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="retryUntilTime"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Retry deadline (time)</FormLabel>
-                        <FormControl>
-                          <Input 
-                            type="time" 
-                            value={field.value} 
-                            onChange={field.onChange} 
-                            min={minRetryTime}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              )}
-
-              <FormField
-                control={form.control}
-                name="actionType"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Action</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select action" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="start">Start</SelectItem>
-                        <SelectItem value="stop">Stop</SelectItem>
-                        <SelectItem value="restart">Restart</SelectItem>
-                        <SelectItem value="deploy">Deploy</SelectItem>
-                        <SelectItem value="transport">Transport</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
+                  </>
                 )}
-              />
 
-              {actionType === "transport" && (
                 <FormField
                   control={form.control}
-                  name="sourceEnvironmentName"
+                  name="environmentName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Source environment</FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange} disabled={!appId}>
+                      <FormLabel>Environment</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={(v) => field.onChange(v)}
+                        disabled={!appId}
+                      >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder={appId ? "Select source environment" : "Select an app first"} />
+                            <SelectValue placeholder={appId ? "Select environment" : "Select app first"} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
                           {filteredEnvs.map((e) => (
-                            <SelectItem key={`src-${e.id}`} value={e.environment_name}>
+                            <SelectItem key={e.id} value={e.environment_name}>
                               {e.environment_name}
                             </SelectItem>
                           ))}
@@ -824,258 +687,132 @@ const form = useForm<FormValues>({
                     </FormItem>
                   )}
                 />
-              )}
-
-              {actionType === "deploy" && (
-                <>
-                  <FormField
-                    control={form.control}
-                    name="branchName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Branch</FormLabel>
-                        <Select value={field.value} onValueChange={field.onChange} disabled={!appId}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder={appId ? (loadingBranches ? "Loading branches..." : "Select branch") : "Select an app first"} />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {loadingBranches && <SelectItem disabled value="__loading">Loading branches...</SelectItem>}
-                            {!loadingBranches && branches.length === 0 && <SelectItem disabled value="__empty">No branches found</SelectItem>}
-                            {!loadingBranches && branches.map((b) => (
-                              <SelectItem key={b} value={b}>
-                                {b}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="revisionId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Revision</FormLabel>
-                        <Select value={field.value} onValueChange={field.onChange} disabled={!appId || !branchName}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder={branchName ? (loadingRevisions ? "Loading revisions..." : "Select revision") : "Select a branch first"} />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {loadingRevisions && <SelectItem disabled value="__loading">Loading revisions...</SelectItem>}
-                            {!loadingRevisions && filteredRevisions.length === 0 && <SelectItem disabled value="__empty">No revisions found</SelectItem>}
-                            {!loadingRevisions && filteredRevisions.map((r) => (
-                              <SelectItem key={r.id} value={r.id}>
-                                {r.id} - {r.message}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                   />
-                   
-                   <div className="grid grid-cols-3 gap-2">
-                     <FormField
-                       control={form.control}
-                       name="versionMajor"
-                       render={({ field }) => (
-                         <FormItem>
-                           <FormLabel>Major</FormLabel>
-                           <FormControl>
-                             <Input
-                               type="number"
-                               min="0"
-                               placeholder="1"
-                               {...field}
-                               onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : undefined)}
-                             />
-                           </FormControl>
-                           <FormMessage />
-                         </FormItem>
-                       )}
-                     />
-                     <FormField
-                       control={form.control}
-                       name="versionMinor"
-                       render={({ field }) => (
-                         <FormItem>
-                           <FormLabel>Minor</FormLabel>
-                           <FormControl>
-                             <Input
-                               type="number"
-                               min="0"
-                               placeholder="0"
-                               {...field}
-                               onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : undefined)}
-                             />
-                           </FormControl>
-                           <FormMessage />
-                         </FormItem>
-                       )}
-                     />
-                     <FormField
-                       control={form.control}
-                       name="versionPatch"
-                       render={({ field }) => (
-                         <FormItem>
-                           <FormLabel>Patch</FormLabel>
-                           <FormControl>
-                             <Input
-                               type="number"
-                               min="0"
-                               placeholder="0"
-                               {...field}
-                               onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value, 10) : undefined)}
-                             />
-                           </FormControl>
-                           <FormMessage />
-                         </FormItem>
-                       )}
-                     />
-                   </div>
-                   
-                   <FormField
-                     control={form.control}
-                     name="description"
-                     render={({ field }) => (
-                       <FormItem>
-                         <FormLabel>Description (optional)</FormLabel>
-                         <FormControl>
-                           <Input 
-                             placeholder="Package description"
-                             value={field.value || ""}
-                             onChange={field.onChange}
-                           />
-                         </FormControl>
-                         <FormMessage />
-                       </FormItem>
-                     )}
-                   />
-                 </>
-               )}
-
-               {(actionType === "transport" || actionType === "deploy") && (
-                 <FormField
-                   control={form.control}
-                   name="comment"
-                   render={({ field }) => (
-                     <FormItem>
-                       <FormLabel>Backup comment (optional)</FormLabel>
-                       <FormControl>
-                         <Input 
-                           placeholder="Custom backup comment (defaults to 'PintosoftOps Initiated Snapshot')"
-                           value={field.value || ""}
-                           onChange={field.onChange}
-                         />
-                       </FormControl>
-                       <FormMessage />
-                     </FormItem>
-                   )}
-                 />
-               )}
 
                 <FormField
-                control={form.control}
-                name="environmentName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Target environment</FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange} disabled={!appId}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder={appId ? "Select target environment" : "Select an app first"} />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {filteredEnvs.map((e) => (
-                          <SelectItem key={e.id} value={e.environment_name}>
-                            {e.environment_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={!form.formState.isValid || isSubmitting}>
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      {form.watch("runWhen") === "now" ? "Creating & Running..." : "Creating..."}
-                    </>
-                  ) : (
-                    form.watch("runWhen") === "now" ? "Create & Run Now" : "Create Action"
+                  control={form.control}
+                  name="actionType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Action Type</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select action type" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="start">Start</SelectItem>
+                          <SelectItem value="stop">Stop</SelectItem>
+                          <SelectItem value="deploy">Deploy</SelectItem>
+                          <SelectItem value="transport">Transport</SelectItem>
+                          <SelectItem value="backup">Backup</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
                   )}
-                </Button>
-              </div>
-            </form>
-          </Form>
+                />
 
-          <aside className="rounded-lg border border-border bg-card/50 p-4 space-y-3">
-            <div className="text-sm text-muted-foreground">Summary</div>
-            <div className="text-sm">
+                {(actionType === "deploy" || actionType === "transport") && (
+                  <>
+                    <FormField
+                      control={form.control}
+                      name="branchName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Branch</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder={loadingBranches ? "Loading branches..." : "Select branch"} />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {branches.map((b) => (
+                                <SelectItem key={b} value={b}>{b}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="revisionId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Revision</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value} disabled={!branchName}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder={loadingRevisions ? "Loading commits..." : "Select revision"} />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {revisions.map((c) => (
+                                <SelectItem key={c.id} value={c.id}>
+                                  {c.id.slice(0, 8)} - {c.message}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </>
+                )}
+
+                {/* Submit button in the form column */}
+                <Button type="submit" className="w-full" disabled={isSubmitting}>
+                  {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Create Cloud Action
+                </Button>
+              </form>
+            </Form>
+
+            {/* Sidebar for scheduling info */}
+            <aside className="space-y-4 text-sm text-muted-foreground">
               <div>
-                <span className="text-muted-foreground">Credential:</span> {credentialId ? (credentials.find(c => c.id === credentialId)?.name || credentialId) : "—"}
+                <h4 className="font-medium mb-2 text-foreground">Scheduling</h4>
+                <p>Actions can be run immediately or scheduled for later.</p>
+                <p className="mt-1">All scheduled times are in UTC.</p>
               </div>
               <div>
-                <span className="text-muted-foreground">App:</span> {appId ? (apps.find(a => a.app_id === appId)?.app_name || appId) : "—"}
-              </div>
-              <div className="capitalize">
-                <span className="text-muted-foreground">Action:</span> {actionType.replace("_", " ")}
-              </div>
-              <div>
-                <span className="text-muted-foreground">When:</span> {runWhen === "now" ? "Now" : `${form.watch("scheduledDate") ? format(form.watch("scheduledDate") as Date, "PPP") : "—"} ${form.watch("scheduledTime") || ""}`}
-              </div>
-              {actionType === "transport" && (
-                <div>
-                  <span className="text-muted-foreground">Source environment:</span> {form.watch("sourceEnvironmentName") || "—"}
+                <h4 className="font-medium mb-2 text-foreground">Preview</h4>
+                <div className="bg-muted/50 p-3 rounded-md space-y-2 text-xs">
+                  <div><span className="font-medium">Action:</span> {actionType || "Not selected"}</div>
+                  <div><span className="font-medium">Environment:</span> {form.watch("environmentName") || "Not selected"}</div>
+                  {(actionType === "deploy" || actionType === "transport") && (
+                    <>
+                      <div><span className="font-medium">Branch:</span> {branchName || "Not selected"}</div>
+                      <div><span className="font-medium">Revision:</span> {form.watch("revisionId") ? `${form.watch("revisionId")?.slice(0, 8)}...` : "Not selected"}</div>
+                    </>
+                  )}
+                  <div><span className="font-medium">Run:</span> {(() => {
+                    if (runWhen === "now") return "Immediately";
+                    if (runWhen === "schedule" && scheduledDate && scheduledTime) {
+                      const scheduledDateValue = new Date(scheduledDate);
+                      return `${format(scheduledDateValue, "PPP")} ${scheduledTime}`;
+                    }
+                    return "Not scheduled";
+                  })()}</div>
+                  <div><span className="font-medium">Retry until:</span> {(() => {
+                    const retryDate = form.watch("retryUntilDate");
+                    const retryTime = form.watch("retryUntilTime");
+                    if (retryDate && retryTime) {
+                      return `${format(retryDate as Date, "PPP")} ${retryTime}`;
+                    }
+                    return "Auto-populated";
+                  })()}
+                  </div>
                 </div>
-              )}
-              {actionType === "deploy" && (
-                <>
-                  <div>
-                    <span className="text-muted-foreground">Branch:</span> {form.watch("branchName") || "—"}
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Revision:</span> {(() => {
-                      const revisionId = form.watch("revisionId");
-                      const selectedRevision = revisions.find(r => r.id === revisionId);
-                      return selectedRevision ? `${selectedRevision.id} - ${selectedRevision.message}` : revisionId || "—";
-                    })()}
-                  </div>
-                </>
-              )}
-              <div>
-                <span className="text-muted-foreground">Target environment:</span> {form.watch("environmentName") || "—"}
               </div>
-              <div>
-                <span className="text-muted-foreground">Retry until:</span> {(() => {
-                  const retryDate = form.watch("retryUntilDate");
-                  const retryTime = form.watch("retryUntilTime");
-                  if (retryDate && retryTime) {
-                    return `${format(retryDate as Date, "PPP")} ${retryTime}`;
-                  }
-                  return "Auto-populated";
-                })()}
-              </div>
-            </div>
-          </aside>
-        </div>
+            </aside>
+          </div>
+        </ScrollArea>
       </DialogContent>
     </Dialog>
   );
