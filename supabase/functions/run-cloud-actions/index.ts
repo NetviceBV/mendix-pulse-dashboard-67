@@ -977,7 +977,11 @@ async function processActionsInBackground(
           }
 
           const transportBackupData = await transportBackupResp.json();
-          const transportSnapshotId = transportBackupData.SnapshotId;
+          const transportSnapshotId = transportBackupData.snapshot_id;
+
+          if (!transportSnapshotId) {
+            throw new Error(`No snapshot_id returned from backup creation. Response: ${JSON.stringify(transportBackupData)}`);
+          }
 
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
