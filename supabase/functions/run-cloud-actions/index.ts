@@ -469,7 +469,7 @@ async function processActionsInBackground(
           const requestBody = {
             Branch: formattedBranchName,
             Revision: revisionId,
-            Version: version || `1.0.14}`,
+            Version: version || "1.0.15",
             Description: description || "PintosoftOps Deploy Package",
           };
           
