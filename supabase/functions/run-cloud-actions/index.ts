@@ -242,7 +242,7 @@ async function processActionsInBackground(
         const body = method === "start" ? JSON.stringify({ "AutoSyncDb": true }) : "";
         
         await supabase.from("cloud_action_logs").insert({
-          user_id: user.id,
+          user_id: currentUserId,
           action_id: action.id,
           level: "info",
           message: `Calling Mendix API to ${method} environment ${normalizedEnvironmentName} (original: ${action.environment_name})`,
@@ -276,7 +276,7 @@ async function processActionsInBackground(
         }
 
         await supabase.from("cloud_action_logs").insert({
-          user_id: user.id,
+          user_id: currentUserId,
           action_id: action.id,
           level: "info",
           message: `Successfully ${method === "start" ? "started" : "stopped"} environment ${normalizedEnvironmentName}`,
@@ -1155,10 +1155,10 @@ Body: ${JSON.stringify(requestBody, null, 2)}`,
         .from("cloud_actions")
         .update({ status: "succeeded", completed_at: new Date().toISOString() })
         .eq("id", action.id)
-        .eq("user_id", user.id);
+        .eq("user_id", currentUserId);
 
       await supabase.from("cloud_action_logs").insert({
-        user_id: user.id,
+        user_id: currentUserId,
         action_id: action.id,
         level: "info",
         message: `Action completed successfully: ${action.action_type}`,
@@ -1178,10 +1178,10 @@ Body: ${JSON.stringify(requestBody, null, 2)}`,
           error_message: error instanceof Error ? error.message : String(error),
         })
         .eq("id", action.id)
-        .eq("user_id", user.id);
+        .eq("user_id", currentUserId);
 
       await supabase.from("cloud_action_logs").insert({
-        user_id: user.id,
+        user_id: currentUserId,
         action_id: action.id,
         level: "error",
         message: `Action failed: ${error instanceof Error ? error.message : String(error)}`,
