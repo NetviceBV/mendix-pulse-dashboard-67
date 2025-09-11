@@ -1017,7 +1017,11 @@ async function processActionsInBackground(
 
             if (snapshotStatusResp.ok) {
               const snapshotData = await snapshotStatusResp.json();
-              const snapshotState = snapshotData.State;
+              const snapshotState = snapshotData.state;
+
+              if (!snapshotState) {
+                throw new Error(`No state field returned from snapshot status check. Response: ${JSON.stringify(snapshotData)}`);
+              }
 
               await supabase.from("cloud_action_logs").insert({
                 user_id: user.id,
@@ -1026,7 +1030,7 @@ async function processActionsInBackground(
                 message: `Backup check (attempt ${transportBackupAttempts}): Snapshot state = ${snapshotState}`,
               });
 
-              if (snapshotState === "Completed") {
+              if (snapshotState === "completed") {
                 isBackupComplete = true;
                 await supabase.from("cloud_action_logs").insert({
                   user_id: user.id,
@@ -1037,7 +1041,7 @@ async function processActionsInBackground(
                 break;
               }
 
-              if (snapshotState === "Failed") {
+              if (snapshotState === "failed") {
                 throw new Error(`Backup creation failed for SnapshotId ${transportSnapshotId}`);
               }
             }
