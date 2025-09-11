@@ -957,7 +957,7 @@ async function processActionsInBackground(
           });
 
           // Create backup using V2 API (requires project_id and environment_id)
-          const transportBackupUrl = `https://deploy.mendix.com/api/2/apps/${encodeURIComponent(transportTargetProjectId)}/environments/${encodeURIComponent(transportEnvironmentId)}/snapshots`;
+          const transportBackupUrl = `https://deploy.mendix.com/api/v2/apps/${encodeURIComponent(transportTargetProjectId)}/environments/${encodeURIComponent(transportEnvironmentId)}/snapshots`;
           const transportBackupResp = await fetch(transportBackupUrl, {
             method: "POST",
             headers: {
@@ -1001,7 +1001,7 @@ async function processActionsInBackground(
           while (!isBackupComplete && transportBackupAttempts < maxTransportBackupAttempts && new Date() < transportRetryUntil) {
             transportBackupAttempts++;
 
-            const snapshotStatusUrl = `https://deploy.mendix.com/api/2/apps/${encodeURIComponent(transportTargetProjectId)}/environments/${encodeURIComponent(transportEnvironmentId)}/snapshots/${encodeURIComponent(transportSnapshotId)}`;
+            const snapshotStatusUrl = `https://deploy.mendix.com/api/v2/apps/${encodeURIComponent(transportTargetProjectId)}/environments/${encodeURIComponent(transportEnvironmentId)}/snapshots/${encodeURIComponent(transportSnapshotId)}`;
             const snapshotStatusResp = await fetch(snapshotStatusUrl, {
               method: "GET",
               headers: {
