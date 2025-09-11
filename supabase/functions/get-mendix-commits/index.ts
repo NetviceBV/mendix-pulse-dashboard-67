@@ -53,16 +53,16 @@ serve(async (req) => {
       });
     }
 
-    // Get the project ID for the app
+    // Get the project ID for the app (appId parameter is actually project_id)
     const { data: appData, error: appError } = await supabase
       .from('mendix_apps')
       .select('project_id')
-      .eq('app_id', appId)
+      .eq('project_id', appId)
       .eq('user_id', user.id)
       .single();
 
     if (appError || !appData?.project_id) {
-      return new Response(JSON.stringify({ error: 'App or project ID not found' }), {
+      return new Response(JSON.stringify({ error: `Project not found for project_id: ${appId}. Error: ${appError?.message || 'No data returned'}` }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
