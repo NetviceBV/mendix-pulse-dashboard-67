@@ -436,7 +436,7 @@ const form = useForm<FormValues>({
           user_id: user.id,
           credential_id: values.credentialId,
           app_id: values.appId,
-          environment_name: values.environmentName,
+          environment_name: values.actionType === "transport" ? values.targetEnvironmentName : values.environmentName,
           action_type: values.actionType,
           status: values.runWhen === "now" ? "scheduled" : "scheduled",
           scheduled_for: scheduledFor,
