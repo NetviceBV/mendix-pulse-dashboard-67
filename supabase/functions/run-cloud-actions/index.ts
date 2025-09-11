@@ -466,11 +466,21 @@ async function processActionsInBackground(
 
           const createPackageUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(appSubdomain)}/packages`;
           
+          const requestBody = {
+            Branch: formattedBranchName,
+            Revision: revisionId,
+            Version: version || `1.0.${Date.now()}`,
+            Description: description || "PintosoftOps Deploy Package",
+          };
+          
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
             action_id: action.id,
             level: "info",
-            message: `Making package creation request to: ${createPackageUrl}`,
+            message: `Complete request details:
+URL: ${createPackageUrl}
+Headers: Mendix-Username: ${credential.username}, Content-Type: application/json
+Body: ${JSON.stringify(requestBody, null, 2)}`,
           });
 
           const createPackageResp = await fetch(createPackageUrl, {
@@ -481,12 +491,7 @@ async function processActionsInBackground(
               "Mendix-ApiKey": credential.api_key,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({
-              Branch: formattedBranchName,
-              Revision: revisionId,
-              Version: version || `1.0.${Date.now()}`,
-              Description: description || "PintosoftOps Deploy Package",
-            }),
+            body: JSON.stringify(requestBody),
           });
 
           if (!createPackageResp.ok) {
