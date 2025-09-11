@@ -79,7 +79,7 @@ const FormSchema = z
       credentialId: z.string().min(1, "Select credential"),
       appId: z.string().min(1, "Select app"),
       environmentName: z.string().min(1, "Select environment"),
-      sourceEnvironmentName: z.string().optional(),
+      targetEnvironmentName: z.string().optional(),
       branchName: z.string().optional(),
       revisionId: z.string().optional(),
       revision: z.string().optional(),
@@ -132,8 +132,8 @@ const FormSchema = z
         }
       }
       
-      if (val.actionType === "transport" && !val.sourceEnvironmentName) {
-        ctx.addIssue({ code: "custom", message: "Source environment required", path: ["sourceEnvironmentName"] });
+      if (val.actionType === "transport" && !val.targetEnvironmentName) {
+        ctx.addIssue({ code: "custom", message: "Target environment required", path: ["targetEnvironmentName"] });
       }
       if (val.actionType === "deploy") {
         if (!val.branchName) ctx.addIssue({ code: "custom", message: "Branch is required", path: ["branchName"] });
@@ -150,7 +150,7 @@ const form = useForm<FormValues>({
       credentialId: "",
       appId: "",
       environmentName: "",
-      sourceEnvironmentName: "",
+      targetEnvironmentName: "",
       branchName: "",
       revisionId: "",
       revision: "",
@@ -407,7 +407,8 @@ const form = useForm<FormValues>({
       };
 
       if (values.actionType === "transport") {
-        payload.sourceEnvironmentName = values.sourceEnvironmentName;
+        payload.sourceEnvironmentName = values.environmentName;
+        payload.targetEnvironmentName = values.targetEnvironmentName;
         payload.comment = values.comment;
       }
 
@@ -461,7 +462,7 @@ const form = useForm<FormValues>({
         description:
           `Action: ${values.actionType.replace("_", " ")} • App: ${appName} • ` +
           (values.actionType === "transport"
-            ? `Source: ${values.sourceEnvironmentName || ""} • Target: ${values.environmentName}`
+            ? `Source: ${values.environmentName || ""} • Target: ${values.targetEnvironmentName || ""}`
             : `Target: ${values.environmentName}`) +
           ` • When: ${when}${deployInfo}`,
       });
@@ -690,7 +691,7 @@ const form = useForm<FormValues>({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>
-                        {actionType === "transport" ? "Target Environment" : "Environment"}
+                        {actionType === "transport" ? "Source Environment" : "Environment"}
                       </FormLabel>
                       <Select
                         value={field.value}
@@ -771,20 +772,20 @@ const form = useForm<FormValues>({
                   <>
                     <FormField
                       control={form.control}
-                      name="sourceEnvironmentName"
+                      name="targetEnvironmentName"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Source Environment</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
+                          <FormLabel>Target Environment</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value} disabled={!appId}>
                             <FormControl>
                               <SelectTrigger>
-                                <SelectValue placeholder={loadingEnvs ? "Loading environments..." : "Select source environment"} />
+                                <SelectValue placeholder={appId ? "Select target environment" : "Select app first"} />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              {filteredEnvs.map((env) => (
-                                <SelectItem key={env.id} value={env.environment_name}>
-                                  {env.environment_name}
+                              {filteredEnvs.map((e) => (
+                                <SelectItem key={e.id} value={e.environment_name}>
+                                  {e.environment_name}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -838,8 +839,8 @@ const form = useForm<FormValues>({
                   )}
                   {actionType === "transport" && (
                     <>
-                      <div><span className="font-medium">Source Environment:</span> {form.watch("sourceEnvironmentName") || "Not selected"}</div>
-                      <div><span className="font-medium">Target Environment:</span> {form.watch("environmentName") || "Not selected"}</div>
+                      <div><span className="font-medium">Source Environment:</span> {form.watch("environmentName") || "Not selected"}</div>
+                      <div><span className="font-medium">Target Environment:</span> {form.watch("targetEnvironmentName") || "Not selected"}</div>
                     </>
                   )}
                   <div><span className="font-medium">Run:</span> {(() => {
