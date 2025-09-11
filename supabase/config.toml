@@ -1,1 +1,4 @@
 project_id = "hfmeoajwhaiobjngpyhe"
+
+[functions.run-cloud-actions]
+verify_jwt = false

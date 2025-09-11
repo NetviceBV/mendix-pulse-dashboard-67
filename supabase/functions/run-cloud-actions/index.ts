@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-cron",
 };
 
 type CloudAction = {
@@ -45,15 +45,28 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, serviceKey);
 
   try {
-    // Authenticate caller
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("Missing Authorization header");
-    const jwt = authHeader.replace("Bearer ", "");
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser(jwt);
-    if (authError || !user) throw new Error("Invalid authentication");
+    // Check if this is an internal cron call
+    const isInternalCron = req.headers.get("x-internal-cron") === "1";
+    
+    let user: any;
+    let jwt: string = "";
+    
+    if (isInternalCron) {
+      // For cron calls, we'll process all users' due actions
+      user = null; // Will be set per-action in background processing
+      console.log("Processing internal cron call for all users");
+    } else {
+      // Regular user authentication
+      const authHeader = req.headers.get("Authorization");
+      if (!authHeader) throw new Error("Missing Authorization header");
+      jwt = authHeader.replace("Bearer ", "");
+      const {
+        data: { user: authUser },
+        error: authError,
+      } = await supabase.auth.getUser(jwt);
+      if (authError || !authUser) throw new Error("Invalid authentication");
+      user = authUser;
+    }
 
     const body = await req.json().catch(() => ({}));
     const { actionId, processAllDue = true } = body as {
@@ -64,27 +77,52 @@ serve(async (req) => {
     // Fetch actions to process
     let actions: CloudAction[] = [];
     if (actionId) {
-      const { data, error } = await supabase
-        .from("cloud_actions")
-        .select("*")
-        .eq("id", actionId)
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (error) throw error;
-      if (data) actions = [data as CloudAction];
+      if (isInternalCron) {
+        // For cron, get any due action by ID
+        const { data, error } = await supabase
+          .from("cloud_actions")
+          .select("*")
+          .eq("id", actionId)
+          .maybeSingle();
+        if (error) throw error;
+        if (data) actions = [data as CloudAction];
+      } else {
+        // For user calls, only get their actions
+        const { data, error } = await supabase
+          .from("cloud_actions")
+          .select("*")
+          .eq("id", actionId)
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (error) throw error;
+        if (data) actions = [data as CloudAction];
+      }
     } else if (processAllDue) {
-      const { data, error } = await supabase
-        .from("cloud_actions")
-        .select("*")
-        .eq("user_id", user.id)
-        .eq("status", "scheduled")
-        .lte("scheduled_for", new Date().toISOString());
-      if (error) throw error;
-      actions = (data || []) as CloudAction[];
+      if (isInternalCron) {
+        // For cron, get all due actions from all users
+        const { data, error } = await supabase
+          .from("cloud_actions")
+          .select("*")
+          .eq("status", "scheduled")
+          .lte("scheduled_for", new Date().toISOString());
+        if (error) throw error;
+        actions = (data || []) as CloudAction[];
+        console.log(`Found ${actions.length} scheduled actions to process`);
+      } else {
+        // For user calls, only get their due actions
+        const { data, error } = await supabase
+          .from("cloud_actions")
+          .select("*")
+          .eq("user_id", user.id)
+          .eq("status", "scheduled")
+          .lte("scheduled_for", new Date().toISOString());
+        if (error) throw error;
+        actions = (data || []) as CloudAction[];
+      }
     }
 
     // Start background processing and return immediate response
-    EdgeRuntime.waitUntil(processActionsInBackground(actions, user, supabase, jwt));
+    EdgeRuntime.waitUntil(processActionsInBackground(actions, user, supabase, jwt, isInternalCron));
 
     return new Response(
       JSON.stringify({
@@ -111,7 +149,8 @@ async function processActionsInBackground(
   actions: CloudAction[],
   user: any,
   supabase: any,
-  jwt: string
+  jwt: string,
+  isInternalCron: boolean = false
 ) {
   let processed = 0;
   let succeeded = 0;
@@ -121,6 +160,9 @@ async function processActionsInBackground(
 
   for (const action of actions) {
     processed++;
+    
+    // For cron calls, we need to use the action's user_id
+    const currentUserId = isInternalCron ? action.user_id : user.id;
 
     try {
       // Mark as running
@@ -128,10 +170,10 @@ async function processActionsInBackground(
         .from("cloud_actions")
         .update({ status: "running", started_at: new Date().toISOString(), error_message: null })
         .eq("id", action.id)
-        .eq("user_id", user.id);
+        .eq("user_id", currentUserId);
 
       await supabase.from("cloud_action_logs").insert({
-        user_id: user.id,
+        user_id: currentUserId,
         action_id: action.id,
         level: "info",
         message: `Starting action: ${action.action_type} for ${action.app_id}/${action.environment_name}`,
@@ -142,7 +184,7 @@ async function processActionsInBackground(
         .from("mendix_credentials")
         .select("*")
         .eq("id", action.credential_id)
-        .eq("user_id", user.id)
+        .eq("user_id", currentUserId)
         .maybeSingle();
       if (credError || !creds) throw new Error("Credentials not found");
       const credential = creds as MendixCredential;
@@ -153,7 +195,7 @@ async function processActionsInBackground(
         .select("project_id, app_id")
         .eq("project_id", action.app_id)
         .eq("credential_id", action.credential_id)
-        .eq("user_id", user.id)
+        .eq("user_id", currentUserId)
         .maybeSingle();
 
       if (appError || !appData?.project_id || !appData?.app_id) {
@@ -186,7 +228,7 @@ async function processActionsInBackground(
       const normalizedEnvironmentName = normalizeEnvironmentName(action.environment_name);
       
       await supabase.from("cloud_action_logs").insert({
-        user_id: user.id,
+        user_id: currentUserId,
         action_id: action.id,
         level: "info",
         message: `Using normalized environment name: "${normalizedEnvironmentName}" (original: "${action.environment_name}")`,
