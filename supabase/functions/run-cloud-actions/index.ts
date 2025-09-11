@@ -165,6 +165,8 @@ async function processActionsInBackground(
     const currentUserId = isInternalCron ? action.user_id : user.id;
 
     try {
+      const user = { id: currentUserId };
+
       // Mark as running
       await supabase
         .from("cloud_actions")
