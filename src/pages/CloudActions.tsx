@@ -592,7 +592,7 @@ const form = useForm<FormValues>({
                         >
                           <div className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2">
                             <RadioGroupItem value="now" id="run-now" />
-                            <label htmlFor="run-now" className="text-sm">Run now</label>
+                            <label htmlFor="run-now" className="text-sm">Manual</label>
                           </div>
                           <div className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2">
                             <RadioGroupItem value="schedule" id="run-schedule" />
