@@ -647,7 +647,7 @@ async function processActionsInBackground(
               app_id
             `)
             .eq("app_id", action.app_id)
-            .eq("environment_name", normalizedEnvironmentName)
+            .ilike("environment_name", action.environment_name)
             .eq("user_id", user.id)
             .single();
 
@@ -813,7 +813,7 @@ async function processActionsInBackground(
               app_id
             `)
             .eq("app_id", action.app_id)
-            .eq("environment_name", normalizedEnvironmentName)
+            .ilike("environment_name", action.environment_name)
             .eq("user_id", user.id)
             .single();
 
