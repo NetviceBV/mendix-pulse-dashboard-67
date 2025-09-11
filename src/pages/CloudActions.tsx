@@ -661,35 +661,6 @@ const form = useForm<FormValues>({
 
                 <FormField
                   control={form.control}
-                  name="environmentName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Environment</FormLabel>
-                      <Select
-                        value={field.value}
-                        onValueChange={(v) => field.onChange(v)}
-                        disabled={!appId}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder={appId ? "Select environment" : "Select app first"} />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {filteredEnvs.map((e) => (
-                            <SelectItem key={e.id} value={e.environment_name}>
-                              {e.environment_name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
                   name="actionType"
                   render={({ field }) => (
                     <FormItem>
@@ -706,6 +677,37 @@ const form = useForm<FormValues>({
                           <SelectItem value="restart">Restart</SelectItem>
                           <SelectItem value="deploy">Deploy</SelectItem>
                           <SelectItem value="transport">Transport</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="environmentName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        {actionType === "transport" ? "Target Environment" : "Environment"}
+                      </FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={(v) => field.onChange(v)}
+                        disabled={!appId}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={appId ? "Select environment" : "Select app first"} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {filteredEnvs.map((e) => (
+                            <SelectItem key={e.id} value={e.environment_name}>
+                              {e.environment_name}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                       <FormMessage />
