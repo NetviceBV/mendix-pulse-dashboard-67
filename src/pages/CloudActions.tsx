@@ -407,8 +407,8 @@ const form = useForm<FormValues>({
       };
 
       if (values.actionType === "transport") {
-        payload.sourceEnvironmentName = values.environmentName;
-        payload.targetEnvironmentName = values.targetEnvironmentName;
+        payload.environmentName = values.targetEnvironmentName; // Target environment goes to main field
+        payload.sourceEnvironmentName = values.environmentName; // Source environment goes to payload
         payload.comment = values.comment;
       }
 
