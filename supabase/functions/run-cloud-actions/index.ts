@@ -449,17 +449,40 @@ async function processActionsInBackground(
             message: `Creating package from branch: ${branchName}, revision: ${revisionId}`,
           });
 
+          // Format branch name for Mendix API (must include "branches/" prefix)
+          const formattedBranchName = branchName.startsWith("branches/") ? branchName : `branches/${branchName}`;
+          
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Formatted branch name: "${formattedBranchName}" (original: "${branchName}")`,
+          });
+
+          // Validate authentication credentials
+          if (!credential.api_key) {
+            throw new Error("Mendix API Key is required for deploy operations. PAT is not supported for Deploy API calls.");
+          }
+
           const createPackageUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(appSubdomain)}/packages`;
+          
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Making package creation request to: ${createPackageUrl}`,
+          });
+
           const createPackageResp = await fetch(createPackageUrl, {
             method: "POST",
             headers: {
               Accept: "application/json",
               "Mendix-Username": credential.username,
-              "Mendix-ApiKey": credential.api_key || credential.pat || "",
+              "Mendix-ApiKey": credential.api_key,
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              Branch: branchName,
+              Branch: formattedBranchName,
               Revision: revisionId,
               Version: version || `1.0.${Date.now()}`,
               Description: description || "PintosoftOps Deploy Package",
