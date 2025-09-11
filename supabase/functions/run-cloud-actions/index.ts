@@ -449,8 +449,15 @@ async function processActionsInBackground(
             message: `Creating package from branch: ${branchName}, revision: ${revisionId}`,
           });
 
-          // Format branch name for Mendix API (must include "branches/" prefix)
-          const formattedBranchName = branchName.startsWith("branches/") ? branchName : `branches/${branchName}`;
+          // Format branch name for Mendix API - handle special case for trunk
+          let formattedBranchName;
+          if (branchName === "trunk") {
+            formattedBranchName = "Main line";
+          } else if (branchName.startsWith("branches/")) {
+            formattedBranchName = branchName;
+          } else {
+            formattedBranchName = `branches/${branchName}`;
+          }
           
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
