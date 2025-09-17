@@ -14,6 +14,7 @@ interface Environment {
   id: string;
   environment_name: string;
   app_id: string;
+  app_name: string;
   status: string;
 }
 
@@ -49,6 +50,13 @@ const LogMonitoringSettings = () => {
 
       if (envError) throw envError;
 
+      // Load apps to get app names
+      const { data: appsData, error: appsError } = await supabase
+        .from('mendix_apps')
+        .select('app_id, app_name');
+
+      if (appsError) throw appsError;
+
       // Load existing monitoring settings
       const { data: settingsData, error: settingsError } = await supabase
         .from('log_monitoring_settings')
@@ -56,11 +64,29 @@ const LogMonitoringSettings = () => {
 
       if (settingsError) throw settingsError;
 
-      setEnvironments(envData || []);
+      // Create app lookup map
+      const appLookup = (appsData || []).reduce((acc, app) => {
+        acc[app.app_id] = app.app_name;
+        return acc;
+      }, {} as Record<string, string>);
+
+      // Transform the data to include app names and sort by app name then environment name
+      const transformedEnvData = (envData || [])
+        .map(env => ({
+          ...env,
+          app_name: appLookup[env.app_id] || 'Unknown App'
+        }))
+        .sort((a, b) => {
+          const appCompare = a.app_name.localeCompare(b.app_name);
+          if (appCompare !== 0) return appCompare;
+          return a.environment_name.localeCompare(b.environment_name);
+        });
+
+      setEnvironments(transformedEnvData);
 
       // Create settings map
       const settingsMap: Record<string, MonitoringSetting> = {};
-      (envData || []).forEach((env) => {
+      transformedEnvData.forEach((env) => {
         const existing = settingsData?.find(s => s.environment_id === env.id);
         settingsMap[env.id] = existing || {
           environment_id: env.id,
@@ -168,112 +194,132 @@ const LogMonitoringSettings = () => {
         </p>
       </div>
 
-      <div className="grid gap-4">
-        {environments.map((env) => {
-          const setting = settings[env.id];
-          if (!setting) return null;
+      <div className="space-y-8">
+        {Object.entries(
+          environments.reduce((acc, env) => {
+            const appName = env.app_name;
+            if (!acc[appName]) acc[appName] = [];
+            acc[appName].push(env);
+            return acc;
+          }, {} as Record<string, Environment[]>)
+        ).map(([appName, appEnvironments]) => (
+          <div key={appName} className="space-y-4">
+            <div className="border-b border-border pb-2">
+              <h3 className="text-xl font-semibold text-foreground">{appName}</h3>
+              <p className="text-sm text-muted-foreground">
+                {appEnvironments.length} environment{appEnvironments.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+            
+            <div className="grid gap-4 pl-4">
+              {appEnvironments.map((env) => {
+                const setting = settings[env.id];
+                if (!setting) return null;
 
-          return (
-            <Card key={env.id}>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-lg">{env.environment_name}</CardTitle>
-                    <CardDescription>
-                      App: {env.app_id} • Status: {env.status}
-                      {setting.last_check_time && (
-                        <span className="ml-2 text-xs">
-                          Last checked: {new Date(setting.last_check_time).toLocaleString()}
-                        </span>
-                      )}
-                    </CardDescription>
-                  </div>
-                  <Switch
-                    checked={setting.is_enabled}
-                    onCheckedChange={(checked) => updateSetting(env.id, { is_enabled: checked })}
-                  />
-                </div>
-              </CardHeader>
+                return (
+                  <Card key={env.id}>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="text-lg">{env.environment_name}</CardTitle>
+                          <CardDescription>
+                            Status: {env.status}
+                            {setting.last_check_time && (
+                              <span className="ml-2 text-xs">
+                                Last checked: {new Date(setting.last_check_time).toLocaleString()}
+                              </span>
+                            )}
+                          </CardDescription>
+                        </div>
+                        <Switch
+                          checked={setting.is_enabled}
+                          onCheckedChange={(checked) => updateSetting(env.id, { is_enabled: checked })}
+                        />
+                      </div>
+                    </CardHeader>
 
-              {setting.is_enabled && (
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor={`email-${env.id}`}>
-                        <Mail className="w-4 h-4 inline mr-2" />
-                        Alert Email Address
-                      </Label>
-                      <Input
-                        id={`email-${env.id}`}
-                        type="email"
-                        value={setting.email_address}
-                        onChange={(e) => updateSetting(env.id, { email_address: e.target.value })}
-                        placeholder="Enter email address for alerts"
-                      />
-                    </div>
+                    {setting.is_enabled && (
+                      <CardContent className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor={`email-${env.id}`}>
+                              <Mail className="w-4 h-4 inline mr-2" />
+                              Alert Email Address
+                            </Label>
+                            <Input
+                              id={`email-${env.id}`}
+                              type="email"
+                              value={setting.email_address}
+                              onChange={(e) => updateSetting(env.id, { email_address: e.target.value })}
+                              placeholder="Enter email address for alerts"
+                            />
+                          </div>
 
-                    <div className="space-y-2">
-                      <Label>
-                        <Clock className="w-4 h-4 inline mr-2" />
-                        Check Interval
-                      </Label>
-                      <Select
-                        value={setting.check_interval_minutes.toString()}
-                        onValueChange={(value) => updateSetting(env.id, { check_interval_minutes: parseInt(value) })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="15">Every 15 minutes</SelectItem>
-                          <SelectItem value="30">Every 30 minutes</SelectItem>
-                          <SelectItem value="60">Every hour</SelectItem>
-                          <SelectItem value="120">Every 2 hours</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                          <div className="space-y-2">
+                            <Label>
+                              <Clock className="w-4 h-4 inline mr-2" />
+                              Check Interval
+                            </Label>
+                            <Select
+                              value={setting.check_interval_minutes.toString()}
+                              onValueChange={(value) => updateSetting(env.id, { check_interval_minutes: parseInt(value) })}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="15">Every 15 minutes</SelectItem>
+                                <SelectItem value="30">Every 30 minutes</SelectItem>
+                                <SelectItem value="60">Every hour</SelectItem>
+                                <SelectItem value="120">Every 2 hours</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
 
-                    <div className="space-y-2">
-                      <Label>
-                        <AlertTriangle className="w-4 h-4 inline mr-2" />
-                        Error Threshold
-                      </Label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={setting.error_threshold}
-                        onChange={(e) => updateSetting(env.id, { error_threshold: parseInt(e.target.value) || 1 })}
-                      />
-                    </div>
+                          <div className="space-y-2">
+                            <Label>
+                              <AlertTriangle className="w-4 h-4 inline mr-2" />
+                              Error Threshold
+                            </Label>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={setting.error_threshold}
+                              onChange={(e) => updateSetting(env.id, { error_threshold: parseInt(e.target.value) || 1 })}
+                            />
+                          </div>
 
-                    <div className="space-y-2">
-                      <Label>
-                        <Eye className="w-4 h-4 inline mr-2" />
-                        Critical Threshold
-                      </Label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={setting.critical_threshold}
-                        onChange={(e) => updateSetting(env.id, { critical_threshold: parseInt(e.target.value) || 1 })}
-                      />
-                    </div>
-                  </div>
+                          <div className="space-y-2">
+                            <Label>
+                              <Eye className="w-4 h-4 inline mr-2" />
+                              Critical Threshold
+                            </Label>
+                            <Input
+                              type="number"
+                              min="1"
+                              value={setting.critical_threshold}
+                              onChange={(e) => updateSetting(env.id, { critical_threshold: parseInt(e.target.value) || 1 })}
+                            />
+                          </div>
+                        </div>
 
-                  <div className="flex justify-end pt-4">
-                    <Button 
-                      onClick={() => saveSetting(env.id)}
-                      disabled={saving || !setting.email_address}
-                    >
-                      {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                      Save Settings
-                    </Button>
-                  </div>
-                </CardContent>
-              )}
-            </Card>
-          );
-        })}
+                        <div className="flex justify-end pt-4">
+                          <Button 
+                            onClick={() => saveSetting(env.id)}
+                            disabled={saving || !setting.email_address}
+                          >
+                            {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                            Save Settings
+                          </Button>
+                        </div>
+                      </CardContent>
+                    )}
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
       {environments.length === 0 && (
