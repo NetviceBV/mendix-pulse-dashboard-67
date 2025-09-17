@@ -95,6 +95,84 @@ export type Database = {
         }
         Relationships: []
       }
+      log_monitoring_alerts: {
+        Row: {
+          alert_type: string
+          created_at: string
+          email_sent: boolean
+          email_sent_at: string | null
+          environment_id: string
+          id: string
+          log_content: string
+          log_entries_count: number
+          user_id: string
+        }
+        Insert: {
+          alert_type: string
+          created_at?: string
+          email_sent?: boolean
+          email_sent_at?: string | null
+          environment_id: string
+          id?: string
+          log_content: string
+          log_entries_count?: number
+          user_id: string
+        }
+        Update: {
+          alert_type?: string
+          created_at?: string
+          email_sent?: boolean
+          email_sent_at?: string | null
+          environment_id?: string
+          id?: string
+          log_content?: string
+          log_entries_count?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      log_monitoring_settings: {
+        Row: {
+          check_interval_minutes: number
+          created_at: string
+          critical_threshold: number
+          email_address: string
+          environment_id: string
+          error_threshold: number
+          id: string
+          is_enabled: boolean
+          last_check_time: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          check_interval_minutes?: number
+          created_at?: string
+          critical_threshold?: number
+          email_address: string
+          environment_id: string
+          error_threshold?: number
+          id?: string
+          is_enabled?: boolean
+          last_check_time?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          check_interval_minutes?: number
+          created_at?: string
+          critical_threshold?: number
+          email_address?: string
+          environment_id?: string
+          error_threshold?: number
+          id?: string
+          is_enabled?: boolean
+          last_check_time?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       mendix_apps: {
         Row: {
           active_users: number | null
