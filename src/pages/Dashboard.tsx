@@ -176,7 +176,7 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
         const { data: environments, error: envError } = await supabase
           .from('mendix_environments')
           .select('*')
-          .eq('app_id', app.app_id);
+          .eq('app_id', app.project_id);
 
         return {
           ...app,
