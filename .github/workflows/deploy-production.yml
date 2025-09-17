@@ -50,10 +50,26 @@ jobs:
       - name: Link and deploy Supabase changes
         run: |
           supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          
+          # Create the missing function first
+          cat > temp_function.sql << 'EOF'
+          CREATE OR REPLACE FUNCTION public.update_updated_at_column()
+          RETURNS TRIGGER AS $
+          BEGIN
+              NEW.updated_at = CURRENT_TIMESTAMP;
+              RETURN NEW;
+          END;
+          $ language 'plpgsql';
+          EOF
+          
+          psql "$DATABASE_URL" -f temp_function.sql
+          
+          # Now reset and apply migrations
           echo "y" | supabase db reset --linked
           supabase functions deploy --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
 
       # Deploy to Vercel
       - name: Deploy to Vercel
