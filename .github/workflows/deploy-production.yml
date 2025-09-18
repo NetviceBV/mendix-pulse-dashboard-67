@@ -1,4 +1,3 @@
-# .github/workflows/deploy-production.yml
 name: Deploy to Production
 
 on:
@@ -41,37 +40,35 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Deploy Supabase changes first
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
           version: latest
 
-      - name: Link and deploy Supabase changes
+      - name: Clean up old migration files and deploy Supabase
         run: |
+          # Remove old migration files with incorrect naming (contain hyphens)
+          echo "Cleaning up old migration files..."
+          find supabase/migrations -name "*-*-*-*-*.sql" -delete 2>/dev/null || echo "No old files to clean"
+          
+          # Show remaining migration files
+          echo "Current migration files:"
+          ls -la supabase/migrations/ 2>/dev/null || echo "No migrations folder found"
+          
+          # Link to remote Supabase project
+          echo "Linking to Supabase project..."
           supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
           
-          # Create the missing function first
-          cat > temp_function.sql << 'EOF'
-          CREATE OR REPLACE FUNCTION public.update_updated_at_column()
-          RETURNS TRIGGER AS $
-          BEGIN
-              NEW.updated_at = CURRENT_TIMESTAMP;
-              RETURN NEW;
-          END;
-          $ language 'plpgsql';
-          EOF
+          # Apply the complete database schema
+          echo "Applying database migrations..."
+          supabase db push --include-all
           
-          psql "$DATABASE_URL" -f temp_function.sql
-          
-          # Now reset and apply migrations
-          echo "y" | supabase db reset --linked
+          # Deploy edge functions
+          echo "Deploying edge functions..."
           supabase functions deploy --no-verify-jwt
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
 
-      # Deploy to Vercel
       - name: Deploy to Vercel
         uses: amondnet/vercel-action@v25
         with:
