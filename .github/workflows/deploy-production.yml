@@ -3,33 +3,46 @@ name: Deploy to Production
 on:
   workflow_dispatch:
     inputs:
-      environment:
-        description: 'Environment to deploy to'
+      confirm_merge:
+        description: 'Merge dev to main and deploy to production?'
         required: true
-        default: 'production'
+        default: 'no'
         type: choice
         options:
-        - production
-        - staging
-      branch:
-        description: 'Branch to deploy from'
-        required: true
-        default: 'main'
-        type: choice
-        options:
-        - main
-        - dev
-        - staging
+        - 'yes'
+        - 'no'
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    if: github.event.inputs.confirm_merge == 'yes'
     
     steps:
-      - name: Checkout code
+      - name: Checkout dev branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.inputs.branch }}
+          ref: dev
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+      - name: Merge dev to main
+        run: |
+          # Switch to main branch
+          git checkout main
+          git pull origin main
+          
+          # Merge dev into main
+          git merge origin/dev --no-ff -m "Deploy: Merge dev to main via GitHub Actions"
+          
+          # Push the merge to main
+          git push origin main
+          
+          echo "✅ Successfully merged dev to main"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -45,9 +58,9 @@ jobs:
         with:
           version: latest
 
-      - name: Clean up old migration files and deploy Supabase
+      - name: Deploy Supabase changes
         run: |
-          # Remove old migration files with incorrect naming (contain hyphens)
+          # Clean up old migration files with incorrect naming
           echo "Cleaning up old migration files..."
           find supabase/migrations -name "*-*-*-*-*.sql" -delete 2>/dev/null || echo "No old files to clean"
           
@@ -59,8 +72,8 @@ jobs:
           echo "Linking to Supabase project..."
           supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
           
-          # Apply the complete database schema
-          echo "Applying database migrations..."
+          # Apply database migrations
+          echo "Applying database migrations to production..."
           supabase db push --include-all
           
           # Deploy edge functions
@@ -69,10 +82,10 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
-      - name: Deploy to Vercel
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          vercel-args: '--prod'
+      - name: Deployment Summary
+        run: |
+          echo "🚀 Deployment Complete!"
+          echo "✅ Merged dev → main"
+          echo "✅ Updated Supabase database"
+          echo "✅ Deployed edge functions"
+          echo "🔄 Vercel will auto-deploy from main branch"
