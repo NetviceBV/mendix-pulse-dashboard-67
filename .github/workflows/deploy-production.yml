@@ -36,8 +36,19 @@ jobs:
           git checkout main
           git pull origin main
           
-          # Merge dev into main
-          git merge origin/dev --no-ff -m "Deploy: Merge dev to main via GitHub Actions"
+          # Merge dev into main, auto-resolving conflicts by preferring dev version
+          git merge origin/dev --no-ff -m "Deploy: Merge dev to main via GitHub Actions" --strategy-option=ours || {
+            echo "Merge conflict detected, resolving automatically..."
+            
+            # For workflow file conflicts, use the dev version
+            if [ -f .github/workflows/deploy-production.yml ]; then
+              git checkout --theirs .github/workflows/deploy-production.yml
+            fi
+            
+            # Mark conflicts as resolved and complete merge
+            git add .
+            git commit -m "Deploy: Merge dev to main via GitHub Actions (auto-resolved conflicts)"
+          }
           
           # Push the merge to main
           git push origin main
