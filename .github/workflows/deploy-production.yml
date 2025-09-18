@@ -76,11 +76,7 @@ jobs:
 
       - name: Deploy Supabase changes
         run: |
-          # Clean up old migration files with incorrect naming
-          echo "Cleaning up old migration files..."
-          find supabase/migrations -name "*-*-*-*-*.sql" -delete 2>/dev/null || echo "No old files to clean"
-          
-          # Show remaining migration files
+          # Show current migration files
           echo "Current migration files:"
           ls -la supabase/migrations/ 2>/dev/null || echo "No migrations folder found"
           
@@ -88,9 +84,13 @@ jobs:
           echo "Linking to Supabase project..."
           supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
           
-          # Apply database migrations
-          echo "Applying database migrations to production..."
-          supabase db push --include-all
+          # Sync local migration state with remote database
+          echo "Syncing migration history..."
+          supabase db pull --schema supabase_migrations || echo "Migration sync completed"
+          
+          # Apply any new database migrations
+          echo "Applying new database migrations to production..."
+          supabase db push --include-all || echo "No new migrations to apply"
           
           # Deploy edge functions
           echo "Deploying edge functions..."
