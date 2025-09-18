@@ -41,8 +41,8 @@ jobs:
           git checkout main
           git pull origin main
           
-          # Merge dev into main, auto-resolving conflicts by preferring dev version
-          git merge origin/dev --no-ff -m "Deploy: Merge dev to main via GitHub Actions" --strategy-option=ours || {
+          # Merge dev into main without committing, excluding client.ts
+          git merge origin/dev --no-ff --no-commit || {
             echo "Merge conflict detected, resolving automatically..."
             
             # For workflow file conflicts, use the dev version
@@ -50,15 +50,20 @@ jobs:
               git checkout --theirs .github/workflows/deploy-production.yml
             fi
             
-            # Mark conflicts as resolved and complete merge
+            # Mark conflicts as resolved
             git add .
-            git commit -m "Deploy: Merge dev to main via GitHub Actions (auto-resolved conflicts)"
           }
+          
+          # Restore client.ts from main branch (exclude it from merge)
+          git checkout HEAD -- src/integrations/supabase/client.ts
+          
+          # Complete the merge commit
+          git commit -m "Deploy: Merge dev to main via GitHub Actions (excluding client.ts)"
           
           # Push the merge to main
           git push origin main
           
-          echo "✅ Successfully merged dev to main"
+          echo "✅ Successfully merged dev to main (excluding client.ts)"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
