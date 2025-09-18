@@ -83,13 +83,16 @@ serve(async (req) => {
     // If we only have environment name, we need to find the environment_id from the database
     let actualEnvironmentId = environmentId;
     if (!environmentId && environmentName) {
+      // Normalize the environment name for case-insensitive lookup
+      const normalizedEnvName = environmentName.charAt(0).toUpperCase() + environmentName.slice(1).toLowerCase();
+      
       const { data: envData, error: envError } = await supabase
         .from('mendix_environments')
         .select('environment_id')
         .eq('app_id', appId)
-        .ilike('environment_name', environmentName)
+        .or(`environment_name.eq.${environmentName},environment_name.eq.${normalizedEnvName}`)
         .eq('user_id', user_id)
-        .single();
+        .maybeSingle(); // Use maybeSingle to avoid errors when no data found
         
       if (envError || !envData) {
         throw new Error(`Environment not found for app: ${appId}, environment: ${environmentName}`);

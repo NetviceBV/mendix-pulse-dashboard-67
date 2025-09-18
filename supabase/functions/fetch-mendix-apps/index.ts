@@ -206,12 +206,13 @@ serve(async (req) => {
 
                 if (envDetailResponse.ok) {
                   const envDetail = await envDetailResponse.json();
+                  const envName = envDetail.name || env.name;
                   return {
                     user_id: user.id,
                     credential_id: credentialId,
                     app_id: app.id,
                     environment_id: envDetail.id || env.id,
-                    environment_name: (envDetail.name || env.name).toLowerCase().trim(),
+                    environment_name: envName.charAt(0).toUpperCase() + envName.slice(1).toLowerCase(), // Normalize casing
                     status: (envDetail.state || envDetail.status || 'unknown').toLowerCase(),
                     url: envDetail.url || env.url,
                     model_version: envDetail.modelVersion,
@@ -219,12 +220,13 @@ serve(async (req) => {
                   };
                 } else {
                   // Fallback to basic environment info from list
+                  const envName = env.name;
                   return {
                     user_id: user.id,
                     credential_id: credentialId,
                     app_id: app.id,
                     environment_id: env.id,
-                    environment_name: (env.name).toLowerCase().trim(),
+                    environment_name: envName.charAt(0).toUpperCase() + envName.slice(1).toLowerCase(), // Normalize casing
                     status: (env.state || env.status || 'unknown').toLowerCase(),
                     url: env.url,
                     model_version: null,
@@ -234,12 +236,13 @@ serve(async (req) => {
               } catch (envDetailError) {
                 console.error(`Error fetching detail for environment ${env.id}:`, envDetailError);
                 // Fallback to basic environment info
+                const envName = env.name;
                 return {
                   user_id: user.id,
                   credential_id: credentialId,
                   app_id: app.id,
                   environment_id: env.id,
-                  environment_name: (env.name).toLowerCase().trim(),
+                  environment_name: envName.charAt(0).toUpperCase() + envName.slice(1).toLowerCase(), // Normalize casing
                   status: (env.state || env.status || 'unknown').toLowerCase(),
                   url: env.url,
                   model_version: null,
@@ -331,10 +334,11 @@ serve(async (req) => {
           });
 
           // Use upsert for environments to update existing or insert new ones
+          // Use environment_id as the source of truth to prevent duplicates from name casing issues
           const { data: upsertedData, error: envUpsertError } = await supabase
             .from('mendix_environments')
             .upsert(validatedResults, { 
-              onConflict: 'app_id,environment_name,credential_id',
+              onConflict: 'environment_id,credential_id',
               ignoreDuplicates: false 
             })
             .select();
