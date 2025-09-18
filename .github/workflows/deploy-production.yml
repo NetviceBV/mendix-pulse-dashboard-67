@@ -12,6 +12,11 @@ on:
         - 'yes'
         - 'no'
 
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
