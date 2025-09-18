@@ -558,6 +558,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      normalize_environment_name: {
+        Args: { env_name: string }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never
