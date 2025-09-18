@@ -1,0 +1,107 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_merge:
+        description: 'Merge dev to main and deploy to production?'
+        required: true
+        default: 'no'
+        type: choice
+        options:
+        - 'yes'
+        - 'no'
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm_merge == 'yes'
+    
+    steps:
+      - name: Checkout dev branch
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+      - name: Merge dev to main
+        run: |
+          # Switch to main branch
+          git checkout main
+          git pull origin main
+          
+          # Merge dev into main, auto-resolving conflicts by preferring dev version
+          git merge origin/dev --no-ff -m "Deploy: Merge dev to main via GitHub Actions" --strategy-option=ours || {
+            echo "Merge conflict detected, resolving automatically..."
+            
+            # For workflow file conflicts, use the dev version
+            if [ -f .github/workflows/deploy-production.yml ]; then
+              git checkout --theirs .github/workflows/deploy-production.yml
+            fi
+            
+            # Mark conflicts as resolved and complete merge
+            git add .
+            git commit -m "Deploy: Merge dev to main via GitHub Actions (auto-resolved conflicts)"
+          }
+          
+          # Push the merge to main
+          git push origin main
+          
+          echo "✅ Successfully merged dev to main"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Deploy Supabase changes
+        run: |
+          # Clean up old migration files with incorrect naming
+          echo "Cleaning up old migration files..."
+          find supabase/migrations -name "*-*-*-*-*.sql" -delete 2>/dev/null || echo "No old files to clean"
+          
+          # Show remaining migration files
+          echo "Current migration files:"
+          ls -la supabase/migrations/ 2>/dev/null || echo "No migrations folder found"
+          
+          # Link to remote Supabase project
+          echo "Linking to Supabase project..."
+          supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          
+          # Apply database migrations
+          echo "Applying database migrations to production..."
+          supabase db push --include-all
+          
+          # Deploy edge functions
+          echo "Deploying edge functions..."
+          supabase functions deploy --no-verify-jwt
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+
+      - name: Deployment Summary
+        run: |
+          echo "🚀 Deployment Complete!"
+          echo "✅ Merged dev → main"
+          echo "✅ Updated Supabase database"
+          echo "✅ Deployed edge functions"
+          echo "🔄 Vercel will auto-deploy from main branch"

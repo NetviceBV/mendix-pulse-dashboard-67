@@ -1,5 +1,51 @@
 # Mendix Monitoring Dashboard - Project Knowledge (T=0)
 
+## Database Migration Standards
+
+### Migration Naming Convention
+
+**ALWAYS** use this format for migration files: `YYYYMMDDHHMMSS_descriptive_name.sql`
+
+Examples:
+- `20250118120000_create_complete_database_schema.sql`
+- `20250118120001_add_user_roles_system.sql`
+- `20250118120002_add_email_notifications.sql`
+
+### Migration Guidelines
+
+- **Use descriptive names** that clearly indicate the purpose
+- **Include timestamps** to ensure proper ordering and prevent conflicts
+- **Never use UUID-based names** (causes GitHub sync issues)
+- **Include rollback instructions** as comments in each migration
+- **Structure migrations** with clear sections and documentation
+- **Test migrations** in development before applying to production
+
+### Migration File Structure Template
+
+```sql
+-- Migration: YYYYMMDDHHMMSS_descriptive_name
+-- Description: Brief description of what this migration does
+-- Author: System
+-- Date: YYYY-MM-DD
+
+-- [Tables section]
+-- [RLS Policies section]
+-- [Functions section]
+-- [Triggers section]
+-- [Constraints section]
+
+-- Rollback instructions (commented)
+-- To rollback: [specific rollback steps]
+```
+
+### Best Practices
+
+- **One logical change per migration** - don't mix unrelated changes
+- **Always test rollbacks** to ensure they work correctly  
+- **Use consistent naming** for tables, columns, and constraints
+- **Document complex logic** with inline comments
+- **Validate schema changes** don't break existing functionality
+
 ## Project Overview
 
 The Mendix Monitoring Dashboard is a React-based web application that provides comprehensive monitoring and management capabilities for Mendix applications. It enables users to monitor application health, manage environments, view real-time logs, and control environment states through an intuitive interface.

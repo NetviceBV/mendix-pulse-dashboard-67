@@ -1,9 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.52.1";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-internal-cron",
 };
 
 type CloudAction = {
@@ -45,15 +45,28 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, serviceKey);
 
   try {
-    // Authenticate caller
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("Missing Authorization header");
-    const jwt = authHeader.replace("Bearer ", "");
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser(jwt);
-    if (authError || !user) throw new Error("Invalid authentication");
+    // Check if this is an internal cron call
+    const isInternalCron = req.headers.get("x-internal-cron") === "1";
+    
+    let user: any;
+    let jwt: string = "";
+    
+    if (isInternalCron) {
+      // For cron calls, we'll process all users' due actions
+      user = null; // Will be set per-action in background processing
+      console.log("Processing internal cron call for all users");
+    } else {
+      // Regular user authentication
+      const authHeader = req.headers.get("Authorization");
+      if (!authHeader) throw new Error("Missing Authorization header");
+      jwt = authHeader.replace("Bearer ", "");
+      const {
+        data: { user: authUser },
+        error: authError,
+      } = await supabase.auth.getUser(jwt);
+      if (authError || !authUser) throw new Error("Invalid authentication");
+      user = authUser;
+    }
 
     const body = await req.json().catch(() => ({}));
     const { actionId, processAllDue = true } = body as {
@@ -64,27 +77,52 @@ serve(async (req) => {
     // Fetch actions to process
     let actions: CloudAction[] = [];
     if (actionId) {
-      const { data, error } = await supabase
-        .from("cloud_actions")
-        .select("*")
-        .eq("id", actionId)
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (error) throw error;
-      if (data) actions = [data as CloudAction];
+      if (isInternalCron) {
+        // For cron, get any due action by ID
+        const { data, error } = await supabase
+          .from("cloud_actions")
+          .select("*")
+          .eq("id", actionId)
+          .maybeSingle();
+        if (error) throw error;
+        if (data) actions = [data as CloudAction];
+      } else {
+        // For user calls, only get their actions
+        const { data, error } = await supabase
+          .from("cloud_actions")
+          .select("*")
+          .eq("id", actionId)
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (error) throw error;
+        if (data) actions = [data as CloudAction];
+      }
     } else if (processAllDue) {
-      const { data, error } = await supabase
-        .from("cloud_actions")
-        .select("*")
-        .eq("user_id", user.id)
-        .eq("status", "scheduled")
-        .lte("scheduled_for", new Date().toISOString());
-      if (error) throw error;
-      actions = (data || []) as CloudAction[];
+      if (isInternalCron) {
+        // For cron, get all due actions from all users
+        const { data, error } = await supabase
+          .from("cloud_actions")
+          .select("*")
+          .eq("status", "scheduled")
+          .lte("scheduled_for", new Date().toISOString());
+        if (error) throw error;
+        actions = (data || []) as CloudAction[];
+        console.log(`Found ${actions.length} scheduled actions to process`);
+      } else {
+        // For user calls, only get their due actions
+        const { data, error } = await supabase
+          .from("cloud_actions")
+          .select("*")
+          .eq("user_id", user.id)
+          .eq("status", "scheduled")
+          .lte("scheduled_for", new Date().toISOString());
+        if (error) throw error;
+        actions = (data || []) as CloudAction[];
+      }
     }
 
     // Start background processing and return immediate response
-    EdgeRuntime.waitUntil(processActionsInBackground(actions, user, supabase, jwt));
+    EdgeRuntime.waitUntil(processActionsInBackground(actions, user, supabase, jwt, isInternalCron));
 
     return new Response(
       JSON.stringify({
@@ -111,7 +149,8 @@ async function processActionsInBackground(
   actions: CloudAction[],
   user: any,
   supabase: any,
-  jwt: string
+  jwt: string,
+  isInternalCron: boolean = false
 ) {
   let processed = 0;
   let succeeded = 0;
@@ -121,17 +160,22 @@ async function processActionsInBackground(
 
   for (const action of actions) {
     processed++;
+    
+    // For cron calls, we need to use the action's user_id
+    const currentUserId = isInternalCron ? action.user_id : user.id;
 
     try {
+      const user = { id: currentUserId };
+
       // Mark as running
       await supabase
         .from("cloud_actions")
         .update({ status: "running", started_at: new Date().toISOString(), error_message: null })
         .eq("id", action.id)
-        .eq("user_id", user.id);
+        .eq("user_id", currentUserId);
 
       await supabase.from("cloud_action_logs").insert({
-        user_id: user.id,
+        user_id: currentUserId,
         action_id: action.id,
         level: "info",
         message: `Starting action: ${action.action_type} for ${action.app_id}/${action.environment_name}`,
@@ -142,25 +186,26 @@ async function processActionsInBackground(
         .from("mendix_credentials")
         .select("*")
         .eq("id", action.credential_id)
-        .eq("user_id", user.id)
+        .eq("user_id", currentUserId)
         .maybeSingle();
       if (credError || !creds) throw new Error("Credentials not found");
       const credential = creds as MendixCredential;
 
-      // Get project_id from mendix_apps table for v4 API calls
+      // Get project_id and app_id from mendix_apps table
       const { data: appData, error: appError } = await supabase
         .from("mendix_apps")
-        .select("project_id")
-        .eq("app_id", action.app_id)
+        .select("project_id, app_id")
+        .eq("project_id", action.app_id)
         .eq("credential_id", action.credential_id)
-        .eq("user_id", user.id)
+        .eq("user_id", currentUserId)
         .maybeSingle();
 
-      if (appError || !appData?.project_id) {
-        throw new Error(`Failed to get project_id for app ${action.app_id}: ${appError?.message}`);
+      if (appError || !appData?.project_id || !appData?.app_id) {
+        throw new Error(`Failed to find app with project_id ${action.app_id}: ${appError?.message}`);
       }
 
       const projectId = appData.project_id;
+      const appSubdomain = appData.app_id; // This is the subdomain used for Mendix Deploy API v1 calls
 
       // CRITICAL: Environment name normalization for Mendix API case sensitivity
       // Mendix Deploy API expects environment names with proper capitalization:
@@ -185,7 +230,7 @@ async function processActionsInBackground(
       const normalizedEnvironmentName = normalizeEnvironmentName(action.environment_name);
       
       await supabase.from("cloud_action_logs").insert({
-        user_id: user.id,
+        user_id: currentUserId,
         action_id: action.id,
         level: "info",
         message: `Using normalized environment name: "${normalizedEnvironmentName}" (original: "${action.environment_name}")`,
@@ -193,13 +238,13 @@ async function processActionsInBackground(
 
       // Helper to call Mendix Deploy API
       const callMendix = async (method: "start" | "stop") => {
-        const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(normalizedEnvironmentName)}/${method}`;
+        const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(appSubdomain)}/environments/${encodeURIComponent(normalizedEnvironmentName)}/${method}`;
         
         // Prepare request body - start requires AutoSyncDb parameter
         const body = method === "start" ? JSON.stringify({ "AutoSyncDb": true }) : "";
         
         await supabase.from("cloud_action_logs").insert({
-          user_id: user.id,
+          user_id: currentUserId,
           action_id: action.id,
           level: "info",
           message: `Calling Mendix API to ${method} environment ${normalizedEnvironmentName} (original: ${action.environment_name})`,
@@ -233,7 +278,7 @@ async function processActionsInBackground(
         }
 
         await supabase.from("cloud_action_logs").insert({
-          user_id: user.id,
+          user_id: currentUserId,
           action_id: action.id,
           level: "info",
           message: `Successfully ${method === "start" ? "started" : "stopped"} environment ${normalizedEnvironmentName}`,
@@ -448,21 +493,39 @@ async function processActionsInBackground(
             message: `Creating package from branch: ${branchName}, revision: ${revisionId}`,
           });
 
-          const createPackageUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/packages`;
+          // Validate authentication credentials
+          if (!credential.api_key) {
+            throw new Error("Mendix API Key is required for deploy operations. PAT is not supported for Deploy API calls.");
+          }
+
+          const createPackageUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(appSubdomain)}/packages`;
+          
+          const requestBody = {
+            Branch: branchName,
+            Revision: revisionId,
+            Version: version || "1.0.15",
+            Description: description || "PintosoftOps Deploy Package",
+          };
+          
+          await supabase.from("cloud_action_logs").insert({
+            user_id: user.id,
+            action_id: action.id,
+            level: "info",
+            message: `Complete request details:
+URL: ${createPackageUrl}
+Headers: Mendix-Username: ${credential.username}, Content-Type: application/json
+Body: ${JSON.stringify(requestBody, null, 2)}`,
+          });
+
           const createPackageResp = await fetch(createPackageUrl, {
             method: "POST",
             headers: {
               Accept: "application/json",
               "Mendix-Username": credential.username,
-              "Mendix-ApiKey": credential.api_key || credential.pat || "",
+              "Mendix-ApiKey": credential.api_key,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({
-              Branch: branchName,
-              Revision: revisionId,
-              Version: version || `1.0.${Date.now()}`,
-              Description: description || "PintosoftOps Deploy Package",
-            }),
+            body: JSON.stringify(requestBody),
           });
 
           if (!createPackageResp.ok) {
@@ -484,7 +547,7 @@ async function processActionsInBackground(
           let packageStatus = "Building";
           let packageBuildAttempts = 0;
           const maxPackageBuildAttempts = 60; // 30 minutes timeout (30 * 60 * 1000) / 30 seconds polling interval
-          let newPackageStatusUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/packages/${newPackageId}`;
+          let newPackageStatusUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(appSubdomain)}/packages/${newPackageId}`;
 
           while (packageStatus !== "Succeeded" && packageBuildAttempts < maxPackageBuildAttempts) {
             packageBuildAttempts++;
@@ -542,7 +605,7 @@ async function processActionsInBackground(
           });
 
           // Step 2: Transport the package to the target environment
-          const transportUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(normalizedEnvironmentName)}/transport`;
+          const transportUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(appSubdomain)}/environments/${encodeURIComponent(normalizedEnvironmentName)}/transport`;
           
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
@@ -643,19 +706,19 @@ async function processActionsInBackground(
             .from("mendix_environments")
             .select(`
               environment_id,
-              mendix_apps!inner(project_id)
+              app_id
             `)
             .eq("app_id", action.app_id)
-            .eq("environment_name", normalizedEnvironmentName)
+            .ilike("environment_name", action.environment_name)
             .eq("user_id", user.id)
             .single();
 
-          if (envError || !environmentData?.environment_id || !environmentData?.mendix_apps?.project_id) {
-            throw new Error(`Failed to find environment_id or project_id for app ${action.app_id}, environment ${normalizedEnvironmentName}. Error: ${envError?.message || 'Missing data'}`);
+          if (envError || !environmentData?.environment_id || !environmentData?.app_id) {
+            throw new Error(`Failed to find environment_id for app ${action.app_id}, environment ${normalizedEnvironmentName}. Error: ${envError?.message || 'Missing data'}`);
           }
 
           const environmentId = environmentData.environment_id;
-          const targetProjectId = environmentData.mendix_apps.project_id;
+          const targetProjectId = environmentData.app_id;
           const backupUrl = `https://deploy.mendix.com/api/v2/apps/${encodeURIComponent(targetProjectId)}/environments/${encodeURIComponent(environmentId)}/snapshots`;
           
           await supabase.from("cloud_action_logs").insert({
@@ -809,19 +872,19 @@ async function processActionsInBackground(
             .from("mendix_environments")
             .select(`
               environment_id,
-              mendix_apps!inner(project_id)
+              app_id
             `)
             .eq("app_id", action.app_id)
-            .eq("environment_name", normalizedEnvironmentName)
+            .ilike("environment_name", action.environment_name)
             .eq("user_id", user.id)
             .single();
 
-          if (transportEnvError || !transportEnvironmentData?.environment_id || !transportEnvironmentData?.mendix_apps?.project_id) {
-            throw new Error(`Failed to find environment_id or project_id for app ${action.app_id}, environment ${normalizedEnvironmentName}. Error: ${transportEnvError?.message || 'Missing data'}`);
+          if (transportEnvError || !transportEnvironmentData?.environment_id || !transportEnvironmentData?.app_id) {
+            throw new Error(`Failed to find environment_id for app ${action.app_id}, environment ${normalizedEnvironmentName}. Error: ${transportEnvError?.message || 'Missing data'}`);
           }
 
           const transportEnvironmentId = transportEnvironmentData.environment_id;
-          const transportTargetProjectId = transportEnvironmentData.mendix_apps.project_id;
+          const transportTargetProjectId = transportEnvironmentData.app_id;
 
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
@@ -838,7 +901,7 @@ async function processActionsInBackground(
             message: `Step 1: Retrieving package from source environment ${normalizedSourceEnvironmentName}`,
           });
 
-          const sourcePackageUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(normalizedSourceEnvironmentName)}/package?url=true`;
+          const sourcePackageUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(appSubdomain)}/environments/${encodeURIComponent(normalizedSourceEnvironmentName)}/package?url=true`;
           const sourcePackageResp = await fetch(sourcePackageUrl, {
             method: "GET",
             headers: {
@@ -881,7 +944,7 @@ async function processActionsInBackground(
             message: `Step 2: Transporting package ${sourcePackageId} to target environment ${normalizedEnvironmentName}`,
           });
 
-          const transportActionUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(normalizedEnvironmentName)}/transport`;
+          const transportActionUrl = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(appSubdomain)}/environments/${encodeURIComponent(normalizedEnvironmentName)}/transport`;
           const transportActionResp = await fetch(transportActionUrl, {
             method: "POST",
             headers: {
@@ -956,7 +1019,7 @@ async function processActionsInBackground(
           });
 
           // Create backup using V2 API (requires project_id and environment_id)
-          const transportBackupUrl = `https://deploy.mendix.com/api/2/apps/${encodeURIComponent(targetProjectId)}/environments/${encodeURIComponent(transportEnvironmentId)}/snapshots`;
+          const transportBackupUrl = `https://deploy.mendix.com/api/v2/apps/${encodeURIComponent(transportTargetProjectId)}/environments/${encodeURIComponent(transportEnvironmentId)}/snapshots`;
           const transportBackupResp = await fetch(transportBackupUrl, {
             method: "POST",
             headers: {
@@ -976,7 +1039,11 @@ async function processActionsInBackground(
           }
 
           const transportBackupData = await transportBackupResp.json();
-          const transportSnapshotId = transportBackupData.SnapshotId;
+          const transportSnapshotId = transportBackupData.snapshot_id;
+
+          if (!transportSnapshotId) {
+            throw new Error(`No snapshot_id returned from backup creation. Response: ${JSON.stringify(transportBackupData)}`);
+          }
 
           await supabase.from("cloud_action_logs").insert({
             user_id: user.id,
@@ -1000,7 +1067,7 @@ async function processActionsInBackground(
           while (!isBackupComplete && transportBackupAttempts < maxTransportBackupAttempts && new Date() < transportRetryUntil) {
             transportBackupAttempts++;
 
-            const snapshotStatusUrl = `https://deploy.mendix.com/api/2/apps/${encodeURIComponent(transportTargetProjectId)}/environments/${encodeURIComponent(transportEnvironmentId)}/snapshots/${encodeURIComponent(transportSnapshotId)}`;
+            const snapshotStatusUrl = `https://deploy.mendix.com/api/v2/apps/${encodeURIComponent(transportTargetProjectId)}/environments/${encodeURIComponent(transportEnvironmentId)}/snapshots/${encodeURIComponent(transportSnapshotId)}`;
             const snapshotStatusResp = await fetch(snapshotStatusUrl, {
               method: "GET",
               headers: {
@@ -1012,7 +1079,11 @@ async function processActionsInBackground(
 
             if (snapshotStatusResp.ok) {
               const snapshotData = await snapshotStatusResp.json();
-              const snapshotState = snapshotData.State;
+              const snapshotState = snapshotData.state;
+
+              if (!snapshotState) {
+                throw new Error(`No state field returned from snapshot status check. Response: ${JSON.stringify(snapshotData)}`);
+              }
 
               await supabase.from("cloud_action_logs").insert({
                 user_id: user.id,
@@ -1021,7 +1092,7 @@ async function processActionsInBackground(
                 message: `Backup check (attempt ${transportBackupAttempts}): Snapshot state = ${snapshotState}`,
               });
 
-              if (snapshotState === "Completed") {
+              if (snapshotState === "completed") {
                 isBackupComplete = true;
                 await supabase.from("cloud_action_logs").insert({
                   user_id: user.id,
@@ -1032,7 +1103,7 @@ async function processActionsInBackground(
                 break;
               }
 
-              if (snapshotState === "Failed") {
+              if (snapshotState === "failed") {
                 throw new Error(`Backup creation failed for SnapshotId ${transportSnapshotId}`);
               }
             }
@@ -1086,10 +1157,10 @@ async function processActionsInBackground(
         .from("cloud_actions")
         .update({ status: "succeeded", completed_at: new Date().toISOString() })
         .eq("id", action.id)
-        .eq("user_id", user.id);
+        .eq("user_id", currentUserId);
 
       await supabase.from("cloud_action_logs").insert({
-        user_id: user.id,
+        user_id: currentUserId,
         action_id: action.id,
         level: "info",
         message: `Action completed successfully: ${action.action_type}`,
@@ -1109,10 +1180,10 @@ async function processActionsInBackground(
           error_message: error instanceof Error ? error.message : String(error),
         })
         .eq("id", action.id)
-        .eq("user_id", user.id);
+        .eq("user_id", currentUserId);
 
       await supabase.from("cloud_action_logs").insert({
-        user_id: user.id,
+        user_id: currentUserId,
         action_id: action.id,
         level: "error",
         message: `Action failed: ${error instanceof Error ? error.message : String(error)}`,

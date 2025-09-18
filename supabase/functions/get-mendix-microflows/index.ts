@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.52.1';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -50,6 +50,11 @@ serve(async (req) => {
       throw new Error('Mendix credentials not found or access denied');
     }
 
+    // Check if user has a PAT for Mendix SDK authentication
+    if (!credentials.pat) {
+      throw new Error('Mendix Personal Access Token (PAT) is required for microflow analysis. Please add your PAT to your Mendix credentials.');
+    }
+
     // Get the project_id and version from mendix_apps table
     const { data: appData, error: appError } = await supabase
       .from('mendix_apps')
@@ -82,7 +87,10 @@ serve(async (req) => {
     console.log(`Fetching microflows for app: ${appId}, project: ${projectId}, version: ${version}, branch: ${branchName}`);
 
     // Import Mendix SDK with npm compatibility
-    const { MendixPlatformClient } = await import("npm:mendixplatformsdk@5.2.0");
+    const { MendixPlatformClient, setPlatformConfig } = await import("npm:mendixplatformsdk@5.2.0");
+
+    // Configure Mendix SDK with user's PAT
+    setPlatformConfig({ mendixToken: credentials.pat });
 
     const client = new MendixPlatformClient();
     const mendixApp = client.getApp(projectId);

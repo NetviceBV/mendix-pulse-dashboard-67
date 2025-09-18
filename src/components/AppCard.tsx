@@ -6,41 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
 import { supabase } from "@/integrations/supabase/client";
-import { 
-  Activity, 
-  AlertTriangle, 
-  CheckCircle, 
-  XCircle, 
-  ExternalLink,
-  Clock,
-  Users,
-  Code,
-  Loader2,
-  ChevronDown,
-  RefreshCw,
-  FileText,
-  Copy,
-  Check,
-  Shield,
-  Play
-} from "lucide-react";
+import { Activity, AlertTriangle, CheckCircle, XCircle, ExternalLink, Clock, Users, Code, Loader2, ChevronDown, RefreshCw, FileText, Copy, Check, Shield, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import LogsViewer from "./LogsViewer";
 import { VulnerabilityScanDialog } from "./VulnerabilityScanDialog";
 import { useMendixOperations } from "@/hooks/useMendixOperations";
 import { MicroflowsDialog, type MicroflowsResponse } from "./MicroflowsDialog";
 import { toast } from "@/hooks/use-toast";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 export interface MendixEnvironment {
   id: string;
   environment_id: string | null;
@@ -50,7 +23,6 @@ export interface MendixEnvironment {
   model_version?: string;
   runtime_version?: string;
 }
-
 export interface MendixApp {
   id: string;
   project_id: string | null;
@@ -66,13 +38,11 @@ export interface MendixApp {
   credential_id: string;
   environments?: MendixEnvironment[];
 }
-
 interface AppCardProps {
   app: MendixApp;
   onOpenApp: (app: MendixApp) => void;
   onRefresh?: () => void;
 }
-
 const statusConfig = {
   healthy: {
     icon: CheckCircle,
@@ -99,56 +69,78 @@ const statusConfig = {
     text: "Offline"
   }
 };
-
 const environmentColors = {
   production: "bg-red-500/10 border-red-500/30",
-  acceptance: "bg-yellow-500/10 border-yellow-500/30", 
+  acceptance: "bg-yellow-500/10 border-yellow-500/30",
   test: "bg-green-500/10 border-green-500/30",
   sandbox: "bg-blue-500/10 border-blue-500/30"
 };
-
-const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
+const AppCard = ({
+  app,
+  onOpenApp,
+  onRefresh
+}: AppCardProps) => {
   const [logsOpen, setLogsOpen] = useState(false);
   const [logs, setLogs] = useState("");
   const [webhookLogs, setWebhookLogs] = useState<any[]>([]);
   const [webhookLoading, setWebhookLoading] = useState(false);
-  const [logsEnvironment, setLogsEnvironment] = useState<{ name: string; id: string; appId: string } | null>(null);
+  const [logsEnvironment, setLogsEnvironment] = useState<{
+    name: string;
+    id: string;
+    appId: string;
+  } | null>(null);
   const [stopDialogOpen, setStopDialogOpen] = useState(false);
-  const [pendingStopEnv, setPendingStopEnv] = useState<{ id: string; name: string; appId: string } | null>(null);
+  const [pendingStopEnv, setPendingStopEnv] = useState<{
+    id: string;
+    name: string;
+    appId: string;
+  } | null>(null);
   const [collapsedEnvironments, setCollapsedEnvironments] = useState<Record<string, boolean>>({});
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [vulnerabilityScanOpen, setVulnerabilityScanOpen] = useState(false);
-  const [selectedEnvironmentForScan, setSelectedEnvironmentForScan] = useState<{ name: string; appId: string } | null>(null);
+  const [selectedEnvironmentForScan, setSelectedEnvironmentForScan] = useState<{
+    name: string;
+    appId: string;
+  } | null>(null);
   const [vulnerabilityCount, setVulnerabilityCount] = useState(0);
   const [showVulnerabilityResults, setShowVulnerabilityResults] = useState(false);
-  
-  const [environmentStatuses, setEnvironmentStatuses] = useState<Record<string, { status: string; loading: boolean }>>({});
+  const [environmentStatuses, setEnvironmentStatuses] = useState<Record<string, {
+    status: string;
+    loading: boolean;
+  }>>({});
   const [environmentErrorCounts, setEnvironmentErrorCounts] = useState<Record<string, number>>({});
   const [environmentLoading, setEnvironmentLoading] = useState<Record<string, boolean>>({});
   const [microflowsDialogOpen, setMicroflowsDialogOpen] = useState(false);
   const [microflowsData, setMicroflowsData] = useState<MicroflowsResponse | null>(null);
   const [microflowsLoading, setMicroflowsLoading] = useState(false);
-  const { loading, startEnvironment, stopEnvironment, downloadLogs, fetchWebhookLogs, refreshEnvironmentStatus, getMicroflows } = useMendixOperations();
+  const {
+    loading,
+    startEnvironment,
+    stopEnvironment,
+    downloadLogs,
+    fetchWebhookLogs,
+    refreshEnvironmentStatus,
+    getMicroflows
+  } = useMendixOperations();
 
   // Utility function to capitalize environment names for display
   const capitalizeEnvironmentName = (envName: string) => {
     return envName.charAt(0).toUpperCase() + envName.slice(1).toLowerCase();
   };
-
   const handleCopy = async (text: string, fieldName: string) => {
     try {
       await navigator.clipboard.writeText(text);
       setCopiedField(fieldName);
       toast({
         title: "Copied to clipboard",
-        description: `${fieldName} has been copied successfully.`,
+        description: `${fieldName} has been copied successfully.`
       });
       setTimeout(() => setCopiedField(null), 2000);
     } catch (error) {
       toast({
         title: "Copy failed",
         description: "Unable to copy to clipboard.",
-        variant: "destructive",
+        variant: "destructive"
       });
     }
   };
@@ -169,33 +161,26 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
   useEffect(() => {
     const fetchEnvironmentErrorCounts = async () => {
       if (!app.environments || app.environments.length === 0) return;
-      
       try {
-        const { data: errorCounts, error } = await supabase
-          .from('mendix_logs')
-          .select('environment, level')
-          .eq('app_id', app.app_id)
-          .in('level', ['Error', 'Critical']);
-
+        const {
+          data: errorCounts,
+          error
+        } = await supabase.from('mendix_logs').select('environment, level').eq('app_id', app.app_id).in('level', ['Error', 'Critical']);
         if (error) {
           console.error('Error fetching environment error counts:', error);
           return;
         }
-
         const counts: Record<string, number> = {};
         errorCounts?.forEach(log => {
           if (log.level === 'Error' || log.level === 'Critical') {
             // Find matching environment using case-insensitive comparison
-            const matchingEnv = app.environments.find(env => 
-              env.environment_name.toLowerCase() === log.environment.toLowerCase()
-            );
+            const matchingEnv = app.environments.find(env => env.environment_name.toLowerCase() === log.environment.toLowerCase());
             if (matchingEnv) {
               const envKey = matchingEnv.environment_name;
               counts[envKey] = (counts[envKey] || 0) + 1;
             }
           }
         });
-        
         setEnvironmentErrorCounts(counts);
 
         // Set default collapse states - expand environments with errors
@@ -205,37 +190,29 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
           defaultCollapsed[env.id] = envErrorCount === 0; // Collapse if no errors
         });
         setCollapsedEnvironments(defaultCollapsed);
-        
       } catch (error) {
         console.error('Failed to fetch environment error counts:', error);
       }
     };
-
     const fetchVulnerabilityCount = async () => {
       if (!app.app_id) return;
-      
       try {
         // Get the latest scan for this app
-        const { data: latestScan, error: scanError } = await supabase
-          .from('vulnerability_scans')
-          .select('id, total_vulnerabilities')
-          .eq('app_id', app.app_id)
-          .eq('scan_status', 'completed')
-          .order('completed_at', { ascending: false })
-          .limit(1)
-          .single();
-
+        const {
+          data: latestScan,
+          error: scanError
+        } = await supabase.from('vulnerability_scans').select('id, total_vulnerabilities').eq('app_id', app.app_id).eq('scan_status', 'completed').order('completed_at', {
+          ascending: false
+        }).limit(1).single();
         if (scanError && scanError.code !== 'PGRST116') {
           console.error('Error fetching vulnerability count:', scanError);
           return;
         }
-
         setVulnerabilityCount(latestScan?.total_vulnerabilities || 0);
       } catch (error) {
         console.error('Failed to fetch vulnerability count:', error);
       }
     };
-
     fetchEnvironmentErrorCounts();
     fetchVulnerabilityCount();
   }, [app.app_id, app.environments]);
@@ -243,76 +220,59 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
   // Real-time subscription for environment error counts
   useEffect(() => {
     if (!app.app_id) return;
-
     console.log('Setting up real-time subscription for app:', app.app_id);
-    console.log('Available environments:', app.environments.map(env => ({ 
-      id: env.environment_id || env.id, 
-      name: env.environment_name 
+    console.log('Available environments:', app.environments.map(env => ({
+      id: env.environment_id || env.id,
+      name: env.environment_name
     })));
-
-    const channel = supabase
-      .channel(`app-logs-${app.app_id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'mendix_logs',
-          filter: `app_id=eq.${app.app_id}`
-        },
-        (payload) => {
-          const newLog = payload.new as any;
-          console.log('Received new log:', { 
-            environment: newLog.environment, 
-            level: newLog.level,
-            app_id: newLog.app_id 
-          });
-          
-          if (newLog.level === 'Error' || newLog.level === 'Critical') {
-            // Find the matching environment by name using case-insensitive comparison
-            const matchingEnv = app.environments.find(env => 
-              env.environment_name.toLowerCase() === newLog.environment.toLowerCase()
-            );
-            
-            if (matchingEnv) {
-              const envKey = matchingEnv.environment_name;
-              console.log('Updating error count for environment:', envKey);
-              
-              setEnvironmentErrorCounts(prev => {
-                const newCounts = {
-                  ...prev,
-                  [envKey]: (prev[envKey] || 0) + 1
-                };
-                console.log('Updated environment error counts:', newCounts);
-                return newCounts;
-              });
-              
-              // Auto-expand the environment if it has new errors
-              const envCollapseKey = matchingEnv.environment_id || matchingEnv.id;
-              setCollapsedEnvironments(prev => ({
-                ...prev,
-                [envCollapseKey]: false
-              }));
-            } else {
-              console.warn('No matching environment found for log environment:', newLog.environment);
-              console.warn('Available environment names:', app.environments.map(env => env.environment_name));
-            }
-          }
-        }
-      )
-      .subscribe((status) => {
-        console.log('Subscription status:', status);
+    const channel = supabase.channel(`app-logs-${app.app_id}`).on('postgres_changes', {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'mendix_logs',
+      filter: `app_id=eq.${app.app_id}`
+    }, payload => {
+      const newLog = payload.new as any;
+      console.log('Received new log:', {
+        environment: newLog.environment,
+        level: newLog.level,
+        app_id: newLog.app_id
       });
+      if (newLog.level === 'Error' || newLog.level === 'Critical') {
+        // Find the matching environment by name using case-insensitive comparison
+        const matchingEnv = app.environments.find(env => env.environment_name.toLowerCase() === newLog.environment.toLowerCase());
+        if (matchingEnv) {
+          const envKey = matchingEnv.environment_name;
+          console.log('Updating error count for environment:', envKey);
+          setEnvironmentErrorCounts(prev => {
+            const newCounts = {
+              ...prev,
+              [envKey]: (prev[envKey] || 0) + 1
+            };
+            console.log('Updated environment error counts:', newCounts);
+            return newCounts;
+          });
 
+          // Auto-expand the environment if it has new errors
+          const envCollapseKey = matchingEnv.environment_id || matchingEnv.id;
+          setCollapsedEnvironments(prev => ({
+            ...prev,
+            [envCollapseKey]: false
+          }));
+        } else {
+          console.warn('No matching environment found for log environment:', newLog.environment);
+          console.warn('Available environment names:', app.environments.map(env => env.environment_name));
+        }
+      }
+    }).subscribe(status => {
+      console.log('Subscription status:', status);
+    });
     return () => {
       console.log('Cleaning up subscription for app:', app.app_id);
       supabase.removeChannel(channel);
     };
   }, [app.app_id, app.environments]);
-
   const fetchWebhookLogsForEnvironment = async (environmentName: string) => {
     if (!app.app_id) return;
-    
     setWebhookLoading(true);
     try {
       const logs = await fetchWebhookLogs(app.app_id, environmentName);
@@ -324,29 +284,23 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
       setWebhookLoading(false);
     }
   };
-
   const handleGetMicroflows = async () => {
     try {
       // Find credential that has this app
-      const { data: credentials } = await supabase
-        .from('mendix_credentials')
-        .select('*')
-        .eq('user_id', (await supabase.auth.getUser()).data.user?.id);
-
+      const {
+        data: credentials
+      } = await supabase.from('mendix_credentials').select('*').eq('user_id', (await supabase.auth.getUser()).data.user?.id);
       if (!credentials || credentials.length === 0) {
         throw new Error('No Mendix credentials found');
       }
 
       // Use the first credential that has this app (assuming one credential per app for now)
       const credential = credentials[0];
-
       setMicroflowsLoading(true);
       setMicroflowsDialogOpen(true);
       setMicroflowsData(null);
-
       const data = await getMicroflows(credential.id, app.app_id);
       setMicroflowsData(data);
-
     } catch (error) {
       console.error('Error getting microflows:', error);
       setMicroflowsDialogOpen(false);
@@ -354,77 +308,71 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
       setMicroflowsLoading(false);
     }
   };
-
   const handleRefreshEnvironment = async (env: MendixEnvironment) => {
     const envKey = env.environment_id || env.id;
-    setEnvironmentStatuses(prev => ({ ...prev, [envKey]: { ...prev[envKey], loading: true } }));
-    
+    setEnvironmentStatuses(prev => ({
+      ...prev,
+      [envKey]: {
+        ...prev[envKey],
+        loading: true
+      }
+    }));
     try {
       // Get credentials first to find the credential ID
-      const { data: credentials, error } = await supabase
-        .from('mendix_credentials')
-        .select('*')
-        .limit(1)
-        .single();
-
+      const {
+        data: credentials,
+        error
+      } = await supabase.from('mendix_credentials').select('*').limit(1).single();
       if (error || !credentials) {
         throw new Error('No Mendix credentials found');
       }
-
-      const updatedEnv = await refreshEnvironmentStatus(
-        credentials.id,
-        app.app_id || app.app_name,
-        env.environment_id || env.id
-      );
-      
-      setEnvironmentStatuses(prev => ({ 
-        ...prev, 
-        [envKey]: { status: updatedEnv.status, loading: false } 
+      const updatedEnv = await refreshEnvironmentStatus(credentials.id, app.app_id || app.app_name, env.environment_id || env.id);
+      setEnvironmentStatuses(prev => ({
+        ...prev,
+        [envKey]: {
+          status: updatedEnv.status,
+          loading: false
+        }
       }));
-      
+
       // Refresh the full app data
       onRefresh?.();
     } catch (error) {
       console.error('Failed to refresh environment status:', error);
-      setEnvironmentStatuses(prev => ({ ...prev, [envKey]: { ...prev[envKey], loading: false } }));
+      setEnvironmentStatuses(prev => ({
+        ...prev,
+        [envKey]: {
+          ...prev[envKey],
+          loading: false
+        }
+      }));
     }
   };
-
   const getEnvironmentStatus = (env: MendixEnvironment) => {
     const envKey = env.environment_id || env.id;
     const statusOverride = environmentStatuses[envKey];
     return statusOverride?.status || env.status;
   };
-
   const isEnvironmentLoading = (env: MendixEnvironment) => {
     const envKey = env.environment_id || env.id;
     return environmentStatuses[envKey]?.loading || false;
   };
-
   const handleVulnerabilityTileClick = () => {
     setShowVulnerabilityResults(true);
     setVulnerabilityScanOpen(true);
     // Set the first environment as default for scanning context
     if (app.environments && app.environments.length > 0) {
-      setSelectedEnvironmentForScan({ 
-        name: app.environments[0].environment_name, 
-        appId: app.app_id || '' 
+      setSelectedEnvironmentForScan({
+        name: app.environments[0].environment_name,
+        appId: app.app_id || ''
       });
     }
   };
-
-  return (
-    <Card className={cn(
-      "border-border hover:shadow-glow transition-all duration-300 cursor-pointer group",
-      // Solid colored backgrounds based on status
-      app.status === "healthy" && "bg-gradient-card",
-      app.status === "warning" && "bg-error/15 border-error/30 shadow-lg shadow-error/20",
-      app.status === "error" && "bg-error/25 border-error/50 shadow-xl shadow-error/40",
-      app.status === "offline" && "bg-muted/50 border-muted-foreground/20",
-      // Enhanced hover effects for problematic apps
-      app.status === "error" && "hover:shadow-2xl hover:shadow-error/50 hover:border-error/70",
-      app.status === "warning" && "hover:shadow-xl hover:shadow-error/30 hover:border-error/50"
-    )}>
+  return <Card className={cn("border-border hover:shadow-glow transition-all duration-300 cursor-pointer group",
+  // Solid colored backgrounds based on status
+  app.status === "healthy" && "bg-gradient-card", app.status === "warning" && "bg-error/15 border-error/30 shadow-lg shadow-error/20", app.status === "error" && "bg-error/25 border-error/50 shadow-xl shadow-error/40", app.status === "offline" && "bg-muted/50 border-muted-foreground/20",
+  // Enhanced hover effects for problematic apps
+  app.status === "error" && "hover:shadow-2xl hover:shadow-error/50 hover:border-error/70", app.status === "warning" && "hover:shadow-xl hover:shadow-error/30 hover:border-error/50")}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="flex-1 min-w-0">
@@ -442,17 +390,8 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground">App ID</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0"
-                        onClick={() => handleCopy(app.app_id || 'N/A', 'App ID')}
-                      >
-                        {copiedField === 'App ID' ? (
-                          <Check className="w-3 h-3 text-green-600" />
-                        ) : (
-                          <Copy className="w-3 h-3" />
-                        )}
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => handleCopy(app.app_id || 'N/A', 'App ID')}>
+                        {copiedField === 'App ID' ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
                       </Button>
                     </div>
                     <p className="text-sm font-mono bg-muted px-2 py-1 rounded text-wrap break-all">
@@ -464,17 +403,8 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-muted-foreground">Project ID</span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0"
-                        onClick={() => handleCopy(app.project_id || 'N/A', 'Project ID')}
-                      >
-                        {copiedField === 'Project ID' ? (
-                          <Check className="w-3 h-3 text-green-600" />
-                        ) : (
-                          <Copy className="w-3 h-3" />
-                        )}
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => handleCopy(app.project_id || 'N/A', 'Project ID')}>
+                        {copiedField === 'Project ID' ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
                       </Button>
                     </div>
                     <p className="text-sm font-mono bg-muted px-2 py-1 rounded text-wrap break-all">
@@ -490,23 +420,14 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
 
       <CardContent className="pt-0">
         {/* Vulnerability Summary Tile */}
-        <div 
-          className="mb-4 p-3 rounded-lg border cursor-pointer hover:bg-muted/30 transition-colors"
-          onClick={handleVulnerabilityTileClick}
-        >
+        <div className="mb-4 p-3 rounded-lg border cursor-pointer hover:bg-muted/30 transition-colors" onClick={handleVulnerabilityTileClick}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Shield className={cn(
-                "w-4 h-4",
-                vulnerabilityCount > 0 ? "text-destructive" : "text-green-600"
-              )} />
+              <Shield className={cn("w-4 h-4", vulnerabilityCount > 0 ? "text-destructive" : "text-green-600")} />
               <span className="text-sm font-medium">Vulnerabilities</span>
             </div>
             <div className="flex items-center gap-2">
-              <Badge 
-                variant={vulnerabilityCount > 0 ? "destructive" : "secondary"}
-                className="text-xs"
-              >
+              <Badge variant={vulnerabilityCount > 0 ? "destructive" : "secondary"} className="text-xs">
                 {vulnerabilityCount} Vulnerable
               </Badge>
               <ExternalLink className="w-3 h-3 text-muted-foreground" />
@@ -514,72 +435,46 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
           </div>
         </div>
 
-        {app.environments && app.environments.length > 0 && (
-          <div className="space-y-2">
-            {sortEnvironments(app.environments).map((env) => {
-              const envErrorCount = environmentErrorCounts[env.environment_name] || 0;
-              const statusInfo = statusConfig[getEnvironmentStatus(env)?.toLowerCase() === 'running' ? 'healthy' : getEnvironmentStatus(env)?.toLowerCase() === 'stopped' ? 'error' : 'warning'] || statusConfig.offline;
-              const StatusIcon = statusInfo.icon;
-              const envColorClass = environmentColors[env.environment_name.toLowerCase() as keyof typeof environmentColors] || "bg-muted/50 border-muted/30";
-              const isCollapsed = collapsedEnvironments[env.id] !== false;
-              
-              return (
-                <Collapsible 
-                  key={env.id} 
-                  open={!isCollapsed}
-                  onOpenChange={(open) => setCollapsedEnvironments(prev => ({ ...prev, [env.id]: !open }))}
-                >
+        {app.environments && app.environments.length > 0 && <div className="space-y-2">
+            {sortEnvironments(app.environments).map(env => {
+          const envErrorCount = environmentErrorCounts[env.environment_name] || 0;
+          const statusInfo = statusConfig[getEnvironmentStatus(env)?.toLowerCase() === 'running' ? 'healthy' : getEnvironmentStatus(env)?.toLowerCase() === 'stopped' ? 'error' : 'warning'] || statusConfig.offline;
+          const StatusIcon = statusInfo.icon;
+          const envColorClass = environmentColors[env.environment_name.toLowerCase() as keyof typeof environmentColors] || "bg-muted/50 border-muted/30";
+          const isCollapsed = collapsedEnvironments[env.id] !== false;
+          return <Collapsible key={env.id} open={!isCollapsed} onOpenChange={open => setCollapsedEnvironments(prev => ({
+            ...prev,
+            [env.id]: !open
+          }))}>
                   <div className={cn("border rounded-lg overflow-hidden", envColorClass)}>
                     <CollapsibleTrigger className="w-full">
                       <div className="flex items-center justify-between p-3 hover:bg-muted/30 transition-colors">
                         <div className="flex items-center gap-3">
                            <div className="flex items-center gap-2">
                              <span className="text-sm font-semibold">{capitalizeEnvironmentName(env.environment_name)}</span>
-                             {env.model_version && (
-                               <Badge variant="secondary" className="text-xs px-2 py-0">
+                             {env.model_version && <Badge variant="secondary" className="text-xs px-2 py-0">
                                  v{env.model_version}
-                               </Badge>
-                             )}
+                               </Badge>}
                            </div>
                           
                           {/* Show either error count or health status */}
-                          {envErrorCount > 0 ? (
-                            <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-destructive/20 text-destructive">
+                          {envErrorCount > 0 ? <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-destructive/20 text-destructive">
                               <AlertTriangle className="w-3 h-3" />
                               <span className="text-xs font-medium">{envErrorCount} errors</span>
-                            </div>
-                          ) : (
-                            <div className={cn(
-                              "flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium",
-                              getEnvironmentStatus(env)?.toLowerCase() === 'running' ? "bg-green-500/20 text-green-700" : 
-                              getEnvironmentStatus(env)?.toLowerCase() === 'stopped' ? "bg-red-500/20 text-red-700" : 
-                              "bg-yellow-500/20 text-yellow-700"
-                            )}>
+                            </div> : <div className={cn("flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium", getEnvironmentStatus(env)?.toLowerCase() === 'running' ? "bg-green-500/20 text-green-700" : getEnvironmentStatus(env)?.toLowerCase() === 'stopped' ? "bg-red-500/20 text-red-700" : "bg-yellow-500/20 text-yellow-700")}>
                               <StatusIcon className="w-3 h-3" />
-                              {getEnvironmentStatus(env)?.toLowerCase() === 'running' ? 'Running' : 
-                               getEnvironmentStatus(env)?.toLowerCase() === 'stopped' ? 'Stopped' : 'Unknown'}
-                            </div>
-                          )}
+                              {getEnvironmentStatus(env)?.toLowerCase() === 'running' ? 'Running' : getEnvironmentStatus(env)?.toLowerCase() === 'stopped' ? 'Stopped' : 'Unknown'}
+                            </div>}
                           
-                          {isEnvironmentLoading(env) && (
-                            <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
-                          )}
+                          {isEnvironmentLoading(env) && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />}
                         </div>
                         
                         <div className="flex items-center gap-2">
-                          {env.url && (
-                            <ExternalLink 
-                              className="h-4 w-4 text-muted-foreground hover:text-primary"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                window.open(env.url, '_blank');
-                              }}
-                            />
-                          )}
-                          <ChevronDown className={cn(
-                            "h-4 w-4 text-muted-foreground transition-transform", 
-                            isCollapsed && "rotate-180"
-                          )} />
+                          {env.url && <ExternalLink className="h-4 w-4 text-muted-foreground hover:text-primary" onClick={e => {
+                      e.stopPropagation();
+                      window.open(env.url, '_blank');
+                    }} />}
+                          <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", isCollapsed && "rotate-180")} />
                         </div>
                       </div>
                     </CollapsibleTrigger>
@@ -589,183 +484,113 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                         <div className="pt-3 space-y-2">
                           {/* Environment details */}
                           <div className="text-xs text-muted-foreground space-y-1">
-                            {env.runtime_version && (
-                              <p>Runtime: v{env.runtime_version}</p>
-                            )}
+                            {env.runtime_version && <p>Runtime: v{env.runtime_version}</p>}
                             <p>Status: {getEnvironmentStatus(env) || 'Unknown'}</p>
                           </div>
                           
                           {/* Action buttons */}
                           <div className="flex flex-wrap gap-2 pt-2">
                             {/* Start/Stop buttons with production warnings */}
-                            {getEnvironmentStatus(env)?.toLowerCase() === 'stopped' && (
-                              <Button
-                                size="sm"
-                                variant={env.environment_name.toLowerCase() === 'production' ? 'destructive' : 'outline'}
-                                className={cn(
-                                  "h-8",
-                                  env.environment_name.toLowerCase() === 'production' && "border-destructive/50 bg-destructive/10 text-destructive hover:bg-destructive/20"
-                                )}
-                                disabled={loading || isEnvironmentLoading(env)}
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  
-                                  // Show confirmation for production environments
-                                  if (env.environment_name.toLowerCase() === 'production') {
-                                    if (!confirm(`⚠️ WARNING: You are about to start the PRODUCTION environment "${env.environment_name}". This will affect live users. Are you sure you want to continue?`)) {
-                                      return;
-                                    }
-                                  }
-                                  
-                                   try {
-                                     const envKey = env.environment_id || env.id;
-                                     
-                                     // Check if we have credentials by trying to get them
-                                     const { data: credentials, error } = await supabase
-                                       .from('mendix_credentials')
-                                       .select('*')
-                                       .limit(1);
-                                     
-                                     if (error || !credentials || credentials.length === 0) {
-                                       toast({
-                                         title: "Error",
-                                         description: "No credentials available. Please check your settings.",
-                                         variant: "destructive",
-                                       });
-                                       return;
-                                     }
-                                    
-                                    setEnvironmentLoading((prev) => ({
-                                      ...prev,
-                                      [envKey]: true,
-                                    }));
-                                    
-                                    await startEnvironment(app.app_name, env.environment_name);
-                                    toast({
-                                      title: "Success",
-                                      description: `Starting environment ${env.environment_name}`,
-                                    });
-                                    
-                                    // Refresh status after a short delay
-                                    setTimeout(() => {
-                                      handleRefreshEnvironment(env);
-                                    }, 3000);
-                                  } catch (error) {
-                                    console.error('Error starting environment:', error);
-                                    toast({
-                                      title: "Error", 
-                                      description: `Failed to start environment: ${error.message}`,
-                                      variant: "destructive",
-                                    });
-                                  } finally {
-                                    const envKey = env.environment_id || env.id;
-                                    setEnvironmentLoading((prev) => ({
-                                      ...prev,
-                                      [envKey]: false,
-                                    }));
-                                  }
-                                }}
-                              >
+                            {getEnvironmentStatus(env)?.toLowerCase() === 'stopped' && <Button size="sm" variant={env.environment_name.toLowerCase() === 'production' ? 'destructive' : 'outline'} className={cn("h-8", env.environment_name.toLowerCase() === 'production' && "border-destructive/50 bg-destructive/10 text-destructive hover:bg-destructive/20")} disabled={loading || isEnvironmentLoading(env)} onClick={async e => {
+                        e.stopPropagation();
+
+                        // Show confirmation for production environments
+                        if (env.environment_name.toLowerCase() === 'production') {
+                          if (!confirm(`⚠️ WARNING: You are about to start the PRODUCTION environment "${env.environment_name}". This will affect live users. Are you sure you want to continue?`)) {
+                            return;
+                          }
+                        }
+                        try {
+                          const envKey = env.environment_id || env.id;
+
+                          // Check if we have credentials by trying to get them
+                          const {
+                            data: credentials,
+                            error
+                          } = await supabase.from('mendix_credentials').select('*').limit(1);
+                          if (error || !credentials || credentials.length === 0) {
+                            toast({
+                              title: "Error",
+                              description: "No credentials available. Please check your settings.",
+                              variant: "destructive"
+                            });
+                            return;
+                          }
+                          setEnvironmentLoading(prev => ({
+                            ...prev,
+                            [envKey]: true
+                          }));
+                          await startEnvironment(app.app_name, env.environment_name);
+                          toast({
+                            title: "Success",
+                            description: `Starting environment ${env.environment_name}`
+                          });
+
+                          // Refresh status after a short delay
+                          setTimeout(() => {
+                            handleRefreshEnvironment(env);
+                          }, 3000);
+                        } catch (error) {
+                          console.error('Error starting environment:', error);
+                          toast({
+                            title: "Error",
+                            description: `Failed to start environment: ${error.message}`,
+                            variant: "destructive"
+                          });
+                        } finally {
+                          const envKey = env.environment_id || env.id;
+                          setEnvironmentLoading(prev => ({
+                            ...prev,
+                            [envKey]: false
+                          }));
+                        }
+                      }}>
                                 <Play className="w-3 h-3 mr-1" />
                                 {env.environment_name.toLowerCase() === 'production' ? '⚠️ Start Production' : 'Start Environment'}
-                              </Button>
-                            )}
+                              </Button>}
                             
-                            {getEnvironmentStatus(env)?.toLowerCase() === 'running' && (
-                              <Button
-                                size="sm"
-                                variant={env.environment_name.toLowerCase() === 'production' ? 'destructive' : 'outline'}
-                                className={cn(
-                                  "h-8",
-                                  env.environment_name.toLowerCase() === 'production' && "border-destructive/50 bg-destructive/10 text-destructive hover:bg-destructive/20"
-                                )}
-                                disabled={loading || isEnvironmentLoading(env)}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  
-                                  // Show enhanced confirmation for production environments
-                                  if (env.environment_name.toLowerCase() === 'production') {
-                                    if (!confirm(`🚨 CRITICAL WARNING: You are about to STOP the PRODUCTION environment "${env.environment_name}". This will make the application unavailable to all users. Are you absolutely sure you want to continue?`)) {
-                                      return;
-                                    }
-                                  }
-                                  
-                                  setPendingStopEnv({ id: env.environment_id, name: env.environment_name, appId: app.app_id });
-                                  setStopDialogOpen(true);
-                                }}
-                              >
-                                <XCircle className="w-3 h-3 mr-1" />
-                                {env.environment_name.toLowerCase() === 'production' ? '🚨 Stop Production' : 'Stop Environment'}
-                              </Button>
-                            )}
+                            {getEnvironmentStatus(env)?.toLowerCase() === 'running'}
                             
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8"
-                              disabled={loading || isEnvironmentLoading(env)}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRefreshEnvironment(env);
-                              }}
-                            >
+                            <Button size="sm" variant="outline" className="h-8" disabled={loading || isEnvironmentLoading(env)} onClick={e => {
+                        e.stopPropagation();
+                        handleRefreshEnvironment(env);
+                      }}>
                               <RefreshCw className="w-3 h-3 mr-1" />
                               Refresh Status
                             </Button>
                             
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8"
-                              disabled={loading}
-                              onClick={async (e) => {
-                                e.stopPropagation();
-                                setLogsEnvironment({ name: env.environment_name, id: env.environment_id, appId: app.app_id });
-                                setLogs("");
-                                await fetchWebhookLogsForEnvironment(env.environment_name);
-                                setLogsOpen(true);
-                              }}
-                            >
-                              {loading ? (
-                                <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                              ) : (
-                                <FileText className="w-3 h-3 mr-1" />
-                              )}
+                            <Button size="sm" variant="outline" className="h-8" disabled={loading} onClick={async e => {
+                        e.stopPropagation();
+                        setLogsEnvironment({
+                          name: env.environment_name,
+                          id: env.environment_id,
+                          appId: app.app_id
+                        });
+                        setLogs("");
+                        await fetchWebhookLogsForEnvironment(env.environment_name);
+                        setLogsOpen(true);
+                      }}>
+                              {loading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <FileText className="w-3 h-3 mr-1" />}
                               View Logs
                             </Button>
 
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8"
-                              disabled={microflowsLoading}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleGetMicroflows();
-                              }}
-                            >
-                              {microflowsLoading ? (
-                                <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                              ) : (
-                                <Code className="w-3 h-3 mr-1" />
-                              )}
+                            <Button size="sm" variant="outline" className="h-8" disabled={microflowsLoading} onClick={e => {
+                        e.stopPropagation();
+                        handleGetMicroflows();
+                      }}>
+                              {microflowsLoading ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Code className="w-3 h-3 mr-1" />}
                               Get Microflows
                             </Button>
 
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8"
-                               onClick={(e) => {
-                                 e.stopPropagation();
-                                 setSelectedEnvironmentForScan({ 
-                                   name: env.environment_name, 
-                                   appId: app.app_id || '' 
-                                 });
-                                 setShowVulnerabilityResults(false);
-                                 setVulnerabilityScanOpen(true);
-                               }}
-                            >
+                            <Button size="sm" variant="outline" className="h-8" onClick={e => {
+                        e.stopPropagation();
+                        setSelectedEnvironmentForScan({
+                          name: env.environment_name,
+                          appId: app.app_id || ''
+                        });
+                        setShowVulnerabilityResults(false);
+                        setVulnerabilityScanOpen(true);
+                      }}>
                               <Shield className="w-3 h-3 mr-1" />
                               Scan Vulnerabilities
                             </Button>
@@ -774,11 +599,9 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
                       </div>
                     </CollapsibleContent>
                   </div>
-                </Collapsible>
-              );
-            })}
-          </div>
-        )}
+                </Collapsible>;
+        })}
+          </div>}
       </CardContent>
 
       {/* Stop Environment Confirmation Dialog */}
@@ -793,38 +616,41 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setPendingStopEnv(null)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={async () => {
-                if (pendingStopEnv) {
-                  try {
-                    // Optimistic update
-                    setEnvironmentStatuses(prev => ({ 
-                      ...prev, 
-                      [pendingStopEnv.id]: { status: 'stopping...', loading: true } 
-                    }));
-                    
-                    await stopEnvironment(pendingStopEnv.appId, pendingStopEnv.name);
-                    
-                    // Find the environment to refresh
-                    const env = app.environments?.find(e => e.environment_id === pendingStopEnv.id);
-                    if (env) {
-                      await handleRefreshEnvironment(env);
-                    }
-                  } catch (error) {
-                    // Reset on error
-                    const originalEnv = app.environments?.find(e => e.environment_id === pendingStopEnv.id);
-                    if (originalEnv) {
-                      setEnvironmentStatuses(prev => ({ 
-                        ...prev, 
-                        [pendingStopEnv.id]: { status: originalEnv.status, loading: false } 
-                      }));
-                    }
+            <AlertDialogAction onClick={async () => {
+            if (pendingStopEnv) {
+              try {
+                // Optimistic update
+                setEnvironmentStatuses(prev => ({
+                  ...prev,
+                  [pendingStopEnv.id]: {
+                    status: 'stopping...',
+                    loading: true
                   }
-                  setPendingStopEnv(null);
-                  setStopDialogOpen(false);
+                }));
+                await stopEnvironment(pendingStopEnv.appId, pendingStopEnv.name);
+
+                // Find the environment to refresh
+                const env = app.environments?.find(e => e.environment_id === pendingStopEnv.id);
+                if (env) {
+                  await handleRefreshEnvironment(env);
                 }
-              }}
-            >
+              } catch (error) {
+                // Reset on error
+                const originalEnv = app.environments?.find(e => e.environment_id === pendingStopEnv.id);
+                if (originalEnv) {
+                  setEnvironmentStatuses(prev => ({
+                    ...prev,
+                    [pendingStopEnv.id]: {
+                      status: originalEnv.status,
+                      loading: false
+                    }
+                  }));
+                }
+              }
+              setPendingStopEnv(null);
+              setStopDialogOpen(false);
+            }
+          }}>
               Stop Environment
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -832,63 +658,30 @@ const AppCard = ({ app, onOpenApp, onRefresh }: AppCardProps) => {
       </AlertDialog>
 
       {/* Logs Viewer */}
-      {logsEnvironment && (
-        <LogsViewer
-          open={logsOpen}
-          onClose={() => {
-            setLogsOpen(false);
-            setLogsEnvironment(null);
-            setLogs("");
-            setWebhookLogs([]);
-          }}
-          logs={logs}
-          webhookLogs={webhookLogs}
-          environmentName={logsEnvironment.name}
-          appName={app.app_name}
-          appId={logsEnvironment.appId}
-          loading={loading}
-          webhookLoading={webhookLoading}
-          onRefreshWebhookLogs={() => fetchWebhookLogsForEnvironment(logsEnvironment.name)}
-          onDownloadDate={async (date) => {
-            try {
-              const dateStr = format(date, 'yyyy-MM-dd');
-              const logData = await downloadLogs(logsEnvironment.appId, logsEnvironment.name, dateStr);
-              setLogs(logData || 'No logs available for selected date');
-            } catch (error) {
-              // Error already handled in hook
-            }
-          }}
-        />
-      )}
+      {logsEnvironment && <LogsViewer open={logsOpen} onClose={() => {
+      setLogsOpen(false);
+      setLogsEnvironment(null);
+      setLogs("");
+      setWebhookLogs([]);
+    }} logs={logs} webhookLogs={webhookLogs} environmentName={logsEnvironment.name} appName={app.app_name} appId={logsEnvironment.appId} loading={loading} webhookLoading={webhookLoading} onRefreshWebhookLogs={() => fetchWebhookLogsForEnvironment(logsEnvironment.name)} onDownloadDate={async date => {
+      try {
+        const dateStr = format(date, 'yyyy-MM-dd');
+        const logData = await downloadLogs(logsEnvironment.appId, logsEnvironment.name, dateStr);
+        setLogs(logData || 'No logs available for selected date');
+      } catch (error) {
+        // Error already handled in hook
+      }
+    }} />}
 
       {/* Microflows Dialog */}
-      <MicroflowsDialog
-        open={microflowsDialogOpen}
-        onOpenChange={setMicroflowsDialogOpen}
-        microflowsData={microflowsData}
-        loading={microflowsLoading}
-        appName={app.app_name}
-        credentialId={app.credential_id}
-        appId={app.app_id}
-      />
+      <MicroflowsDialog open={microflowsDialogOpen} onOpenChange={setMicroflowsDialogOpen} microflowsData={microflowsData} loading={microflowsLoading} appName={app.app_name} credentialId={app.credential_id} appId={app.app_id} />
 
       {/* Vulnerability Scan Dialog */}
-      {selectedEnvironmentForScan && (
-        <VulnerabilityScanDialog
-          isOpen={vulnerabilityScanOpen}
-          onClose={() => {
-            setVulnerabilityScanOpen(false);
-            setSelectedEnvironmentForScan(null);
-            setShowVulnerabilityResults(false);
-          }}
-          appId={selectedEnvironmentForScan.appId}
-          environmentName={selectedEnvironmentForScan.name}
-          appName={app.app_name}
-          showResultsOnOpen={showVulnerabilityResults}
-        />
-      )}
-    </Card>
-  );
+      {selectedEnvironmentForScan && <VulnerabilityScanDialog isOpen={vulnerabilityScanOpen} onClose={() => {
+      setVulnerabilityScanOpen(false);
+      setSelectedEnvironmentForScan(null);
+      setShowVulnerabilityResults(false);
+    }} appId={selectedEnvironmentForScan.appId} environmentName={selectedEnvironmentForScan.name} appName={app.app_name} showResultsOnOpen={showVulnerabilityResults} />}
+    </Card>;
 };
-
 export default AppCard;

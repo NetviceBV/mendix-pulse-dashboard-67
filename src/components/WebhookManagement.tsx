@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Copy, Eye, EyeOff, Plus, Trash2 } from "lucide-react";
+import { SUPABASE_CONFIG } from "@/config/supabase";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,7 +36,7 @@ export const WebhookManagement = () => {
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
 
-  const webhookUrl = "https://uiquvncvmimhbkylfzzp.supabase.co/functions/v1/webhook-mendix-logs";
+  const webhookUrl = SUPABASE_CONFIG.webhookUrl;
 
   useEffect(() => {
     fetchApiKeys();

@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.52.1';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -49,19 +49,20 @@ serve(async (req) => {
       throw new Error('Credentials not found or access denied');
     }
 
-    // Get app version to determine MX9 vs MX10 behavior
+    // Get app info to determine MX9 vs MX10 behavior and get app name for API call
     const { data: appRow, error: appError } = await supabase
       .from('mendix_apps')
-      .select('version')
-      .eq('app_id', appId)
+      .select('version, app_id')
+      .eq('project_id', appId)
       .eq('user_id', user.id)
       .single();
 
-    if (appError) {
-      console.log('Could not fetch app version, proceeding with defaults');
+    if (appError || !appRow) {
+      throw new Error(`App not found in database for project_id: ${appId}. Error: ${appError?.message || 'No data returned'}`);
     }
 
-    const version: string | undefined = appRow?.version || undefined;
+    const version: string | undefined = appRow.version || undefined;
+    const appName: string = appRow.app_id;
 
     function isMx10(ver?: string): boolean {
       if (!ver) return false;
@@ -87,8 +88,8 @@ serve(async (req) => {
       namePrefix = 'main line-';
     }
 
-    const url = `https://deploy.mendix.com/api/1/apps/${appId}/packages`;
-    console.log(`Fetching packages for app ${appId} (branch: ${branchName}, prefix: ${namePrefix}, mx10=${mx10})`);
+    const url = `https://deploy.mendix.com/api/1/apps/${appName}/packages`;
+    console.log(`Fetching packages for app ${appName} (project_id: ${appId}, branch: ${branchName}, prefix: ${namePrefix}, mx10=${mx10})`);
 
     const response = await fetch(url, {
       method: 'GET',
