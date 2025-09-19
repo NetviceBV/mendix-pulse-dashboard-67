@@ -318,7 +318,7 @@ async function waitPackageBuild(credential: any, app: any, action: CloudAction):
 
     console.log(`Package ${action.package_id} status: ${status}`);
 
-    if (status === 'Available') {
+    if (status === 'Available' || status === 'Succeeded') {
       return { nextStep: 'transport_package' };
     } else if (status === 'Failed') {
       return { error: `Package build failed: ${data.ErrorMessage || 'Unknown error'}` };
