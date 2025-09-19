@@ -45,51 +45,69 @@ export type Database = {
         Row: {
           action_type: string
           app_id: string
+          attempt_count: number | null
+          backup_id: string | null
           completed_at: string | null
           created_at: string
           credential_id: string
+          current_step: string | null
           environment_name: string
           error_message: string | null
           id: string
+          last_heartbeat: string | null
+          package_id: string | null
           payload: Json | null
           retry_until: string | null
           scheduled_for: string | null
           started_at: string | null
           status: string
+          step_data: Json | null
           updated_at: string
           user_id: string
         }
         Insert: {
           action_type: string
           app_id: string
+          attempt_count?: number | null
+          backup_id?: string | null
           completed_at?: string | null
           created_at?: string
           credential_id: string
+          current_step?: string | null
           environment_name: string
           error_message?: string | null
           id?: string
+          last_heartbeat?: string | null
+          package_id?: string | null
           payload?: Json | null
           retry_until?: string | null
           scheduled_for?: string | null
           started_at?: string | null
           status?: string
+          step_data?: Json | null
           updated_at?: string
           user_id: string
         }
         Update: {
           action_type?: string
           app_id?: string
+          attempt_count?: number | null
+          backup_id?: string | null
           completed_at?: string | null
           created_at?: string
           credential_id?: string
+          current_step?: string | null
           environment_name?: string
           error_message?: string | null
           id?: string
+          last_heartbeat?: string | null
+          package_id?: string | null
           payload?: Json | null
           retry_until?: string | null
           scheduled_for?: string | null
           started_at?: string | null
           status?: string
+          step_data?: Json | null
           updated_at?: string
           user_id?: string
         }
