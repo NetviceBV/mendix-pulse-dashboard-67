@@ -1003,6 +1003,41 @@ export default function CloudActionsPage() {
     }
   };
 
+  const debugCleanup = async () => {
+    try {
+      const { error } = await supabase.functions.invoke('cleanup-stale-actions');
+      if (error) throw error;
+      toast({
+        title: "Cleanup Success",
+        description: "Stale V1 actions cleaned up successfully",
+      });
+      await load();
+    } catch (e: any) {
+      toast({
+        title: "Cleanup Error",
+        description: e.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const testOrchestrator = async () => {
+    try {
+      const { error } = await supabase.functions.invoke('cloud-action-orchestrator');
+      if (error) throw error;
+      toast({
+        title: "Orchestrator Test Success",
+        description: "V2 orchestrator ran successfully",
+      });
+    } catch (e: any) {
+      toast({
+        title: "Orchestrator Test Failed",
+        description: e.message,
+        variant: "destructive",
+      });
+    }
+  };
+
   const cancel = async (id: string) => {
     try {
       const { error } = await supabase
@@ -1066,6 +1101,24 @@ export default function CloudActionsPage() {
             <AddCloudActionDialog onCreated={load} />
           </div>
         </div>
+        
+        {isV2Enabled && (
+          <div className="border-t border-border bg-muted/30 px-4 py-2">
+            <div className="container mx-auto flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                Enhanced V2 Engine Active - Debug Tools:
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={debugCleanup}>
+                  Cleanup Stale V1 Actions
+                </Button>
+                <Button size="sm" variant="outline" onClick={testOrchestrator}>
+                  Test Orchestrator
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </header>
 
       <section className="container mx-auto px-4 py-6">
