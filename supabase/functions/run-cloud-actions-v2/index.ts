@@ -36,25 +36,33 @@ serve(async (req) => {
 
     console.log('🚀 Starting cloud actions v2 processor');
 
-    // Check authentication
-    const authHeader = req.headers.get('Authorization');
+    // Check authentication - Check for internal calls first
     let userId: string | null = null;
     let isInternalCall = false;
 
-    if (authHeader?.startsWith('Bearer ')) {
-      const token = authHeader.split(' ')[1];
-      const { data: { user }, error } = await supabase.auth.getUser(token);
-      if (user) {
-        userId = user.id;
-        console.log(`Authenticated user: ${userId}`);
-      }
+    // First check if this is an internal call (orchestrator or cron)
+    const userAgent = req.headers.get('User-Agent');
+    const cronSignature = req.headers.get('x-cron-signature');
+    if (userAgent?.includes('pg_cron') || cronSignature === 'orchestrator-internal-call') {
+      isInternalCall = true;
+      console.log('Processing internal cron call');
     } else {
-      // Check if this is an internal cron call
-      const userAgent = req.headers.get('User-Agent');
-      const cronSignature = req.headers.get('x-cron-signature');
-      if (userAgent?.includes('pg_cron') || cronSignature === 'orchestrator-internal-call') {
-        isInternalCall = true;
-        console.log('Processing internal cron call');
+      // If not internal, check for user authentication
+      const authHeader = req.headers.get('Authorization');
+      if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.split(' ')[1];
+        
+        // Only try to validate as user token if not a service role token
+        // Service role tokens have different format and should not be validated as user tokens
+        try {
+          const { data: { user }, error } = await supabase.auth.getUser(token);
+          if (user) {
+            userId = user.id;
+            console.log(`Authenticated user: ${userId}`);
+          }
+        } catch (error) {
+          console.log('Token validation failed (likely service role token used incorrectly):', error);
+        }
       }
     }
 
