@@ -197,11 +197,16 @@ async function processActionsInBackground(actions: CloudAction[], supabase: any)
 
         succeeded++;
       } else if (result.error) {
+        // Check for fatal errors that shouldn't be retried
+        const isFatalError = result.error.startsWith('FATAL:') || 
+                           result.error.includes('APP_NOT_FOUND') || 
+                           result.error.includes('INVALID_CREDENTIALS');
+        
         // Step failed
         const newAttemptCount = (action.attempt_count || 0) + 1;
         const maxAttempts = 3;
 
-        if (newAttemptCount >= maxAttempts) {
+        if (newAttemptCount >= maxAttempts || isFatalError) {
           // Max attempts reached, mark as failed
           await supabase
             .from('cloud_actions')

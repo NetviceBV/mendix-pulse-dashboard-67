@@ -230,7 +230,7 @@ async function createPackage(credential: any, app: any, action: CloudAction): Pr
   const revision = action.payload?.revision || 'HEAD';
 
   try {
-    const url = `https://deploy.mendix.com/api/1/apps/${app.app_name}/packages`;
+    const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/packages`;
     
     const response = await fetch(url, {
       method: 'POST',
@@ -247,7 +247,15 @@ async function createPackage(credential: any, app: any, action: CloudAction): Pr
 
     if (!response.ok) {
       const errorText = await response.text();
-      return { error: `Failed to create package: ${response.status} - ${errorText}` };
+      const errorMsg = `Failed to create package: ${response.status} - ${errorText}`;
+      
+      // Check for fatal errors that shouldn't be retried
+      if (response.status === 404 || errorText.includes('APP_NOT_FOUND') || 
+          response.status === 401 || errorText.includes('INVALID_CREDENTIALS')) {
+        return { error: `FATAL: ${errorMsg}` };
+      }
+      
+      return { error: errorMsg };
     }
 
     const data = await response.json();
@@ -280,7 +288,7 @@ async function waitPackageBuild(credential: any, app: any, action: CloudAction):
   }
 
   try {
-    const url = `https://deploy.mendix.com/api/1/apps/${app.app_name}/packages/${action.package_id}`;
+    const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/packages/${encodeURIComponent(action.package_id)}`;
     
     const response = await fetch(url, {
       method: 'GET',
@@ -325,7 +333,7 @@ async function transportPackage(credential: any, app: any, action: CloudAction, 
   }
 
   try {
-    const url = `https://deploy.mendix.com/api/1/apps/${app.app_name}/environments/${environmentName}/transport`;
+    const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(environmentName)}/transport`;
     
     const response = await fetch(url, {
       method: 'POST',
@@ -356,7 +364,7 @@ async function transportPackage(credential: any, app: any, action: CloudAction, 
 // Backup operations
 async function createBackup(credential: any, app: any, action: CloudAction, environmentName: string): Promise<StepResult> {
   try {
-    const url = `https://deploy.mendix.com/api/1/apps/${app.app_name}/environments/${environmentName}/snapshots`;
+    const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(environmentName)}/snapshots`;
     
     const response = await fetch(url, {
       method: 'POST',
@@ -402,7 +410,7 @@ async function waitBackupComplete(credential: any, app: any, action: CloudAction
   }
 
   try {
-    const url = `https://deploy.mendix.com/api/1/apps/${app.app_name}/snapshots/${action.backup_id}`;
+    const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/snapshots/${encodeURIComponent(action.backup_id)}`;
     
     const response = await fetch(url, {
       method: 'GET',
@@ -455,7 +463,7 @@ async function retrieveSourcePackage(credential: any, app: any, action: CloudAct
   }
 
   try {
-    const url = `https://deploy.mendix.com/api/1/apps/${app.app_name}/environments/${sourceEnvironment}`;
+    const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(sourceEnvironment)}`;
     
     const response = await fetch(url, {
       method: 'GET',
@@ -492,7 +500,7 @@ async function retrieveSourcePackage(credential: any, app: any, action: CloudAct
 // Helper function to call Mendix API for start/stop
 async function callMendix(action: string, credential: any, appName: string, environmentName: string) {
   try {
-    const url = `https://deploy.mendix.com/api/1/apps/${appName}/environments/${environmentName}/${action}`;
+    const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(appName)}/environments/${encodeURIComponent(environmentName)}/${action}`;
     
     const body = action === 'start' ? JSON.stringify({ AutoSyncDb: true }) : undefined;
     
