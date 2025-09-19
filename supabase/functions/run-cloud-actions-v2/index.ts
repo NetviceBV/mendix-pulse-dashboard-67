@@ -67,11 +67,14 @@ serve(async (req) => {
 
     const { actionIds } = await req.json().catch(() => ({ actionIds: null }));
 
-    // Fetch actions to process
+    // Fetch actions to process - include stalled V1 actions and properly scheduled actions
     let query = supabase
       .from('cloud_actions')
       .select('*')
-      .in('status', ['scheduled', 'running'])
+      .or(
+        `and(status.eq.scheduled,or(scheduled_for.is.null,scheduled_for.lte.${new Date().toISOString()})),` +
+        `and(status.eq.running,or(last_heartbeat.is.null,last_heartbeat.lt.${new Date(Date.now() - 5 * 60 * 1000).toISOString()}))`
+      )
       .lt('attempt_count', 3); // Max 3 attempts
 
     if (userId) {
@@ -90,6 +93,16 @@ serve(async (req) => {
     }
 
     console.log(`Found ${actions?.length || 0} actions to process`);
+    if (actions && actions.length > 0) {
+      console.log('Actions:', actions.map(a => ({ 
+        id: a.id, 
+        type: a.action_type, 
+        status: a.status, 
+        step: a.current_step, 
+        heartbeat: a.last_heartbeat,
+        v1_action: !a.last_heartbeat ? 'YES' : 'NO'
+      })));
+    }
 
     // Start background processing
     if (actions && actions.length > 0) {
@@ -280,18 +293,23 @@ async function processSingleStep(action: CloudAction, supabase: any): Promise<{
   backupId?: string;
   error?: string;
 }> {
+  const currentStep = action.current_step || getInitialStep(action.action_type);
+  console.log(`🔧 Calling cloud-action-steps for action ${action.id}, step: ${currentStep}`);
+  
   // Call the cloud-action-steps function to process the step
   const { data, error } = await supabase.functions.invoke('cloud-action-steps', {
     body: {
       action: action,
-      step: action.current_step || getInitialStep(action.action_type)
+      step: currentStep
     }
   });
 
   if (error) {
+    console.error(`❌ cloud-action-steps failed for action ${action.id}:`, error);
     throw new Error(`Step processing failed: ${error.message}`);
   }
 
+  console.log(`✅ cloud-action-steps completed for action ${action.id}:`, data);
   return data;
 }
 
