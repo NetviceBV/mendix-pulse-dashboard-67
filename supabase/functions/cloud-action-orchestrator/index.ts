@@ -23,21 +23,39 @@ serve(async (req) => {
     const now = new Date().toISOString();
     const staleThreshold = new Date(Date.now() - 5 * 60 * 1000).toISOString(); // 5 minutes ago
 
-    const { data: actionsToProcess, error } = await supabase
+    // Get scheduled actions ready to run
+    const { data: scheduledActions, error: scheduledError } = await supabase
       .from('cloud_actions')
       .select('*')
-      .or(`
-        and(status.eq.scheduled,or(scheduled_for.is.null,scheduled_for.lte.${now})),
-        and(status.eq.running,last_heartbeat.lt.${staleThreshold})
-      `)
+      .eq('status', 'scheduled')
+      .or(`scheduled_for.is.null,scheduled_for.lte.${now}`)
       .lt('attempt_count', 3)
       .order('created_at', { ascending: true })
-      .limit(20);
+      .limit(10);
 
-    if (error) {
-      console.error('Error fetching actions:', error);
-      throw error;
+    if (scheduledError) {
+      console.error('Error fetching scheduled actions:', scheduledError);
+      throw scheduledError;
     }
+
+    // Get stale running actions (v1 actions may not have last_heartbeat)
+    const { data: staleActions, error: staleError } = await supabase
+      .from('cloud_actions')
+      .select('*')
+      .eq('status', 'running')
+      .or(`last_heartbeat.is.null,last_heartbeat.lt.${staleThreshold}`)
+      .lt('attempt_count', 3)
+      .order('created_at', { ascending: true })
+      .limit(10);
+
+    if (staleError) {
+      console.error('Error fetching stale actions:', staleError);
+      throw staleError;
+    }
+
+    // Combine both arrays
+    const actionsToProcess = [...(scheduledActions || []), ...(staleActions || [])];
+
 
     console.log(`Found ${actionsToProcess?.length || 0} actions to process`);
 
@@ -50,22 +68,26 @@ serve(async (req) => {
       });
     }
 
-    // Log stale actions that are being resumed
-    const staleActions = actionsToProcess.filter(action => 
+    // Log stale actions that are being resumed (including V1 actions without heartbeat)
+    const resumedActions = actionsToProcess.filter(action => 
       action.status === 'running' && 
-      action.last_heartbeat && 
-      new Date(action.last_heartbeat) < new Date(staleThreshold)
+      (!action.last_heartbeat || new Date(action.last_heartbeat) < new Date(staleThreshold))
     );
 
-    for (const staleAction of staleActions) {
+    for (const resumedAction of resumedActions) {
+      const isV1Action = !resumedAction.last_heartbeat;
+      const logMessage = isV1Action 
+        ? `🔄 Resuming V1 action with V2 orchestrator from step: ${resumedAction.current_step || 'initial'}`
+        : `🔄 Resuming stale action from step: ${resumedAction.current_step || 'initial'}`;
+        
       await supabase.from('cloud_action_logs').insert({
-        action_id: staleAction.id,
-        user_id: staleAction.user_id,
+        action_id: resumedAction.id,
+        user_id: resumedAction.user_id,
         level: 'info',
-        message: `🔄 Resuming stale action from step: ${staleAction.current_step || 'initial'}`
+        message: logMessage
       });
       
-      console.log(`Resuming stale action ${staleAction.id} from step: ${staleAction.current_step}`);
+      console.log(`Resuming ${isV1Action ? 'V1' : 'stale'} action ${resumedAction.id} from step: ${resumedAction.current_step}`);
     }
 
     // Group actions by user to process in batches
@@ -152,7 +174,7 @@ serve(async (req) => {
       message: 'Orchestration cycle completed',
       processedUsers: Object.keys(actionsByUser).length,
       totalActions: actionsToProcess.length,
-      staleActionsResumed: staleActions.length,
+      staleActionsResumed: resumedActions.length,
       timestamp: now
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
