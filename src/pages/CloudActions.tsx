@@ -22,7 +22,7 @@ import { format, startOfToday, isSameDay, parse } from "date-fns";
 import { Link } from "react-router-dom";
 import { EditCloudActionDialog } from "@/components/EditCloudActionDialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useCloudActionsSettings } from "@/hooks/useCloudActionsSettings";
+
 
 
 interface CloudActionRow {
@@ -919,7 +919,6 @@ export default function CloudActionsPage() {
   const [actions, setActions] = useState<CloudActionRow[]>([]);
   const [apps, setApps] = useState<App[]>([]);
   const [isRunningAll, setIsRunningAll] = useState(false);
-  const { isV2Enabled } = useCloudActionsSettings();
   const [runningActionId, setRunningActionId] = useState<string | null>(null);
   const { toast } = useToast();
 
@@ -978,17 +977,15 @@ export default function CloudActionsPage() {
     }
 
     try {
-      // Use v2 or v1 based on settings
-      const functionName = isV2Enabled ? "run-cloud-actions-v2" : "run-cloud-actions";
-      const { error } = await supabase.functions.invoke(functionName, {
+      // Always use V2 engine
+      const { error } = await supabase.functions.invoke("run-cloud-actions-v2", {
         body: actionId ? { actionId, processAllDue: false } : { processAllDue: true },
       });
       if (error) throw error;
       
-      const versionText = isV2Enabled ? "(Enhanced v2)" : "(Standard v1)";
       toast({ 
         title: actionId ? "Action triggered" : "Runner started", 
-        description: `${actionId ? "Processing selected action" : "Processing due actions"} ${versionText}` 
+        description: `${actionId ? "Processing selected action" : "Processing due actions"} (Enhanced v2)` 
       });
       await load();
     } catch (e: any) {
@@ -1102,23 +1099,21 @@ export default function CloudActionsPage() {
           </div>
         </div>
         
-        {isV2Enabled && (
-          <div className="border-t border-border bg-muted/30 px-4 py-2">
-            <div className="container mx-auto flex items-center justify-between">
-              <div className="text-sm text-muted-foreground">
-                Enhanced V2 Engine Active - Debug Tools:
-              </div>
-              <div className="flex gap-2">
-                <Button size="sm" variant="outline" onClick={debugCleanup}>
-                  Cleanup Stale V1 Actions
-                </Button>
-                <Button size="sm" variant="outline" onClick={testOrchestrator}>
-                  Test Orchestrator
-                </Button>
-              </div>
+        <div className="border-t border-border bg-muted/30 px-4 py-2">
+          <div className="container mx-auto flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">
+              Enhanced V2 Engine Active - Debug Tools:
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={debugCleanup}>
+                Cleanup Stale V1 Actions
+              </Button>
+              <Button size="sm" variant="outline" onClick={testOrchestrator}>
+                Test Orchestrator
+              </Button>
             </div>
           </div>
-        )}
+        </div>
       </header>
 
       <section className="container mx-auto px-4 py-6">
