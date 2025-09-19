@@ -250,7 +250,9 @@ async function createPackage(credential: any, app: any, action: CloudAction): Pr
       },
       body: JSON.stringify({
         Branch: branch,
-        Revision: revision
+        Revision: revision,
+        Version: action.payload?.version || "1.0.0",
+        Description: action.payload?.description || "Pintosoft deployment"
       })
     });
 
