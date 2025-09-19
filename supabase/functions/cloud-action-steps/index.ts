@@ -175,7 +175,7 @@ async function callStart(credential: any, app: any, environmentName: string): Pr
 async function callStop(credential: any, app: any, environmentName: string): Promise<StepResult> {
   const response = await callMendix('stop', credential, app.app_id, environmentName);
   if (response.success) {
-    return { completed: true };
+    return { success: true };
   } else {
     return { error: response.error };
   }
