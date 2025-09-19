@@ -230,15 +230,14 @@ async function createPackage(credential: any, app: any, action: CloudAction): Pr
   const revision = action.payload?.revision || 'HEAD';
 
   try {
-    const auth = `Basic ${btoa(`${credential.username}:${credential.api_key}`)}`;
     const url = `https://deploy.mendix.com/api/1/apps/${app.app_name}/packages`;
     
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': auth,
         'Content-Type': 'application/json',
-        'Mendix-Username': credential.username
+        'Mendix-Username': credential.username,
+        'Mendix-ApiKey': credential.api_key || credential.pat || ''
       },
       body: JSON.stringify({
         Branch: branch,
@@ -281,14 +280,13 @@ async function waitPackageBuild(credential: any, app: any, action: CloudAction):
   }
 
   try {
-    const auth = `Basic ${btoa(`${credential.username}:${credential.api_key}`)}`;
     const url = `https://deploy.mendix.com/api/1/apps/${app.app_name}/packages/${action.package_id}`;
     
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Authorization': auth,
-        'Mendix-Username': credential.username
+        'Mendix-Username': credential.username,
+        'Mendix-ApiKey': credential.api_key || credential.pat || ''
       }
     });
 
@@ -301,7 +299,7 @@ async function waitPackageBuild(credential: any, app: any, action: CloudAction):
 
     console.log(`Package ${action.package_id} status: ${status}`);
 
-    if (status === 'Succeeded') {
+    if (status === 'Available') {
       return { nextStep: 'transport_package' };
     } else if (status === 'Failed') {
       return { error: `Package build failed: ${data.ErrorMessage || 'Unknown error'}` };
@@ -327,15 +325,14 @@ async function transportPackage(credential: any, app: any, action: CloudAction, 
   }
 
   try {
-    const auth = `Basic ${btoa(`${credential.username}:${credential.api_key}`)}`;
     const url = `https://deploy.mendix.com/api/1/apps/${app.app_name}/environments/${environmentName}/transport`;
     
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': auth,
         'Content-Type': 'application/json',
-        'Mendix-Username': credential.username
+        'Mendix-Username': credential.username,
+        'Mendix-ApiKey': credential.api_key || credential.pat || ''
       },
       body: JSON.stringify({
         PackageId: action.package_id
@@ -359,15 +356,14 @@ async function transportPackage(credential: any, app: any, action: CloudAction, 
 // Backup operations
 async function createBackup(credential: any, app: any, action: CloudAction, environmentName: string): Promise<StepResult> {
   try {
-    const auth = `Basic ${btoa(`${credential.username}:${credential.api_key}`)}`;
     const url = `https://deploy.mendix.com/api/1/apps/${app.app_name}/environments/${environmentName}/snapshots`;
     
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': auth,
         'Content-Type': 'application/json',
-        'Mendix-Username': credential.username
+        'Mendix-Username': credential.username,
+        'Mendix-ApiKey': credential.api_key || credential.pat || ''
       },
       body: JSON.stringify({
         Comment: `Automated backup before deployment - ${new Date().toISOString()}`
@@ -406,14 +402,13 @@ async function waitBackupComplete(credential: any, app: any, action: CloudAction
   }
 
   try {
-    const auth = `Basic ${btoa(`${credential.username}:${credential.api_key}`)}`;
     const url = `https://deploy.mendix.com/api/1/apps/${app.app_name}/snapshots/${action.backup_id}`;
     
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Authorization': auth,
-        'Mendix-Username': credential.username
+        'Mendix-Username': credential.username,
+        'Mendix-ApiKey': credential.api_key || credential.pat || ''
       }
     });
 
@@ -460,14 +455,13 @@ async function retrieveSourcePackage(credential: any, app: any, action: CloudAct
   }
 
   try {
-    const auth = `Basic ${btoa(`${credential.username}:${credential.api_key}`)}`;
     const url = `https://deploy.mendix.com/api/1/apps/${app.app_name}/environments/${sourceEnvironment}`;
     
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Authorization': auth,
-        'Mendix-Username': credential.username
+        'Mendix-Username': credential.username,
+        'Mendix-ApiKey': credential.api_key || credential.pat || ''
       }
     });
 
@@ -498,16 +492,18 @@ async function retrieveSourcePackage(credential: any, app: any, action: CloudAct
 // Helper function to call Mendix API for start/stop
 async function callMendix(action: string, credential: any, appName: string, environmentName: string) {
   try {
-    const auth = `Basic ${btoa(`${credential.username}:${credential.api_key}`)}`;
     const url = `https://deploy.mendix.com/api/1/apps/${appName}/environments/${environmentName}/${action}`;
+    
+    const body = action === 'start' ? JSON.stringify({ AutoSyncDb: true }) : undefined;
     
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': auth,
         'Content-Type': 'application/json',
-        'Mendix-Username': credential.username
-      }
+        'Mendix-Username': credential.username,
+        'Mendix-ApiKey': credential.api_key || credential.pat || ''
+      },
+      body: body
     });
 
     if (response.ok) {
