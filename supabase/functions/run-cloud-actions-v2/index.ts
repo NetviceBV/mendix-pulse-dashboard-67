@@ -51,7 +51,8 @@ serve(async (req) => {
     } else {
       // Check if this is an internal cron call
       const userAgent = req.headers.get('User-Agent');
-      if (userAgent?.includes('pg_cron') || req.headers.get('x-cron-signature')) {
+      const cronSignature = req.headers.get('x-cron-signature');
+      if (userAgent?.includes('pg_cron') || cronSignature === 'orchestrator-internal-call') {
         isInternalCall = true;
         console.log('Processing internal cron call');
       }
