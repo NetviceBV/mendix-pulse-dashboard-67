@@ -22,6 +22,7 @@ import { format, startOfToday, isSameDay, parse } from "date-fns";
 import { Link } from "react-router-dom";
 import { EditCloudActionDialog } from "@/components/EditCloudActionDialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useCloudActionsSettings } from "@/hooks/useCloudActionsSettings";
 
 
 interface CloudActionRow {
@@ -918,6 +919,7 @@ export default function CloudActionsPage() {
   const [actions, setActions] = useState<CloudActionRow[]>([]);
   const [apps, setApps] = useState<App[]>([]);
   const [isRunningAll, setIsRunningAll] = useState(false);
+  const { isV2Enabled } = useCloudActionsSettings();
   const [runningActionId, setRunningActionId] = useState<string | null>(null);
   const { toast } = useToast();
 
@@ -976,11 +978,18 @@ export default function CloudActionsPage() {
     }
 
     try {
-      const { error } = await supabase.functions.invoke("run-cloud-actions", {
+      // Use v2 or v1 based on settings
+      const functionName = isV2Enabled ? "run-cloud-actions-v2" : "run-cloud-actions";
+      const { error } = await supabase.functions.invoke(functionName, {
         body: actionId ? { actionId, processAllDue: false } : { processAllDue: true },
       });
       if (error) throw error;
-      toast({ title: actionId ? "Action triggered" : "Runner started", description: actionId ? "Processing selected action" : "Processing due actions" });
+      
+      const versionText = isV2Enabled ? "(Enhanced v2)" : "(Standard v1)";
+      toast({ 
+        title: actionId ? "Action triggered" : "Runner started", 
+        description: `${actionId ? "Processing selected action" : "Processing due actions"} ${versionText}` 
+      });
       await load();
     } catch (e: any) {
       toast({ title: "Runner failed", description: e.message, variant: "destructive" });
