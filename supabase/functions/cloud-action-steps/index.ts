@@ -229,8 +229,10 @@ async function createPackage(credential: any, app: any, action: CloudAction): Pr
   const branch = action.payload?.branch || 'main';
   const revision = action.payload?.revision || 'HEAD';
 
+  console.log(`🔧 Creating package for app: ${app.app_name} (project_id: ${action.app_id})`);
+
   try {
-    const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/packages`;
+    const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(app.app_name)}/packages`;
     
     const response = await fetch(url, {
       method: 'POST',
@@ -288,7 +290,7 @@ async function waitPackageBuild(credential: any, app: any, action: CloudAction):
   }
 
   try {
-    const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/packages/${encodeURIComponent(action.package_id)}`;
+    const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(app.app_name)}/packages/${encodeURIComponent(action.package_id)}`;
     
     const response = await fetch(url, {
       method: 'GET',
@@ -333,7 +335,7 @@ async function transportPackage(credential: any, app: any, action: CloudAction, 
   }
 
   try {
-    const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(environmentName)}/transport`;
+    const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(app.app_name)}/environments/${encodeURIComponent(environmentName)}/transport`;
     
     const response = await fetch(url, {
       method: 'POST',
@@ -364,7 +366,7 @@ async function transportPackage(credential: any, app: any, action: CloudAction, 
 // Backup operations
 async function createBackup(credential: any, app: any, action: CloudAction, environmentName: string): Promise<StepResult> {
   try {
-    const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(environmentName)}/snapshots`;
+    const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(app.app_name)}/environments/${encodeURIComponent(environmentName)}/snapshots`;
     
     const response = await fetch(url, {
       method: 'POST',
@@ -410,7 +412,7 @@ async function waitBackupComplete(credential: any, app: any, action: CloudAction
   }
 
   try {
-    const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/snapshots/${encodeURIComponent(action.backup_id)}`;
+    const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(app.app_name)}/snapshots/${encodeURIComponent(action.backup_id)}`;
     
     const response = await fetch(url, {
       method: 'GET',
@@ -463,7 +465,7 @@ async function retrieveSourcePackage(credential: any, app: any, action: CloudAct
   }
 
   try {
-    const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(action.app_id)}/environments/${encodeURIComponent(sourceEnvironment)}`;
+    const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(app.app_name)}/environments/${encodeURIComponent(sourceEnvironment)}`;
     
     const response = await fetch(url, {
       method: 'GET',
