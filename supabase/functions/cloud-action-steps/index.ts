@@ -80,7 +80,7 @@ async function processStep(action: CloudAction, step: string, supabase: any): Pr
   const { data: app } = await supabase
     .from('mendix_apps')
     .select('*')
-    .eq('app_id', action.app_id)
+    .eq('project_id', action.app_id)
     .eq('user_id', action.user_id)
     .single();
 
