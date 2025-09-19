@@ -233,8 +233,8 @@ async function waitForStatus(
 
 // Package operations for deploy
 async function createPackage(credential: any, app: any, action: CloudAction): Promise<StepResult> {
-  const branch = action.payload?.branch || 'main';
-  const revision = action.payload?.revision || 'HEAD';
+  const branch = action.payload?.branchName || 'main';
+  const revision = action.payload?.revisionId || 'HEAD';
 
   console.log(`🔧 Creating package for app_slug: ${app.app_id}, display: ${app.app_name}, project_id: ${app.project_id}`);
 
