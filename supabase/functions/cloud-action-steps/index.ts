@@ -102,10 +102,7 @@ async function processStep(action: CloudAction, step: string, supabase: any): Pr
     case 'call_start':
       return await callStart(credential, app, normalizedEnvName);
 
-    case 'wait_running':
-      return await waitForStatus(credential, app, action, 'running', 'Running');
-
-    // STOP ACTION STEPS  
+    // STOP ACTION STEPS
     case 'call_stop':
       if (action.action_type === 'stop') {
         const result = await callStop(credential, app, normalizedEnvName);
@@ -171,7 +168,7 @@ function normalizeEnvironmentName(envName: string): string {
 async function callStart(credential: any, app: any, environmentName: string): Promise<StepResult> {
   const response = await callMendix('start', credential, app.app_id, environmentName);
   if (response.success) {
-    return { nextStep: 'wait_running' };
+    return { nextStep: 'wait_environment_running' };
   } else {
     return { error: response.error };
   }
