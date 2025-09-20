@@ -108,7 +108,12 @@ async function processStep(action: CloudAction, step: string, supabase: any): Pr
     // STOP ACTION STEPS  
     case 'call_stop':
       if (action.action_type === 'stop') {
-        return await callStop(credential, app, normalizedEnvName);
+        const result = await callStop(credential, app, normalizedEnvName);
+        if (result.success) {
+          return { completed: true };
+        } else {
+          return { error: result.error };
+        }
       } else if (action.action_type === 'restart') {
         const result = await callStop(credential, app, normalizedEnvName);
         return { ...result, nextStep: 'wait_stopped' };
