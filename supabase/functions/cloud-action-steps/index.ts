@@ -222,8 +222,18 @@ async function waitForStatus(
     }
   } else {
     // Still waiting, continue in next cycle
+    // Map status to correct step names used in switch statement
+    let waitStepName: string;
+    if (targetStatus === 'stopped') {
+      waitStepName = 'wait_stopped';
+    } else if (targetStatus === 'running') {
+      waitStepName = 'wait_environment_running';
+    } else {
+      waitStepName = `wait_environment_${targetStatus}`;
+    }
+    
     return { 
-      nextStep: `wait_${targetStatus}`,
+      nextStep: waitStepName,
       stepData: { 
         targetStatus, 
         displayStatus,
@@ -367,7 +377,13 @@ async function transportPackage(credential: any, app: any, action: CloudAction, 
 
     console.log(`Package ${action.package_id} transported to ${environmentName}`);
     
-    return { nextStep: 'stop_environment' };
+    // Transport actions complete after successful transport
+    // Deploy actions continue to stop_environment
+    if (action.action_type === 'transport') {
+      return { completed: true };
+    } else {
+      return { nextStep: 'stop_environment' };
+    }
 
   } catch (error) {
     return { error: `Package transport failed: ${error.message}` };
