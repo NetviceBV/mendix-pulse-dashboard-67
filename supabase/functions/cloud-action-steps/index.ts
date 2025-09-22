@@ -406,13 +406,8 @@ async function transportPackage(credential: any, app: any, action: CloudAction, 
 
     console.log(`Package ${action.package_id} transported to ${environmentName}`);
     
-    // Transport actions complete after successful transport
-    // Deploy actions continue to stop_environment
-    if (action.action_type === 'transport') {
-      return { completed: true };
-    } else {
-      return { nextStep: 'stop_environment' };
-    }
+    // Continue to stop_environment for proper backup and restart flow
+    return { nextStep: 'stop_environment' };
 
   } catch (error) {
     return { error: `Package transport failed: ${error.message}` };
