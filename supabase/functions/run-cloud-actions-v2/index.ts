@@ -81,7 +81,7 @@ serve(async (req) => {
       .select('*')
       .or(
         `and(status.eq.scheduled,or(scheduled_for.is.null,scheduled_for.lte.${new Date().toISOString()})),` +
-        `and(status.eq.running,or(last_heartbeat.is.null,last_heartbeat.lt.${new Date(Date.now() - 5 * 60 * 1000).toISOString()}))`
+        `and(status.eq.running,or(last_heartbeat.is.null,last_heartbeat.lt.${new Date(Date.now() - 45 * 1000).toISOString()}))`
       )
       .lt('attempt_count', 3); // Max 3 attempts
 

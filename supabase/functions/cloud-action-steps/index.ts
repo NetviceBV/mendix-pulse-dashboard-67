@@ -212,7 +212,22 @@ async function waitForStatus(
   }
 
   const currentStatus = statusData?.environment?.status?.toLowerCase();
-  console.log(`Environment status: ${currentStatus}, target: ${targetStatus}`);
+  const statusMessage = `Environment status: ${currentStatus || 'unknown'}, target: ${targetStatus}`;
+  console.log(statusMessage);
+
+  // Log status update to action logs for user visibility
+  await supabase.from('cloud_action_logs').insert({
+    action_id: action.id,
+    user_id: action.user_id,
+    level: 'info',
+    message: `🔍 Checking status: ${currentStatus || 'unknown'} (waiting for ${targetStatus})`
+  });
+
+  // Update heartbeat to prevent stale detection during wait operations
+  await supabase
+    .from('cloud_actions')
+    .update({ last_heartbeat: new Date().toISOString() })
+    .eq('id', action.id);
 
   if (currentStatus === targetStatus.toLowerCase()) {
     if (isCompleted || nextStep === null) {
@@ -231,13 +246,27 @@ async function waitForStatus(
     } else {
       waitStepName = `wait_environment_${targetStatus}`;
     }
+
+    // Calculate wait time for user feedback
+    const startTime = action.step_data?.startTime || new Date().toISOString();
+    const waitDuration = Math.floor((Date.now() - new Date(startTime).getTime()) / 1000);
+    
+    // Log waiting status with duration
+    await supabase.from('cloud_action_logs').insert({
+      action_id: action.id,
+      user_id: action.user_id,
+      level: 'info',
+      message: `⏳ Still waiting for ${displayStatus} (${waitDuration}s elapsed, current: ${currentStatus || 'unknown'})`
+    });
     
     return { 
       nextStep: waitStepName,
       stepData: { 
         targetStatus, 
         displayStatus,
-        startTime: action.step_data?.startTime || new Date().toISOString()
+        startTime: startTime,
+        lastCheck: new Date().toISOString(),
+        currentStatus: currentStatus
       }
     };
   }

@@ -21,7 +21,7 @@ serve(async (req) => {
 
     // Find actions that need processing
     const now = new Date().toISOString();
-    const staleThreshold = new Date(Date.now() - 2 * 60 * 1000).toISOString(); // 2 minutes ago
+    const staleThreshold = new Date(Date.now() - 45 * 1000).toISOString(); // 45 seconds ago
 
     // Get scheduled actions ready to run
     const { data: scheduledActions, error: scheduledError } = await supabase
