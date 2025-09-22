@@ -68,7 +68,7 @@ const handler = async (req: Request): Promise<Response> => {
       message: {
         html: processedHtml,
         subject: processedSubject,
-        from_email: emailRequest.from_email || 'noreply@mendixmonitoring.com',
+        from_email: emailRequest.from_email || 'pintosoft@netvice.nl',
         from_name: emailRequest.from_name || 'Mendix Monitoring',
         to: emailRequest.to,
         preserve_recipients: true,
