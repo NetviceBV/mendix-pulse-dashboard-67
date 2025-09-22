@@ -521,7 +521,7 @@ async function retrieveSourcePackage(credential: any, app: any, action: CloudAct
   }
 
   try {
-    const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(app.app_id)}/environments/${encodeURIComponent(sourceEnvironment)}`;
+    const url = `https://deploy.mendix.com/api/1/apps/${encodeURIComponent(app.app_id)}/environments/${encodeURIComponent(sourceEnvironment)}/package`;
     
     const response = await fetch(url, {
       method: 'GET',
