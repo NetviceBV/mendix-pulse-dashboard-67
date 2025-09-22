@@ -515,7 +515,7 @@ async function waitBackupComplete(credential: any, app: any, action: CloudAction
 
 // Transport-specific operations
 async function retrieveSourcePackage(credential: any, app: any, action: CloudAction): Promise<StepResult> {
-  const sourceEnvironment = action.payload?.sourceEnvironment;
+  const sourceEnvironment = action.payload?.sourceEnvironmentName;
   if (!sourceEnvironment) {
     return { error: 'Source environment not specified for transport' };
   }
