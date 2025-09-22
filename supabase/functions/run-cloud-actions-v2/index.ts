@@ -302,7 +302,10 @@ async function processActionsInBackground(actions: CloudAction[], supabase: any)
         await sendCloudActionEmail(supabase, action, 'failure', error.message);
         failed++;
       }
+    }
   }
+
+  console.log(`🏁 Background processing completed: ${processed} processed, ${succeeded} succeeded, ${failed} failed`);
 }
 
 // Helper function to send cloud action emails
