@@ -31,7 +31,6 @@ interface MonitoringSetting {
   id?: string;
   environment_id: string;
   is_enabled: boolean;
-  email_address: string;
   check_interval_minutes: number;
   error_threshold: number;
   critical_threshold: number;
@@ -135,7 +134,6 @@ const LogMonitoringSettings = () => {
           settingsMap[env.id] = existing || {
             environment_id: env.id,
             is_enabled: false,
-            email_address: "",
             check_interval_minutes: 30,
             error_threshold: 1,
             critical_threshold: 1
@@ -174,7 +172,6 @@ const LogMonitoringSettings = () => {
           .from('log_monitoring_settings')
           .update({
             is_enabled: setting.is_enabled,
-            email_address: setting.email_address,
             check_interval_minutes: setting.check_interval_minutes,
             error_threshold: setting.error_threshold,
             critical_threshold: setting.critical_threshold,
@@ -193,7 +190,6 @@ const LogMonitoringSettings = () => {
             user_id: user.id,
             environment_id: setting.environment_id,
             is_enabled: setting.is_enabled,
-            email_address: setting.email_address,
             check_interval_minutes: setting.check_interval_minutes,
             error_threshold: setting.error_threshold,
             critical_threshold: setting.critical_threshold,
@@ -272,20 +268,6 @@ const LogMonitoringSettings = () => {
                 <div className="space-y-4 pt-4 border-t">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor={`email-${env.id}`}>
-                        <Mail className="w-4 h-4 inline mr-2" />
-                        Alert Email Address
-                      </Label>
-                      <Input
-                        id={`email-${env.id}`}
-                        type="email"
-                        value={setting.email_address}
-                        onChange={(e) => updateSetting(env.id, { email_address: e.target.value })}
-                        placeholder="Enter email address for alerts"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
                       <Label>
                         <Clock className="w-4 h-4 inline mr-2" />
                         Check Interval
@@ -336,7 +318,7 @@ const LogMonitoringSettings = () => {
                   <div className="flex justify-end pt-2">
                     <Button 
                       onClick={() => saveSetting(env.id)}
-                      disabled={saving || !setting.email_address}
+                      disabled={saving}
                       size="sm"
                     >
                       {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
@@ -360,6 +342,24 @@ const LogMonitoringSettings = () => {
           Configure automated monitoring for error and critical log entries in your environments
         </p>
       </div>
+
+      {/* Email Management Info */}
+      <Card className="border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/50">
+        <CardContent className="pt-6">
+          <div className="flex items-start gap-3">
+            <Mail className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+            <div>
+              <p className="font-medium text-blue-900 dark:text-blue-100">
+                Email Notifications
+              </p>
+              <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                To receive email alerts for log monitoring events, configure your email addresses in the{" "}
+                <strong>Email Management</strong> tab and enable "Log Monitoring Notifications" for the addresses that should receive alerts.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Search */}
       <div className="relative max-w-md">

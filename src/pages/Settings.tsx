@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import MendixCredentials, { MendixCredential } from "@/components/MendixCredentials";
 import { WebhookManagement } from "@/components/WebhookManagement";
 import LogMonitoringSettings from "@/components/LogMonitoringSettings";
+import EmailManagement from "@/components/EmailManagement";
 import { ArrowLeft, Settings as SettingsIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -94,9 +95,10 @@ const Settings = () => {
       <div className="container mx-auto px-4 py-6">
         <div className="max-w-4xl mx-auto">
           <Tabs defaultValue="credentials" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="credentials">Mendix Credentials</TabsTrigger>
               <TabsTrigger value="webhooks">Webhook Settings</TabsTrigger>
+              <TabsTrigger value="emails">Email Management</TabsTrigger>
               <TabsTrigger value="monitoring">Log Monitoring</TabsTrigger>
             </TabsList>
             
@@ -109,6 +111,10 @@ const Settings = () => {
             
             <TabsContent value="webhooks" className="mt-6">
               <WebhookManagement />
+            </TabsContent>
+            
+            <TabsContent value="emails" className="mt-6">
+              <EmailManagement />
             </TabsContent>
             
             <TabsContent value="monitoring" className="mt-6">

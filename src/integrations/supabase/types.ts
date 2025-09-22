@@ -154,7 +154,6 @@ export type Database = {
           check_interval_minutes: number
           created_at: string
           critical_threshold: number
-          email_address: string
           environment_id: string
           error_threshold: number
           id: string
@@ -167,7 +166,6 @@ export type Database = {
           check_interval_minutes?: number
           created_at?: string
           critical_threshold?: number
-          email_address: string
           environment_id: string
           error_threshold?: number
           id?: string
@@ -180,7 +178,6 @@ export type Database = {
           check_interval_minutes?: number
           created_at?: string
           critical_threshold?: number
-          email_address?: string
           environment_id?: string
           error_threshold?: number
           id?: string
@@ -369,6 +366,42 @@ export type Database = {
           node?: string | null
           stacktrace?: string | null
           timestamp?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notification_email_addresses: {
+        Row: {
+          cloud_action_notifications_enabled: boolean
+          created_at: string
+          display_name: string | null
+          email_address: string
+          id: string
+          is_active: boolean
+          log_monitoring_enabled: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cloud_action_notifications_enabled?: boolean
+          created_at?: string
+          display_name?: string | null
+          email_address: string
+          id?: string
+          is_active?: boolean
+          log_monitoring_enabled?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cloud_action_notifications_enabled?: boolean
+          created_at?: string
+          display_name?: string | null
+          email_address?: string
+          id?: string
+          is_active?: boolean
+          log_monitoring_enabled?: boolean
           updated_at?: string
           user_id?: string
         }
