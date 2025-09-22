@@ -113,6 +113,42 @@ export type Database = {
         }
         Relationships: []
       }
+      email_templates: {
+        Row: {
+          created_at: string
+          html_template: string
+          id: string
+          is_default: boolean
+          subject_template: string
+          template_name: string
+          template_type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          html_template: string
+          id?: string
+          is_default?: boolean
+          subject_template: string
+          template_name: string
+          template_type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          html_template?: string
+          id?: string
+          is_default?: boolean
+          subject_template?: string
+          template_name?: string
+          template_type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       log_monitoring_alerts: {
         Row: {
           alert_type: string
@@ -380,6 +416,7 @@ export type Database = {
           id: string
           is_active: boolean
           log_monitoring_enabled: boolean
+          mailchimp_subaccount: string | null
           updated_at: string
           user_id: string
         }
@@ -391,6 +428,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           log_monitoring_enabled?: boolean
+          mailchimp_subaccount?: string | null
           updated_at?: string
           user_id: string
         }
@@ -402,6 +440,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           log_monitoring_enabled?: boolean
+          mailchimp_subaccount?: string | null
           updated_at?: string
           user_id?: string
         }

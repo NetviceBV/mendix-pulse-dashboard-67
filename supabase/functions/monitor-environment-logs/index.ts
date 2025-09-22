@@ -137,6 +137,9 @@ const handler = async (req: Request): Promise<Response> => {
       } else {
         alertsCreated++;
         console.log('Created error alert');
+        
+        // Send email notification if enabled
+        await sendLogAlertEmail(supabase, user_id, environment, 'error', errorLines.length, criticalLines.length, errorLines.slice(0, 10).join('\n'));
       }
     }
 
@@ -156,6 +159,9 @@ const handler = async (req: Request): Promise<Response> => {
       } else {
         alertsCreated++;
         console.log('Created critical alert');
+        
+        // Send email notification if enabled
+        await sendLogAlertEmail(supabase, user_id, environment, 'critical', errorLines.length, criticalLines.length, criticalLines.slice(0, 10).join('\n'));
       }
     }
 
@@ -187,5 +193,69 @@ const handler = async (req: Request): Promise<Response> => {
     );
   }
 };
+
+// Helper function to send log alert emails
+async function sendLogAlertEmail(supabase: any, user_id: string, environment: any, alert_type: string, error_count: number, critical_count: number, log_content: string) {
+  try {
+    // Get active email addresses for log monitoring
+    const { data: emailAddresses, error } = await supabase
+      .from('notification_email_addresses')
+      .select('email_address, display_name')
+      .eq('user_id', user_id)
+      .eq('is_active', true)
+      .eq('log_monitoring_enabled', true);
+
+    if (error || !emailAddresses || emailAddresses.length === 0) {
+      console.log('No active email addresses found for log monitoring notifications');
+      return;
+    }
+
+    // Get log alert template
+    const { data: template, error: templateError } = await supabase
+      .from('email_templates')
+      .select('*')
+      .eq('user_id', user_id)
+      .eq('template_type', 'log_alert')
+      .single();
+
+    if (templateError || !template) {
+      console.error('Log alert email template not found:', templateError);
+      return;
+    }
+
+    // Prepare email recipients
+    const recipients = emailAddresses.map((addr: any) => ({
+      email: addr.email_address,
+      name: addr.display_name || addr.email_address
+    }));
+
+    // Template variables
+    const templateVariables = {
+      environment_name: environment.environment_name,
+      error_count: error_count.toString(),
+      critical_count: critical_count.toString(),
+      timestamp: new Date().toLocaleString(),
+      log_content: log_content
+    };
+
+    // Send email
+    const { error: emailError } = await supabase.functions.invoke('send-email-mandrill', {
+      body: {
+        to: recipients,
+        subject: template.subject_template,
+        html: template.html_template,
+        template_variables: templateVariables,
+      },
+    });
+
+    if (emailError) {
+      console.error('Failed to send log alert email:', emailError);
+    } else {
+      console.log(`Log alert email sent to ${recipients.length} recipients`);
+    }
+  } catch (error) {
+    console.error('Error sending log alert email:', error);
+  }
+}
 
 serve(handler);

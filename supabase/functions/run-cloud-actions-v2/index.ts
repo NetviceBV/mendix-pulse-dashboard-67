@@ -195,6 +195,9 @@ async function processActionsInBackground(actions: CloudAction[], supabase: any)
           message: `✅ Action completed successfully`
         });
 
+        // Send success email notification
+        await sendCloudActionEmail(supabase, action, 'success', null);
+
         succeeded++;
       } else if (result.error) {
         // Check for fatal errors that shouldn't be retried
@@ -225,6 +228,9 @@ async function processActionsInBackground(actions: CloudAction[], supabase: any)
             level: 'error',
             message: `❌ Action failed after ${maxAttempts} attempts: ${result.error}`
           });
+
+          // Send failure email notification
+          await sendCloudActionEmail(supabase, action, 'failure', result.error);
 
           failed++;
         } else {
@@ -291,11 +297,93 @@ async function processActionsInBackground(actions: CloudAction[], supabase: any)
         message: `💥 Processing error: ${error.message}`
       });
 
-      if (newAttemptCount >= 3) failed++;
-    }
+      if (newAttemptCount >= 3) {
+        // Send failure email notification on final failure
+        await sendCloudActionEmail(supabase, action, 'failure', error.message);
+        failed++;
+      }
   }
+}
 
-  console.log(`🏁 Background processing completed: ${processed} processed, ${succeeded} succeeded, ${failed} failed`);
+// Helper function to send cloud action emails
+async function sendCloudActionEmail(supabase: any, action: CloudAction, type: 'success' | 'failure', errorMessage: string | null) {
+  try {
+    // Get active email addresses for cloud action notifications
+    const { data: emailAddresses, error } = await supabase
+      .from('notification_email_addresses')
+      .select('email_address, display_name')
+      .eq('user_id', action.user_id)
+      .eq('is_active', true)
+      .eq('cloud_action_notifications_enabled', true);
+
+    if (error || !emailAddresses || emailAddresses.length === 0) {
+      console.log('No active email addresses found for cloud action notifications');
+      return;
+    }
+
+    // Get appropriate template
+    const templateType = type === 'success' ? 'cloud_action_success' : 'cloud_action_failure';
+    const { data: template, error: templateError } = await supabase
+      .from('email_templates')
+      .select('*')
+      .eq('user_id', action.user_id)
+      .eq('template_type', templateType)
+      .single();
+
+    if (templateError || !template) {
+      console.error(`${templateType} email template not found:`, templateError);
+      return;
+    }
+
+    // Prepare email recipients
+    const recipients = emailAddresses.map((addr: any) => ({
+      email: addr.email_address,
+      name: addr.display_name || addr.email_address
+    }));
+
+    // Calculate duration if we have timestamps
+    let duration = 'N/A';
+    if (action.started_at) {
+      const start = new Date(action.started_at);
+      const end = new Date();
+      const diffMs = end.getTime() - start.getTime();
+      const diffMins = Math.round(diffMs / 60000);
+      duration = diffMins > 0 ? `${diffMins} minutes` : 'less than 1 minute';
+    }
+
+    // Template variables
+    const templateVariables = {
+      action_type: action.action_type.charAt(0).toUpperCase() + action.action_type.slice(1),
+      environment_name: action.environment_name,
+      started_at: action.started_at ? new Date(action.started_at).toLocaleString() : 'N/A',
+      completed_at: new Date().toLocaleString(),
+      failed_at: type === 'failure' ? new Date().toLocaleString() : 'N/A',
+      duration: duration,
+      attempt_count: (action.attempt_count || 0).toString(),
+      error_message: errorMessage || 'N/A',
+      summary: type === 'success' 
+        ? `Successfully completed ${action.action_type} operation on ${action.environment_name}`
+        : `Failed to complete ${action.action_type} operation on ${action.environment_name}`
+    };
+
+    // Send email
+    const { error: emailError } = await supabase.functions.invoke('send-email-mandrill', {
+      body: {
+        to: recipients,
+        subject: template.subject_template,
+        html: template.html_template,
+        template_variables: templateVariables,
+      },
+    });
+
+    if (emailError) {
+      console.error('Failed to send cloud action email:', emailError);
+    } else {
+      console.log(`Cloud action ${type} email sent to ${recipients.length} recipients`);
+    }
+  } catch (error) {
+    console.error('Error sending cloud action email:', error);
+  }
 }
 
 async function processSingleStep(action: CloudAction, supabase: any): Promise<{

@@ -5,6 +5,7 @@ import MendixCredentials, { MendixCredential } from "@/components/MendixCredenti
 import { WebhookManagement } from "@/components/WebhookManagement";
 import LogMonitoringSettings from "@/components/LogMonitoringSettings";
 import EmailManagement from "@/components/EmailManagement";
+import { EmailTemplates } from "@/components/EmailTemplates";
 import { ArrowLeft, Settings as SettingsIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -94,13 +95,14 @@ const Settings = () => {
 
       <div className="container mx-auto px-4 py-6">
         <div className="max-w-4xl mx-auto">
-          <Tabs defaultValue="credentials" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="credentials">Mendix Credentials</TabsTrigger>
-              <TabsTrigger value="webhooks">Webhook Settings</TabsTrigger>
-              <TabsTrigger value="emails">Email Management</TabsTrigger>
-              <TabsTrigger value="monitoring">Log Monitoring</TabsTrigger>
-            </TabsList>
+            <Tabs defaultValue="credentials" className="w-full">
+              <TabsList className="grid w-full grid-cols-5">
+                <TabsTrigger value="credentials">Mendix Credentials</TabsTrigger>
+                <TabsTrigger value="webhooks">Webhook Settings</TabsTrigger>
+                <TabsTrigger value="emails">Email Management</TabsTrigger>
+                <TabsTrigger value="templates">Email Templates</TabsTrigger>
+                <TabsTrigger value="monitoring">Log Monitoring</TabsTrigger>
+              </TabsList>
             
             <TabsContent value="credentials" className="mt-6">
               <MendixCredentials 
@@ -115,6 +117,10 @@ const Settings = () => {
             
             <TabsContent value="emails" className="mt-6">
               <EmailManagement />
+            </TabsContent>
+            
+            <TabsContent value="templates" className="mt-6">
+              <EmailTemplates />
             </TabsContent>
             
             <TabsContent value="monitoring" className="mt-6">
