@@ -191,7 +191,10 @@ export const EmailTemplates = () => {
 
       const { data, error } = await supabase
         .from('email_templates')
-        .insert(defaultTemplates)
+        .upsert(defaultTemplates, { 
+          onConflict: 'user_id,template_type',
+          ignoreDuplicates: true 
+        })
         .select();
 
       if (error) throw error;
