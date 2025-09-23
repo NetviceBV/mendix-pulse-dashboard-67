@@ -70,8 +70,10 @@ const handler = async (req: Request): Promise<Response> => {
       headers: {
         'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
         'Content-Type': 'application/json',
+        'x-cron-signature': 'log-monitoring-internal-call',
       },
       body: JSON.stringify({
+        user_id: user_id,
         credentialId: credentials.id,
         appName: environment.app_id,
         environmentName: environment.environment_name,
@@ -90,7 +92,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     const logData = await downloadResponse.json();
     
-    if (!logData.logs) {
+    if (!logData.data || !logData.data.logs) {
       console.log('No logs available for analysis');
       return new Response(
         JSON.stringify({ message: 'No logs available', alerts: 0 }),
@@ -105,7 +107,7 @@ const handler = async (req: Request): Promise<Response> => {
     console.log(`Last check time: ${lastCheckTime?.toISOString() || 'Never checked before'}`);
 
     // Analyze logs for errors and critical issues - only new entries since last check
-    const logLines = logData.logs.split('\n').filter((line: string) => line.trim());
+    const logLines = logData.data.logs.split('\n').filter((line: string) => line.trim());
     const newErrorLines: string[] = [];
     const newCriticalLines: string[] = [];
     let totalLines = 0;

@@ -18,20 +18,42 @@ serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Verify JWT and get user
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      throw new Error('No authorization header');
-    }
-
-    const jwt = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(jwt);
+    // Check if this is an internal system call (from monitoring or cloud actions)
+    const cronSignature = req.headers.get('x-cron-signature');
+    const isInternalCall = cronSignature === 'log-monitoring-internal-call' || cronSignature === 'cloud-action-internal-call';
     
-    if (authError || !user) {
-      throw new Error('Invalid authentication');
+    let userId: string;
+    let requestBody: any;
+    
+    if (isInternalCall) {
+      // For internal calls, get user_id from request body
+      requestBody = await req.json();
+      userId = requestBody.user_id;
+      
+      if (!userId) {
+        throw new Error('Missing user_id parameter for internal call');
+      }
+      
+      console.log(`Internal call detected for user: ${userId}`);
+    } else {
+      // For user calls, verify JWT and get user
+      const authHeader = req.headers.get('Authorization');
+      if (!authHeader) {
+        throw new Error('No authorization header');
+      }
+
+      const jwt = authHeader.replace('Bearer ', '');
+      const { data: { user }, error: authError } = await supabase.auth.getUser(jwt);
+      
+      if (authError || !user) {
+        throw new Error('Invalid authentication');
+      }
+      
+      userId = user.id;
+      requestBody = await req.json();
     }
 
-    const { credentialId, appName, environmentName, environmentId, date } = await req.json();
+    const { credentialId, appName, environmentName, environmentId, date } = requestBody;
 
     if (!credentialId || !appName || (!environmentName && !environmentId)) {
       throw new Error('Missing required parameters');
@@ -42,7 +64,7 @@ serve(async (req) => {
       .from('mendix_credentials')
       .select('*')
       .eq('id', credentialId)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .single();
 
     if (credError || !credentials) {
