@@ -43,6 +43,7 @@ const LogMonitoringSettings = () => {
   const [settings, setSettings] = useState<Record<string, MonitoringSetting>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [toggleSaving, setToggleSaving] = useState<Record<string, boolean>>({});
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("production");
   const { toast } = useToast();
@@ -161,10 +162,10 @@ const LogMonitoringSettings = () => {
     }));
   };
 
-  const saveSetting = async (envId: string) => {
+  const saveSetting = async (envId: string, overrides?: Partial<MonitoringSetting>) => {
     setSaving(true);
     try {
-      const setting = settings[envId];
+      const setting = { ...settings[envId], ...overrides };
       
       if (setting.id) {
         // Update existing
@@ -218,6 +219,69 @@ const LogMonitoringSettings = () => {
     }
   };
 
+  const handleToggle = async (envId: string, checked: boolean) => {
+    // Update local state immediately for responsive UI
+    updateSetting(envId, { is_enabled: checked });
+    
+    // Auto-save the toggle change
+    setToggleSaving(prev => ({ ...prev, [envId]: true }));
+    try {
+      const setting = { ...settings[envId], is_enabled: checked };
+      
+      if (setting.id) {
+        // Update existing
+        const { error } = await supabase
+          .from('log_monitoring_settings')
+          .update({
+            is_enabled: setting.is_enabled,
+            check_interval_minutes: setting.check_interval_minutes,
+            error_threshold: setting.error_threshold,
+            critical_threshold: setting.critical_threshold,
+          })
+          .eq('id', setting.id);
+
+        if (error) throw error;
+      } else {
+        // Create new (regardless of enabled status)
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('User not authenticated');
+
+        const { data, error } = await supabase
+          .from('log_monitoring_settings')
+          .insert({
+            user_id: user.id,
+            environment_id: setting.environment_id,
+            is_enabled: setting.is_enabled,
+            check_interval_minutes: setting.check_interval_minutes,
+            error_threshold: setting.error_threshold,
+            critical_threshold: setting.critical_threshold,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        
+        updateSetting(envId, { id: data.id });
+      }
+
+      toast({
+        title: "Success",
+        description: `Monitoring ${checked ? 'enabled' : 'disabled'}`,
+      });
+    } catch (error) {
+      console.error('Error saving toggle:', error);
+      // Revert local state on error
+      updateSetting(envId, { is_enabled: !checked });
+      toast({
+        title: "Error",
+        description: "Failed to save monitoring setting",
+        variant: "destructive",
+      });
+    } finally {
+      setToggleSaving(prev => ({ ...prev, [envId]: false }));
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center p-8">
@@ -246,23 +310,29 @@ const LogMonitoringSettings = () => {
 
           return (
             <div key={env.id} className="border rounded-lg p-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-medium">{env.environment_name}</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Status: {env.status}
-                    {setting.last_check_time && (
-                      <span className="ml-2">
-                        Last checked: {new Date(setting.last_check_time).toLocaleString()}
-                      </span>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium">{env.environment_name}</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Status: {env.status}
+                      {setting.last_check_time && (
+                        <span className="ml-2">
+                          Last checked: {new Date(setting.last_check_time).toLocaleString()}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {toggleSaving[env.id] && (
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                     )}
-                  </p>
+                    <Switch
+                      checked={setting.is_enabled}
+                      onCheckedChange={(checked) => handleToggle(env.id, checked)}
+                      disabled={toggleSaving[env.id]}
+                    />
+                  </div>
                 </div>
-                <Switch
-                  checked={setting.is_enabled}
-                  onCheckedChange={(checked) => updateSetting(env.id, { is_enabled: checked })}
-                />
-              </div>
 
               {setting.is_enabled && (
                 <div className="space-y-4 pt-4 border-t">
