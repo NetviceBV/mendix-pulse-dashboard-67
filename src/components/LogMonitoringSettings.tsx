@@ -179,8 +179,8 @@ const LogMonitoringSettings = () => {
           .eq('id', setting.id);
 
         if (error) throw error;
-      } else if (setting.is_enabled) {
-        // Create new
+      } else {
+        // Create new (regardless of enabled status)
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('User not authenticated');
 
