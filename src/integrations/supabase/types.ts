@@ -222,7 +222,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_log_monitoring_settings_environment"
+            columns: ["environment_id"]
+            isOneToOne: false
+            referencedRelation: "mendix_environments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       mendix_apps: {
         Row: {
