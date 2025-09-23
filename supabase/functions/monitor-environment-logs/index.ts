@@ -98,70 +98,101 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Analyze logs for errors and critical issues
+    // Get last check time from monitoring settings
+    const monitoringSettings = environment.log_monitoring_settings[0];
+    const lastCheckTime = monitoringSettings.last_check_time ? new Date(monitoringSettings.last_check_time) : null;
+    
+    console.log(`Last check time: ${lastCheckTime?.toISOString() || 'Never checked before'}`);
+
+    // Analyze logs for errors and critical issues - only new entries since last check
     const logLines = logData.logs.split('\n').filter((line: string) => line.trim());
-    const errorLines: string[] = [];
-    const criticalLines: string[] = [];
+    const newErrorLines: string[] = [];
+    const newCriticalLines: string[] = [];
+    let totalLines = 0;
+    let filteredLines = 0;
 
     const errorRegex = /\b(ERROR|Error)\b/i;
     const criticalRegex = /\b(CRITICAL|Critical|FATAL|Fatal)\b/i;
+    
+    // UTC timestamp regex for Mendix logs: 2025-09-23T12:29:36.261309
+    const timestampRegex = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+)/;
 
     for (const line of logLines) {
-      if (criticalRegex.test(line)) {
-        criticalLines.push(line);
-      } else if (errorRegex.test(line)) {
-        errorLines.push(line);
+      totalLines++;
+      
+      // Extract timestamp from log line
+      const timestampMatch = line.match(timestampRegex);
+      if (timestampMatch) {
+        const logTimestamp = new Date(timestampMatch[1] + 'Z'); // Add Z to ensure UTC parsing
+        
+        // Only process lines newer than last check time
+        if (!lastCheckTime || logTimestamp > lastCheckTime) {
+          filteredLines++;
+          
+          if (criticalRegex.test(line)) {
+            newCriticalLines.push(line);
+          } else if (errorRegex.test(line)) {
+            newErrorLines.push(line);
+          }
+        }
+      } else {
+        // If we can't parse timestamp, include the line (fallback for safety)
+        filteredLines++;
+        if (criticalRegex.test(line)) {
+          newCriticalLines.push(line);
+        } else if (errorRegex.test(line)) {
+          newErrorLines.push(line);
+        }
       }
     }
 
-    console.log(`Found ${errorLines.length} error lines, ${criticalLines.length} critical lines`);
+    console.log(`Processed ${totalLines} total log lines, ${filteredLines} new lines since last check`);
+    console.log(`Found ${newErrorLines.length} new error lines, ${newCriticalLines.length} new critical lines`);
 
     let alertsCreated = 0;
 
-    // Create alerts if thresholds are met
-    const monitoringSettings = environment.log_monitoring_settings[0];
-    
-    if (errorLines.length >= monitoringSettings.error_threshold) {
+    // Create alerts if thresholds are met - using only new log entries
+    if (newErrorLines.length >= monitoringSettings.error_threshold) {
       const { error: alertError } = await supabase
         .from('log_monitoring_alerts')
         .insert({
           user_id: user_id,
           environment_id: environment_id,
           alert_type: 'error',
-          log_entries_count: errorLines.length,
-          log_content: errorLines.slice(0, 50).join('\n'), // Limit to first 50 lines
+          log_entries_count: newErrorLines.length,
+          log_content: newErrorLines.slice(0, 50).join('\n'), // Limit to first 50 lines
         });
 
       if (alertError) {
         console.error('Failed to create error alert:', alertError);
       } else {
         alertsCreated++;
-        console.log('Created error alert');
+        console.log('Created error alert for new entries');
         
         // Send email notification if enabled
-        await sendLogAlertEmail(supabase, user_id, environment, 'error', errorLines.length, criticalLines.length, errorLines.slice(0, 10).join('\n'));
+        await sendLogAlertEmail(supabase, user_id, environment, 'error', newErrorLines.length, newCriticalLines.length, newErrorLines.slice(0, 10).join('\n'));
       }
     }
 
-    if (criticalLines.length >= monitoringSettings.critical_threshold) {
+    if (newCriticalLines.length >= monitoringSettings.critical_threshold) {
       const { error: alertError } = await supabase
         .from('log_monitoring_alerts')
         .insert({
           user_id: user_id,
           environment_id: environment_id,
           alert_type: 'critical',
-          log_entries_count: criticalLines.length,
-          log_content: criticalLines.slice(0, 50).join('\n'), // Limit to first 50 lines
+          log_entries_count: newCriticalLines.length,
+          log_content: newCriticalLines.slice(0, 50).join('\n'), // Limit to first 50 lines
         });
 
       if (alertError) {
         console.error('Failed to create critical alert:', alertError);
       } else {
         alertsCreated++;
-        console.log('Created critical alert');
+        console.log('Created critical alert for new entries');
         
         // Send email notification if enabled
-        await sendLogAlertEmail(supabase, user_id, environment, 'critical', errorLines.length, criticalLines.length, criticalLines.slice(0, 10).join('\n'));
+        await sendLogAlertEmail(supabase, user_id, environment, 'critical', newErrorLines.length, newCriticalLines.length, newCriticalLines.slice(0, 10).join('\n'));
       }
     }
 
@@ -176,8 +207,10 @@ const handler = async (req: Request): Promise<Response> => {
       JSON.stringify({
         message: 'Log monitoring completed',
         alerts: alertsCreated,
-        errors_found: errorLines.length,
-        critical_found: criticalLines.length,
+        errors_found: newErrorLines.length,
+        critical_found: newCriticalLines.length,
+        total_log_lines: totalLines,
+        new_log_lines_analyzed: filteredLines,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
