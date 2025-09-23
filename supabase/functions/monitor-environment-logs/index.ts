@@ -210,6 +210,16 @@ async function sendLogAlertEmail(supabase: any, user_id: string, environment: an
       return;
     }
 
+    // Get app name from mendix_apps table
+    const { data: appData, error: appError } = await supabase
+      .from('mendix_apps')
+      .select('app_name')
+      .eq('app_id', environment.app_id)
+      .eq('user_id', user_id)
+      .single();
+
+    const appName = appData?.app_name || environment.app_id;
+
     // Get log alert template
     const { data: template, error: templateError } = await supabase
       .from('email_templates')
@@ -231,6 +241,7 @@ async function sendLogAlertEmail(supabase: any, user_id: string, environment: an
 
     // Template variables
     const templateVariables = {
+      app_name: appName,
       environment_name: environment.environment_name,
       error_count: error_count.toString(),
       critical_count: critical_count.toString(),

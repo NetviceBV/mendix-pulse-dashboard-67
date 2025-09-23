@@ -22,7 +22,7 @@ interface EmailTemplate {
 const DEFAULT_TEMPLATES = {
   log_alert: {
     template_name: "Log Alert",
-    subject_template: "Alert: {{error_count}} errors in {{environment_name}}",
+    subject_template: "Alert: {{error_count}} errors in {{app_name}} - {{environment_name}}",
     html_template: `
 <!DOCTYPE html>
 <html>
@@ -39,6 +39,7 @@ const DEFAULT_TEMPLATES = {
   
   <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e9ecef;">
     <h2 style="color: #dc3545; margin-top: 0;">Alert Details</h2>
+    <p><strong>Application:</strong> {{app_name}}</p>
     <p><strong>Environment:</strong> {{environment_name}}</p>
     <p><strong>Error Count:</strong> {{error_count}}</p>
     <p><strong>Critical Count:</strong> {{critical_count}}</p>
@@ -58,7 +59,7 @@ const DEFAULT_TEMPLATES = {
   },
   cloud_action_success: {
     template_name: "Cloud Action Success",
-    subject_template: "✅ {{action_type}} completed successfully - {{environment_name}}",
+    subject_template: "✅ {{action_type}} completed successfully - {{app_name}} ({{environment_name}})",
     html_template: `
 <!DOCTYPE html>
 <html>
@@ -75,6 +76,7 @@ const DEFAULT_TEMPLATES = {
   
   <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e9ecef;">
     <h2 style="color: #28a745; margin-top: 0;">Success Details</h2>
+    <p><strong>Application:</strong> {{app_name}}</p>
     <p><strong>Action:</strong> {{action_type}}</p>
     <p><strong>Environment:</strong> {{environment_name}}</p>
     <p><strong>Started:</strong> {{started_at}}</p>
@@ -95,7 +97,7 @@ const DEFAULT_TEMPLATES = {
   },
   cloud_action_failure: {
     template_name: "Cloud Action Failure",
-    subject_template: "❌ {{action_type}} failed - {{environment_name}}",
+    subject_template: "❌ {{action_type}} failed - {{app_name}} ({{environment_name}})",
     html_template: `
 <!DOCTYPE html>
 <html>
@@ -112,6 +114,7 @@ const DEFAULT_TEMPLATES = {
   
   <div style="background: #f8f9fa; padding: 30px; border-radius: 0 0 10px 10px; border: 1px solid #e9ecef;">
     <h2 style="color: #dc3545; margin-top: 0;">Failure Details</h2>
+    <p><strong>Application:</strong> {{app_name}}</p>
     <p><strong>Action:</strong> {{action_type}}</p>
     <p><strong>Environment:</strong> {{environment_name}}</p>
     <p><strong>Started:</strong> {{started_at}}</p>
@@ -254,6 +257,7 @@ export const EmailTemplates = () => {
 
     try {
       const testVariables = {
+        app_name: "Sample Mendix App",
         environment_name: "Test Environment",
         error_count: "5",
         critical_count: "2",
@@ -297,6 +301,7 @@ export const EmailTemplates = () => {
     if (!selectedTemplate) return "";
     
     return selectedTemplate.html_template
+      .replace(/{{app_name}}/g, "Sample Mendix App")
       .replace(/{{environment_name}}/g, "Test Environment")
       .replace(/{{error_count}}/g, "5")
       .replace(/{{critical_count}}/g, "2")
@@ -439,7 +444,7 @@ export const EmailTemplates = () => {
                   
                   <div className="text-sm text-muted-foreground">
                     <p className="font-medium">Available variables:</p>
-                    <p>{"{{environment_name}}, {{error_count}}, {{critical_count}}, {{timestamp}}, {{log_content}}, {{action_type}}, {{started_at}}, {{completed_at}}, {{failed_at}}, {{duration}}, {{attempt_count}}, {{error_message}}, {{summary}}"}</p>
+                    <p>{"{{app_name}}, {{environment_name}}, {{error_count}}, {{critical_count}}, {{timestamp}}, {{log_content}}, {{action_type}}, {{started_at}}, {{completed_at}}, {{failed_at}}, {{duration}}, {{attempt_count}}, {{error_message}}, {{summary}}"}</p>
                   </div>
                 </TabsContent>
                 

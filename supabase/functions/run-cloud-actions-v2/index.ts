@@ -324,6 +324,16 @@ async function sendCloudActionEmail(supabase: any, action: CloudAction, type: 's
       return;
     }
 
+    // Get app name from mendix_apps table
+    const { data: appData, error: appError } = await supabase
+      .from('mendix_apps')
+      .select('app_name')
+      .eq('app_id', action.app_id)
+      .eq('user_id', action.user_id)
+      .single();
+
+    const appName = appData?.app_name || action.app_id;
+
     // Get appropriate template
     const templateType = type === 'success' ? 'cloud_action_success' : 'cloud_action_failure';
     const { data: template, error: templateError } = await supabase
@@ -356,6 +366,7 @@ async function sendCloudActionEmail(supabase: any, action: CloudAction, type: 's
 
     // Template variables
     const templateVariables = {
+      app_name: appName,
       action_type: action.action_type.charAt(0).toUpperCase() + action.action_type.slice(1),
       environment_name: action.environment_name,
       started_at: action.started_at ? new Date(action.started_at).toLocaleString() : 'N/A',
@@ -365,8 +376,8 @@ async function sendCloudActionEmail(supabase: any, action: CloudAction, type: 's
       attempt_count: (action.attempt_count || 0).toString(),
       error_message: errorMessage || 'N/A',
       summary: type === 'success' 
-        ? `Successfully completed ${action.action_type} operation on ${action.environment_name}`
-        : `Failed to complete ${action.action_type} operation on ${action.environment_name}`
+        ? `Successfully completed ${action.action_type} operation on ${appName} - ${action.environment_name}`
+        : `Failed to complete ${action.action_type} operation on ${appName} - ${action.environment_name}`
     };
 
     // Send email
