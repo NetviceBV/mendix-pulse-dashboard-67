@@ -24,6 +24,7 @@ import { EditCloudActionDialog } from "@/components/EditCloudActionDialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 
+
 interface CloudActionRow {
   id: string;
   user_id: string;
@@ -154,10 +155,10 @@ const form = useForm<FormValues>({
       branchName: "",
       revisionId: "",
       revision: "",
-      versionMajor: undefined,
-      versionMinor: undefined,
-      versionPatch: undefined,
-      description: "",
+      versionMajor: 1,
+      versionMinor: 0,
+      versionPatch: 0,
+      description: "Pintosoft deployment",
       comment: "",
       actionType: "start",
       runWhen: "now",
@@ -765,6 +766,79 @@ const form = useForm<FormValues>({
                         </FormItem>
                       )}
                     />
+
+                    <div className="grid grid-cols-3 gap-4">
+                      <FormField
+                        control={form.control}
+                        name="versionMajor"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Major</FormLabel>
+                            <FormControl>
+                              <Input 
+                                type="number" 
+                                {...field} 
+                                onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                                min="0"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="versionMinor"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Minor</FormLabel>
+                            <FormControl>
+                              <Input 
+                                type="number" 
+                                {...field} 
+                                onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                                min="0"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name="versionPatch"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Patch</FormLabel>
+                            <FormControl>
+                              <Input 
+                                type="number" 
+                                {...field} 
+                                onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                                min="0"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <FormField
+                      control={form.control}
+                      name="description"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Description</FormLabel>
+                          <FormControl>
+                            <Textarea {...field} placeholder="Deployment description" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                   </>
                 )}
 
@@ -976,11 +1050,16 @@ export default function CloudActionsPage() {
     }
 
     try {
-      const { error } = await supabase.functions.invoke("run-cloud-actions", {
+      // Always use V2 engine
+      const { error } = await supabase.functions.invoke("run-cloud-actions-v2", {
         body: actionId ? { actionId, processAllDue: false } : { processAllDue: true },
       });
       if (error) throw error;
-      toast({ title: actionId ? "Action triggered" : "Runner started", description: actionId ? "Processing selected action" : "Processing due actions" });
+      
+      toast({ 
+        title: actionId ? "Action triggered" : "Runner started", 
+        description: `${actionId ? "Processing selected action" : "Processing due actions"} (Enhanced v2)` 
+      });
       await load();
     } catch (e: any) {
       toast({ title: "Runner failed", description: e.message, variant: "destructive" });
@@ -991,6 +1070,41 @@ export default function CloudActionsPage() {
       } else {
         setIsRunningAll(false);
       }
+    }
+  };
+
+  const debugCleanup = async () => {
+    try {
+      const { error } = await supabase.functions.invoke('cleanup-stale-actions');
+      if (error) throw error;
+      toast({
+        title: "Cleanup Success",
+        description: "Stale V1 actions cleaned up successfully",
+      });
+      await load();
+    } catch (e: any) {
+      toast({
+        title: "Cleanup Error",
+        description: e.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const testOrchestrator = async () => {
+    try {
+      const { error } = await supabase.functions.invoke('cloud-action-orchestrator');
+      if (error) throw error;
+      toast({
+        title: "Orchestrator Test Success",
+        description: "V2 orchestrator ran successfully",
+      });
+    } catch (e: any) {
+      toast({
+        title: "Orchestrator Test Failed",
+        description: e.message,
+        variant: "destructive",
+      });
     }
   };
 
@@ -1055,6 +1169,22 @@ export default function CloudActionsPage() {
               {isRunningAll ? "Running..." : "Run due now"}
             </Button>
             <AddCloudActionDialog onCreated={load} />
+          </div>
+        </div>
+        
+        <div className="border-t border-border bg-muted/30 px-4 py-2">
+          <div className="container mx-auto flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">
+              Enhanced V2 Engine Active - Debug Tools:
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={debugCleanup}>
+                Cleanup Stale V1 Actions
+              </Button>
+              <Button size="sm" variant="outline" onClick={testOrchestrator}>
+                Test Orchestrator
+              </Button>
+            </div>
           </div>
         </div>
       </header>

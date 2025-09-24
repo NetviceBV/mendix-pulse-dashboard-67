@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Mail, Clock, AlertTriangle, Eye, Search } from "lucide-react";
+import { Loader2, Mail, Clock, AlertTriangle, Eye, Search, X } from "lucide-react";
 
 interface Environment {
   id: string;
@@ -31,11 +31,11 @@ interface MonitoringSetting {
   id?: string;
   environment_id: string;
   is_enabled: boolean;
-  email_address: string;
   check_interval_minutes: number;
   error_threshold: number;
   critical_threshold: number;
   last_check_time?: string;
+  whitelist_patterns?: string[];
 }
 
 const LogMonitoringSettings = () => {
@@ -44,6 +44,7 @@ const LogMonitoringSettings = () => {
   const [settings, setSettings] = useState<Record<string, MonitoringSetting>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [toggleSaving, setToggleSaving] = useState<Record<string, boolean>>({});
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("production");
   const { toast } = useToast();
@@ -132,13 +133,18 @@ const LogMonitoringSettings = () => {
       appsWithEnvironments.forEach((app) => {
         app.environments.forEach((env) => {
           const existing = settingsData?.find(s => s.environment_id === env.id);
-          settingsMap[env.id] = existing || {
+          settingsMap[env.id] = existing ? {
+            ...existing,
+            whitelist_patterns: (existing.whitelist_patterns && Array.isArray(existing.whitelist_patterns)) 
+              ? existing.whitelist_patterns as string[] 
+              : []
+          } : {
             environment_id: env.id,
             is_enabled: false,
-            email_address: "",
             check_interval_minutes: 30,
             error_threshold: 1,
-            critical_threshold: 1
+            critical_threshold: 1,
+            whitelist_patterns: []
           };
         });
       });
@@ -163,10 +169,26 @@ const LogMonitoringSettings = () => {
     }));
   };
 
-  const saveSetting = async (envId: string) => {
+  const addWhitelistPattern = (envId: string, pattern: string) => {
+    if (!pattern.trim()) return;
+    
+    const currentPatterns = settings[envId]?.whitelist_patterns || [];
+    updateSetting(envId, { 
+      whitelist_patterns: [...currentPatterns, pattern.trim()]
+    });
+  };
+
+  const removeWhitelistPattern = (envId: string, index: number) => {
+    const currentPatterns = settings[envId]?.whitelist_patterns || [];
+    updateSetting(envId, { 
+      whitelist_patterns: currentPatterns.filter((_, i) => i !== index)
+    });
+  };
+
+  const saveSetting = async (envId: string, overrides?: Partial<MonitoringSetting>) => {
     setSaving(true);
     try {
-      const setting = settings[envId];
+      const setting = { ...settings[envId], ...overrides };
       
       if (setting.id) {
         // Update existing
@@ -174,16 +196,16 @@ const LogMonitoringSettings = () => {
           .from('log_monitoring_settings')
           .update({
             is_enabled: setting.is_enabled,
-            email_address: setting.email_address,
             check_interval_minutes: setting.check_interval_minutes,
             error_threshold: setting.error_threshold,
             critical_threshold: setting.critical_threshold,
+            whitelist_patterns: setting.whitelist_patterns || [],
           })
           .eq('id', setting.id);
 
         if (error) throw error;
-      } else if (setting.is_enabled) {
-        // Create new
+      } else {
+        // Create new (regardless of enabled status)
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('User not authenticated');
 
@@ -193,10 +215,10 @@ const LogMonitoringSettings = () => {
             user_id: user.id,
             environment_id: setting.environment_id,
             is_enabled: setting.is_enabled,
-            email_address: setting.email_address,
             check_interval_minutes: setting.check_interval_minutes,
             error_threshold: setting.error_threshold,
             critical_threshold: setting.critical_threshold,
+            whitelist_patterns: setting.whitelist_patterns || [],
           })
           .select()
           .single();
@@ -219,6 +241,71 @@ const LogMonitoringSettings = () => {
       });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleToggle = async (envId: string, checked: boolean) => {
+    // Update local state immediately for responsive UI
+    updateSetting(envId, { is_enabled: checked });
+    
+    // Auto-save the toggle change
+    setToggleSaving(prev => ({ ...prev, [envId]: true }));
+    try {
+      const setting = { ...settings[envId], is_enabled: checked };
+      
+      if (setting.id) {
+        // Update existing
+        const { error } = await supabase
+          .from('log_monitoring_settings')
+          .update({
+            is_enabled: setting.is_enabled,
+            check_interval_minutes: setting.check_interval_minutes,
+            error_threshold: setting.error_threshold,
+            critical_threshold: setting.critical_threshold,
+            whitelist_patterns: setting.whitelist_patterns || [],
+          })
+          .eq('id', setting.id);
+
+        if (error) throw error;
+      } else {
+        // Create new (regardless of enabled status)
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('User not authenticated');
+
+        const { data, error } = await supabase
+          .from('log_monitoring_settings')
+          .insert({
+            user_id: user.id,
+            environment_id: setting.environment_id,
+            is_enabled: setting.is_enabled,
+            check_interval_minutes: setting.check_interval_minutes,
+            error_threshold: setting.error_threshold,
+            critical_threshold: setting.critical_threshold,
+            whitelist_patterns: setting.whitelist_patterns || [],
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        
+        updateSetting(envId, { id: data.id });
+      }
+
+      toast({
+        title: "Success",
+        description: `Monitoring ${checked ? 'enabled' : 'disabled'}`,
+      });
+    } catch (error) {
+      console.error('Error saving toggle:', error);
+      // Revert local state on error
+      updateSetting(envId, { is_enabled: !checked });
+      toast({
+        title: "Error",
+        description: "Failed to save monitoring setting",
+        variant: "destructive",
+      });
+    } finally {
+      setToggleSaving(prev => ({ ...prev, [envId]: false }));
     }
   };
 
@@ -250,41 +337,33 @@ const LogMonitoringSettings = () => {
 
           return (
             <div key={env.id} className="border rounded-lg p-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-medium">{env.environment_name}</h4>
-                  <p className="text-sm text-muted-foreground">
-                    Status: {env.status}
-                    {setting.last_check_time && (
-                      <span className="ml-2">
-                        Last checked: {new Date(setting.last_check_time).toLocaleString()}
-                      </span>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium">{env.environment_name}</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Status: {env.status}
+                      {setting.last_check_time && (
+                        <span className="ml-2">
+                          Last checked: {new Date(setting.last_check_time).toLocaleString()}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {toggleSaving[env.id] && (
+                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                     )}
-                  </p>
+                    <Switch
+                      checked={setting.is_enabled}
+                      onCheckedChange={(checked) => handleToggle(env.id, checked)}
+                      disabled={toggleSaving[env.id]}
+                    />
+                  </div>
                 </div>
-                <Switch
-                  checked={setting.is_enabled}
-                  onCheckedChange={(checked) => updateSetting(env.id, { is_enabled: checked })}
-                />
-              </div>
 
               {setting.is_enabled && (
                 <div className="space-y-4 pt-4 border-t">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor={`email-${env.id}`}>
-                        <Mail className="w-4 h-4 inline mr-2" />
-                        Alert Email Address
-                      </Label>
-                      <Input
-                        id={`email-${env.id}`}
-                        type="email"
-                        value={setting.email_address}
-                        onChange={(e) => updateSetting(env.id, { email_address: e.target.value })}
-                        placeholder="Enter email address for alerts"
-                      />
-                    </div>
-
                     <div className="space-y-2">
                       <Label>
                         <Clock className="w-4 h-4 inline mr-2" />
@@ -298,6 +377,7 @@ const LogMonitoringSettings = () => {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="1">Every minute</SelectItem>
                           <SelectItem value="15">Every 15 minutes</SelectItem>
                           <SelectItem value="30">Every 30 minutes</SelectItem>
                           <SelectItem value="60">Every hour</SelectItem>
@@ -333,10 +413,58 @@ const LogMonitoringSettings = () => {
                     </div>
                   </div>
 
+                  <div className="space-y-3 pt-4 border-t">
+                    <Label>Whitelist Patterns</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Log lines containing these patterns will be ignored. Useful for known issues that cannot be fixed.
+                    </p>
+                    
+                    <div className="space-y-2">
+                      {(setting.whitelist_patterns || []).map((pattern: string, index: number) => (
+                        <div key={index} className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                          <span className="flex-1 text-sm font-mono break-all">{pattern}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeWhitelistPattern(env.id, index)}
+                            className="h-6 w-6 p-0 flex-shrink-0"
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="e.g. ERROR - Connector: 404 - file not found for file"
+                        className="flex-1"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            const input = e.target as HTMLInputElement;
+                            addWhitelistPattern(env.id, input.value);
+                            input.value = '';
+                          }
+                        }}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          const input = (e.target as HTMLButtonElement).previousElementSibling as HTMLInputElement;
+                          addWhitelistPattern(env.id, input.value);
+                          input.value = '';
+                        }}
+                      >
+                        Add
+                      </Button>
+                    </div>
+                  </div>
+
                   <div className="flex justify-end pt-2">
                     <Button 
                       onClick={() => saveSetting(env.id)}
-                      disabled={saving || !setting.email_address}
+                      disabled={saving}
                       size="sm"
                     >
                       {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
@@ -360,6 +488,24 @@ const LogMonitoringSettings = () => {
           Configure automated monitoring for error and critical log entries in your environments
         </p>
       </div>
+
+      {/* Email Management Info */}
+      <Card className="border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/50">
+        <CardContent className="pt-6">
+          <div className="flex items-start gap-3">
+            <Mail className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+            <div>
+              <p className="font-medium text-blue-900 dark:text-blue-100">
+                Email Notifications
+              </p>
+              <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                To receive email alerts for log monitoring events, configure your email addresses in the{" "}
+                <strong>Email Management</strong> tab and enable "Log Monitoring Notifications" for the addresses that should receive alerts.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Search */}
       <div className="relative max-w-md">

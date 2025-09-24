@@ -1,4 +1,10 @@
 project_id = "hfmeoajwhaiobjngpyhe"
 
-[functions.run-cloud-actions]
+[functions.run-cloud-actions-v2]
+verify_jwt = false
+
+[functions.cloud-action-orchestrator]  
+verify_jwt = false
+
+[functions.cloud-action-steps]
 verify_jwt = false

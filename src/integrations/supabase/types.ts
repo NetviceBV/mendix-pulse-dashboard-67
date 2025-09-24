@@ -45,51 +45,105 @@ export type Database = {
         Row: {
           action_type: string
           app_id: string
+          attempt_count: number | null
+          backup_id: string | null
           completed_at: string | null
           created_at: string
           credential_id: string
+          current_step: string | null
           environment_name: string
           error_message: string | null
           id: string
+          last_heartbeat: string | null
+          package_id: string | null
           payload: Json | null
           retry_until: string | null
           scheduled_for: string | null
           started_at: string | null
           status: string
+          step_data: Json | null
           updated_at: string
           user_id: string
         }
         Insert: {
           action_type: string
           app_id: string
+          attempt_count?: number | null
+          backup_id?: string | null
           completed_at?: string | null
           created_at?: string
           credential_id: string
+          current_step?: string | null
           environment_name: string
           error_message?: string | null
           id?: string
+          last_heartbeat?: string | null
+          package_id?: string | null
           payload?: Json | null
           retry_until?: string | null
           scheduled_for?: string | null
           started_at?: string | null
           status?: string
+          step_data?: Json | null
           updated_at?: string
           user_id: string
         }
         Update: {
           action_type?: string
           app_id?: string
+          attempt_count?: number | null
+          backup_id?: string | null
           completed_at?: string | null
           created_at?: string
           credential_id?: string
+          current_step?: string | null
           environment_name?: string
           error_message?: string | null
           id?: string
+          last_heartbeat?: string | null
+          package_id?: string | null
           payload?: Json | null
           retry_until?: string | null
           scheduled_for?: string | null
           started_at?: string | null
           status?: string
+          step_data?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      email_templates: {
+        Row: {
+          created_at: string
+          html_template: string
+          id: string
+          is_default: boolean
+          subject_template: string
+          template_name: string
+          template_type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          html_template: string
+          id?: string
+          is_default?: boolean
+          subject_template: string
+          template_name: string
+          template_type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          html_template?: string
+          id?: string
+          is_default?: boolean
+          subject_template?: string
+          template_name?: string
+          template_type?: string
           updated_at?: string
           user_id?: string
         }
@@ -136,7 +190,6 @@ export type Database = {
           check_interval_minutes: number
           created_at: string
           critical_threshold: number
-          email_address: string
           environment_id: string
           error_threshold: number
           id: string
@@ -144,12 +197,12 @@ export type Database = {
           last_check_time: string | null
           updated_at: string
           user_id: string
+          whitelist_patterns: Json | null
         }
         Insert: {
           check_interval_minutes?: number
           created_at?: string
           critical_threshold?: number
-          email_address: string
           environment_id: string
           error_threshold?: number
           id?: string
@@ -157,12 +210,12 @@ export type Database = {
           last_check_time?: string | null
           updated_at?: string
           user_id: string
+          whitelist_patterns?: Json | null
         }
         Update: {
           check_interval_minutes?: number
           created_at?: string
           critical_threshold?: number
-          email_address?: string
           environment_id?: string
           error_threshold?: number
           id?: string
@@ -170,8 +223,17 @@ export type Database = {
           last_check_time?: string | null
           updated_at?: string
           user_id?: string
+          whitelist_patterns?: Json | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_log_monitoring_settings_environment"
+            columns: ["environment_id"]
+            isOneToOne: false
+            referencedRelation: "mendix_environments"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       mendix_apps: {
         Row: {
@@ -351,6 +413,45 @@ export type Database = {
           node?: string | null
           stacktrace?: string | null
           timestamp?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      notification_email_addresses: {
+        Row: {
+          cloud_action_notifications_enabled: boolean
+          created_at: string
+          display_name: string | null
+          email_address: string
+          id: string
+          is_active: boolean
+          log_monitoring_enabled: boolean
+          mailchimp_subaccount: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cloud_action_notifications_enabled?: boolean
+          created_at?: string
+          display_name?: string | null
+          email_address: string
+          id?: string
+          is_active?: boolean
+          log_monitoring_enabled?: boolean
+          mailchimp_subaccount?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cloud_action_notifications_enabled?: boolean
+          created_at?: string
+          display_name?: string | null
+          email_address?: string
+          id?: string
+          is_active?: boolean
+          log_monitoring_enabled?: boolean
+          mailchimp_subaccount?: string | null
           updated_at?: string
           user_id?: string
         }

@@ -24,7 +24,7 @@ const handler = async (req: Request): Promise<Response> => {
       .from('log_monitoring_settings')
       .select('*')
       .eq('is_enabled', true)
-      .lt('last_check_time', new Date(Date.now() - 30 * 60 * 1000).toISOString()); // 30 minutes ago
+      .lt('last_check_time', new Date(Date.now() - 1 * 60 * 1000).toISOString()); // 1 minute ago
 
     if (settingsError) {
       console.error('Error fetching monitoring settings:', settingsError);
