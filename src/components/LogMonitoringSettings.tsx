@@ -350,6 +350,7 @@ const LogMonitoringSettings = () => {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="1">Every minute</SelectItem>
                           <SelectItem value="15">Every 15 minutes</SelectItem>
                           <SelectItem value="30">Every 30 minutes</SelectItem>
                           <SelectItem value="60">Every hour</SelectItem>
