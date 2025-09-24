@@ -107,12 +107,12 @@ jobs:
           
           # Apply database migrations with proper error handling
           echo "Applying database migrations to production..."
-          supabase db push --linked --confirm || {
+          supabase db push --linked --yes || {
             echo "Migration failed due to missing cron jobs. Marking problematic migration as applied..."
             # Mark the problematic migration as applied to skip it
             supabase migration repair --status applied 20250919110317
             # Try pushing remaining migrations
-            supabase db push --linked --confirm
+            supabase db push --linked --yes
           }
           
           # Deploy edge functions
