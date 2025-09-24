@@ -89,18 +89,9 @@ jobs:
           echo "Linking to Supabase project..."
           supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
           
-          # Fix migration history mismatch by repairing as suggested
-          echo "Repairing migration history..."
-          supabase migration repair --status reverted 20250918064031 || echo "Repair command completed"
-          supabase migration repair --status applied 20250918074207 || echo "Repair command completed"
-          supabase migration repair --status applied 20250918074237 || echo "Repair command completed" 
-          supabase migration repair --status applied 20250918125854 || echo "Repair command completed"
-          supabase migration repair --status applied 20250918125944 || echo "Repair command completed"
-          supabase migration repair --status applied 20250918131943 || echo "Repair command completed"
-          
-          # Now force push all migrations
-          echo "Force applying all database migrations to production..."
-          supabase db push --include-all --debug
+          # Apply database migrations directly without repair
+          echo "Applying database migrations to production..."
+          supabase db push --linked
           
           # Deploy edge functions
           echo "Deploying edge functions..."
