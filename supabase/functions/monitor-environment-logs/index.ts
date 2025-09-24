@@ -38,10 +38,10 @@ const handler = async (req: Request): Promise<Response> => {
       .eq('log_monitoring_settings.is_enabled', true)
       .single();
 
-    if (appError || !mendixApp) {
-      console.error('Mendix app not found:', appError);
+    if (envError || !environment) {
+      console.error('Environment not found or monitoring disabled:', envError);
       return new Response(
-        JSON.stringify({ error: 'Mendix app not found' }),
+        JSON.stringify({ error: 'Environment not found or monitoring disabled' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -54,10 +54,10 @@ const handler = async (req: Request): Promise<Response> => {
       .eq('user_id', user_id)
       .single();
 
-    if (envError || !environment) {
-      console.error('Environment not found or monitoring disabled:', envError);
+    if (appError || !mendixApp) {
+      console.error('Mendix app not found:', appError);
       return new Response(
-        JSON.stringify({ error: 'Environment not found or monitoring disabled' }),
+        JSON.stringify({ error: 'Mendix app not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
