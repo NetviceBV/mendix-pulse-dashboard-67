@@ -105,7 +105,7 @@ jobs:
           echo "Linking to Supabase project..."
           supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} --password ${{ secrets.SUPABASE_DB_PASSWORD }}
           
-          # Apply database migrations directly without repair
+          # Apply database migrations with proper error handling
           echo "Applying database migrations to production..."
           supabase db push --linked
           
