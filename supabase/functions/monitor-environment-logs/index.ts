@@ -26,18 +26,32 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(`Monitoring logs for environment: ${environment_id}, user: ${user_id}`);
 
-    // Get environment details and monitoring settings, join with mendix_apps to get app slug
+    // Get environment details and monitoring settings (step 1)
     const { data: environment, error: envError } = await supabase
       .from('mendix_environments')
       .select(`
         *,
-        log_monitoring_settings!inner(*),
-        mendix_apps!inner(app_id)
+        log_monitoring_settings!inner(*)
       `)
       .eq('id', environment_id)
       .eq('user_id', user_id)
       .eq('log_monitoring_settings.is_enabled', true)
-      .eq('mendix_apps.project_id', 'mendix_environments.app_id')
+      .single();
+
+    if (appError || !mendixApp) {
+      console.error('Mendix app not found:', appError);
+      return new Response(
+        JSON.stringify({ error: 'Mendix app not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Get mendix_apps record using the environment's app_id (step 2)
+    const { data: mendixApp, error: appError } = await supabase
+      .from('mendix_apps')
+      .select('app_id, app_name')
+      .eq('app_id', environment.app_id)
+      .eq('user_id', user_id)
       .single();
 
     if (envError || !environment) {
@@ -77,7 +91,7 @@ const handler = async (req: Request): Promise<Response> => {
       body: JSON.stringify({
         user_id: user_id,
         credentialId: credentials.id,
-        appName: environment.mendix_apps.app_id,
+        appName: mendixApp.app_id,
         environmentName: environment.environment_name,
         environmentId: environment.environment_id,
         date: today
@@ -247,7 +261,7 @@ async function sendLogAlertEmail(supabase: any, user_id: string, environment: an
       return;
     }
 
-    // Get app name from mendix_apps table
+    // Get app name from mendix_apps table using environment's app_id
     const { data: appData, error: appError } = await supabase
       .from('mendix_apps')
       .select('app_name')
