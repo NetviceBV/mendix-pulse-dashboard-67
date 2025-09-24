@@ -121,6 +121,7 @@ const handler = async (req: Request): Promise<Response> => {
     // Get last check time from monitoring settings
     const monitoringSettings = environment.log_monitoring_settings[0];
     const lastCheckTime = monitoringSettings.last_check_time ? new Date(monitoringSettings.last_check_time) : null;
+    const whitelistPatterns = monitoringSettings.whitelist_patterns || [];
     
     console.log(`Last check time: ${lastCheckTime?.toISOString() || 'Never checked before'}`);
 
@@ -130,6 +131,7 @@ const handler = async (req: Request): Promise<Response> => {
     const newCriticalLines: string[] = [];
     let totalLines = 0;
     let filteredLines = 0;
+    let whitelistedLines = 0;
 
     const errorRegex = /\b(ERROR|Error)\b/i;
     const criticalRegex = /\b(CRITICAL|Critical|FATAL|Fatal)\b/i;
@@ -149,24 +151,44 @@ const handler = async (req: Request): Promise<Response> => {
         if (!lastCheckTime || logTimestamp > lastCheckTime) {
           filteredLines++;
           
+          // Check if line matches any whitelist pattern (case-insensitive)
+          const isWhitelisted = whitelistPatterns.some((pattern: string) => 
+            line.toLowerCase().includes(pattern.toLowerCase())
+          );
+          
+          if (isWhitelisted) {
+            whitelistedLines++;
+          } else {
+            if (criticalRegex.test(line)) {
+              newCriticalLines.push(line);
+            } else if (errorRegex.test(line)) {
+              newErrorLines.push(line);
+            }
+          }
+        }
+      } else {
+        // If we can't parse timestamp, include the line (fallback for safety)
+        filteredLines++;
+        
+        // Check if line matches any whitelist pattern (case-insensitive)
+        const isWhitelisted = whitelistPatterns.some((pattern: string) => 
+          line.toLowerCase().includes(pattern.toLowerCase())
+        );
+        
+        if (isWhitelisted) {
+          whitelistedLines++;
+        } else {
           if (criticalRegex.test(line)) {
             newCriticalLines.push(line);
           } else if (errorRegex.test(line)) {
             newErrorLines.push(line);
           }
         }
-      } else {
-        // If we can't parse timestamp, include the line (fallback for safety)
-        filteredLines++;
-        if (criticalRegex.test(line)) {
-          newCriticalLines.push(line);
-        } else if (errorRegex.test(line)) {
-          newErrorLines.push(line);
-        }
       }
     }
 
     console.log(`Processed ${totalLines} total log lines, ${filteredLines} new lines since last check`);
+    console.log(`Applied ${whitelistPatterns.length} whitelist patterns, ${whitelistedLines} lines filtered out`);
     console.log(`Found ${newErrorLines.length} new error lines, ${newCriticalLines.length} new critical lines`);
 
     let alertsCreated = 0;

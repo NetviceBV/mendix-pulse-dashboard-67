@@ -197,6 +197,7 @@ export type Database = {
           last_check_time: string | null
           updated_at: string
           user_id: string
+          whitelist_patterns: Json | null
         }
         Insert: {
           check_interval_minutes?: number
@@ -209,6 +210,7 @@ export type Database = {
           last_check_time?: string | null
           updated_at?: string
           user_id: string
+          whitelist_patterns?: Json | null
         }
         Update: {
           check_interval_minutes?: number
@@ -221,6 +223,7 @@ export type Database = {
           last_check_time?: string | null
           updated_at?: string
           user_id?: string
+          whitelist_patterns?: Json | null
         }
         Relationships: [
           {

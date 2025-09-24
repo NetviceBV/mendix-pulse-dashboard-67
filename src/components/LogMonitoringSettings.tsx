@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2, Mail, Clock, AlertTriangle, Eye, Search } from "lucide-react";
+import { Loader2, Mail, Clock, AlertTriangle, Eye, Search, X } from "lucide-react";
 
 interface Environment {
   id: string;
@@ -35,6 +35,7 @@ interface MonitoringSetting {
   error_threshold: number;
   critical_threshold: number;
   last_check_time?: string;
+  whitelist_patterns?: string[];
 }
 
 const LogMonitoringSettings = () => {
@@ -132,12 +133,18 @@ const LogMonitoringSettings = () => {
       appsWithEnvironments.forEach((app) => {
         app.environments.forEach((env) => {
           const existing = settingsData?.find(s => s.environment_id === env.id);
-          settingsMap[env.id] = existing || {
+          settingsMap[env.id] = existing ? {
+            ...existing,
+            whitelist_patterns: (existing.whitelist_patterns && Array.isArray(existing.whitelist_patterns)) 
+              ? existing.whitelist_patterns as string[] 
+              : []
+          } : {
             environment_id: env.id,
             is_enabled: false,
             check_interval_minutes: 30,
             error_threshold: 1,
-            critical_threshold: 1
+            critical_threshold: 1,
+            whitelist_patterns: []
           };
         });
       });
@@ -162,6 +169,22 @@ const LogMonitoringSettings = () => {
     }));
   };
 
+  const addWhitelistPattern = (envId: string, pattern: string) => {
+    if (!pattern.trim()) return;
+    
+    const currentPatterns = settings[envId]?.whitelist_patterns || [];
+    updateSetting(envId, { 
+      whitelist_patterns: [...currentPatterns, pattern.trim()]
+    });
+  };
+
+  const removeWhitelistPattern = (envId: string, index: number) => {
+    const currentPatterns = settings[envId]?.whitelist_patterns || [];
+    updateSetting(envId, { 
+      whitelist_patterns: currentPatterns.filter((_, i) => i !== index)
+    });
+  };
+
   const saveSetting = async (envId: string, overrides?: Partial<MonitoringSetting>) => {
     setSaving(true);
     try {
@@ -176,6 +199,7 @@ const LogMonitoringSettings = () => {
             check_interval_minutes: setting.check_interval_minutes,
             error_threshold: setting.error_threshold,
             critical_threshold: setting.critical_threshold,
+            whitelist_patterns: setting.whitelist_patterns || [],
           })
           .eq('id', setting.id);
 
@@ -194,6 +218,7 @@ const LogMonitoringSettings = () => {
             check_interval_minutes: setting.check_interval_minutes,
             error_threshold: setting.error_threshold,
             critical_threshold: setting.critical_threshold,
+            whitelist_patterns: setting.whitelist_patterns || [],
           })
           .select()
           .single();
@@ -237,6 +262,7 @@ const LogMonitoringSettings = () => {
             check_interval_minutes: setting.check_interval_minutes,
             error_threshold: setting.error_threshold,
             critical_threshold: setting.critical_threshold,
+            whitelist_patterns: setting.whitelist_patterns || [],
           })
           .eq('id', setting.id);
 
@@ -255,6 +281,7 @@ const LogMonitoringSettings = () => {
             check_interval_minutes: setting.check_interval_minutes,
             error_threshold: setting.error_threshold,
             critical_threshold: setting.critical_threshold,
+            whitelist_patterns: setting.whitelist_patterns || [],
           })
           .select()
           .single();
@@ -383,6 +410,54 @@ const LogMonitoringSettings = () => {
                         value={setting.critical_threshold}
                         onChange={(e) => updateSetting(env.id, { critical_threshold: parseInt(e.target.value) || 1 })}
                       />
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 pt-4 border-t">
+                    <Label>Whitelist Patterns</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Log lines containing these patterns will be ignored. Useful for known issues that cannot be fixed.
+                    </p>
+                    
+                    <div className="space-y-2">
+                      {(setting.whitelist_patterns || []).map((pattern: string, index: number) => (
+                        <div key={index} className="flex items-center gap-2 p-2 bg-muted rounded-md">
+                          <span className="flex-1 text-sm font-mono break-all">{pattern}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeWhitelistPattern(env.id, index)}
+                            className="h-6 w-6 p-0 flex-shrink-0"
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="e.g. ERROR - Connector: 404 - file not found for file"
+                        className="flex-1"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            const input = e.target as HTMLInputElement;
+                            addWhitelistPattern(env.id, input.value);
+                            input.value = '';
+                          }
+                        }}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          const input = (e.target as HTMLButtonElement).previousElementSibling as HTMLInputElement;
+                          addWhitelistPattern(env.id, input.value);
+                          input.value = '';
+                        }}
+                      >
+                        Add
+                      </Button>
                     </div>
                   </div>
 
