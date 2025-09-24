@@ -125,6 +125,21 @@ API keys for webhook authentication.
 - `is_active` (boolean) - Key activation status
 - Timestamps: `created_at`, `updated_at`
 
+### Table Relationships
+
+#### Key Table Mappings
+The following relationship is critical for proper data queries across the system:
+
+**`mendix_apps.project_id == mendix_environments.app_id`**
+
+This mapping is essential because:
+- Mendix environments store the `app_id` field which corresponds to the Mendix project ID
+- The `mendix_apps` table stores this same value in the `project_id` field
+- When looking up app information from environment data, always use: `mendix_apps.project_id = mendix_environments.app_id`
+- This relationship is used extensively in edge functions like `monitor-environment-logs` and `fetch-mendix-apps`
+
+**Developer Note**: Do NOT use `mendix_apps.app_id` when joining with `mendix_environments.app_id` as this will result in failed lookups.
+
 ### Security Model
 All tables implement Row Level Security (RLS) policies ensuring users can only access their own data:
 - SELECT: Users can view their own records
