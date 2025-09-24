@@ -140,6 +140,41 @@ This mapping is essential because:
 
 **Developer Note**: Do NOT use `mendix_apps.app_id` when joining with `mendix_environments.app_id` as this will result in failed lookups.
 
+## Mendix Deploy API v1 Requirements
+
+### URL Construction Rules
+The Mendix Deploy API v1 has strict requirements for URL construction that differ from v4 endpoints:
+
+#### App Names (Slugs)
+- **MUST** use normalized slug format: lowercase, hyphens instead of spaces
+- Remove special characters except hyphens
+- Examples:
+  - `"Prikkl Backoffice"` → `"prikkl-backoffice"`
+  - `"My Test App"` → `"my-test-app"`
+  - `"Company-App_v2"` → `"company-app-v2"`
+
+#### Environment Names
+- **MUST** use actual environment names (e.g., `acceptance`, `production`, `test`, `sandbox`)
+- **NEVER** use environment UUIDs like `00902228-ac93-4a1c-9523-1d918ce13a20`
+- When only `environment_id` is available, look up `environment_name` from `mendix_environments` table
+
+#### URL Pattern
+```
+https://deploy.mendix.com/api/1/apps/{app-slug}/environments/{environment-name}/{endpoint}
+```
+
+#### Critical Implementation Notes
+- Edge functions using v1 API endpoints MUST normalize app names and resolve environment names
+- The `download-mendix-logs` function requires both proper slug normalization AND environment name lookup
+- Failure to follow these rules results in 404 "Environment not found" errors
+- Always log both original and normalized values for debugging
+
+#### Debugging Failed URLs
+When encountering 404 errors, check:
+1. App name is properly normalized to slug format
+2. Environment name is the actual name (not UUID)
+3. URL follows the exact v1 API pattern
+
 ### Security Model
 All tables implement Row Level Security (RLS) policies ensuring users can only access their own data:
 - SELECT: Users can view their own records
