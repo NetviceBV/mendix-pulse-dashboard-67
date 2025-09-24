@@ -50,7 +50,7 @@ const handler = async (req: Request): Promise<Response> => {
     const { data: mendixApp, error: appError } = await supabase
       .from('mendix_apps')
       .select('app_id, app_name')
-      .eq('app_id', environment.app_id)
+      .eq('project_id', environment.app_id)
       .eq('user_id', user_id)
       .single();
 
@@ -265,7 +265,7 @@ async function sendLogAlertEmail(supabase: any, user_id: string, environment: an
     const { data: appData, error: appError } = await supabase
       .from('mendix_apps')
       .select('app_name')
-      .eq('app_id', environment.app_id)
+      .eq('project_id', environment.app_id)
       .eq('user_id', user_id)
       .single();
 
