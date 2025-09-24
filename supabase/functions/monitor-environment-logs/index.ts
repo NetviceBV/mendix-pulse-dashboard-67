@@ -26,6 +26,8 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(`Monitoring logs for environment: ${environment_id}, user: ${user_id}`);
 
+    // Fixed: Using project_id mapping for app lookup
+
     // Get environment details and monitoring settings (step 1)
     const { data: environment, error: envError } = await supabase
       .from('mendix_environments')
