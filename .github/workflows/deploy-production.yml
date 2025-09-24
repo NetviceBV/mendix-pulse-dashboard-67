@@ -41,29 +41,44 @@ jobs:
           git checkout main
           git pull origin main
           
-          # Merge dev into main without committing, excluding client.ts
-          git merge origin/dev --no-ff --no-commit || {
-            echo "Merge conflict detected, resolving automatically..."
+          # Check if there are any differences between dev and main
+          if git diff --quiet origin/main origin/dev; then
+            echo "ℹ️ No changes between dev and main branches - skipping merge"
+            echo "SKIP_SUPABASE=true" >> $GITHUB_ENV
+          else
+            echo "📝 Changes detected - proceeding with merge"
             
-            # For workflow file conflicts, use the dev version
-            if [ -f .github/workflows/deploy-production.yml ]; then
-              git checkout --theirs .github/workflows/deploy-production.yml
+            # Merge dev into main without committing, excluding client.ts
+            git merge origin/dev --no-ff --no-commit || {
+              echo "Merge conflict detected, resolving automatically..."
+              
+              # For workflow file conflicts, use the dev version
+              if [ -f .github/workflows/deploy-production.yml ]; then
+                git checkout --theirs .github/workflows/deploy-production.yml
+              fi
+              
+              # Mark conflicts as resolved
+              git add .
+            }
+            
+            # Restore client.ts from main branch (exclude it from merge)
+            git checkout HEAD -- src/integrations/supabase/client.ts 2>/dev/null || echo "client.ts not found, continuing..."
+            
+            # Check if there are still changes to commit after excluding client.ts
+            if git diff --cached --quiet; then
+              echo "ℹ️ No changes to commit after excluding client.ts"
+              git reset --hard HEAD
+              echo "SKIP_SUPABASE=true" >> $GITHUB_ENV
+            else
+              # Complete the merge commit
+              git commit -m "Deploy: Merge dev to main via GitHub Actions (excluding client.ts)"
+              
+              # Push the merge to main
+              git push origin main
+              
+              echo "✅ Successfully merged dev to main (excluding client.ts)"
             fi
-            
-            # Mark conflicts as resolved
-            git add .
-          }
-          
-          # Restore client.ts from main branch (exclude it from merge)
-          git checkout HEAD -- src/integrations/supabase/client.ts
-          
-          # Complete the merge commit
-          git commit -m "Deploy: Merge dev to main via GitHub Actions (excluding client.ts)"
-          
-          # Push the merge to main
-          git push origin main
-          
-          echo "✅ Successfully merged dev to main (excluding client.ts)"
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -80,6 +95,7 @@ jobs:
           version: latest
 
       - name: Deploy Supabase changes
+        if: env.SKIP_SUPABASE != 'true'
         run: |
           # Show current migration files
           echo "Current migration files:"
@@ -101,8 +117,14 @@ jobs:
 
       - name: Deployment Summary
         run: |
-          echo "🚀 Deployment Complete!"
-          echo "✅ Merged dev → main"
-          echo "✅ Updated Supabase database"
-          echo "✅ Deployed edge functions"
-          echo "🔄 Vercel will auto-deploy from main branch"
+          echo "🚀 Deployment Status:"
+          if [ "$SKIP_SUPABASE" = "true" ]; then
+            echo "ℹ️  No changes detected between dev and main"
+            echo "⏭️  Skipped Supabase deployment"
+            echo "✅ No action needed - branches are in sync"
+          else
+            echo "✅ Merged dev → main"
+            echo "✅ Updated Supabase database"
+            echo "✅ Deployed edge functions"
+            echo "🔄 Vercel will auto-deploy from main branch"
+          fi
