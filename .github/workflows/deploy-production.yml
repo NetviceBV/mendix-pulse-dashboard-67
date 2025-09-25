@@ -43,10 +43,11 @@ jobs:
           
           # Check if there are any differences between dev and main
           if git diff --quiet origin/main origin/dev; then
-            echo "ℹ️ No changes between dev and main branches - skipping merge"
-            echo "SKIP_SUPABASE=true" >> $GITHUB_ENV
+            echo "ℹ️ No Git changes between dev and main branches"
+            echo "GIT_CHANGES=false" >> $GITHUB_ENV
           else
-            echo "📝 Changes detected - proceeding with merge"
+            echo "📝 Git changes detected - proceeding with merge"
+            echo "GIT_CHANGES=true" >> $GITHUB_ENV
             
             # Merge dev into main without committing, excluding client.ts
             git merge origin/dev --no-ff --no-commit || {
@@ -68,7 +69,7 @@ jobs:
             if git diff --cached --quiet; then
               echo "ℹ️ No changes to commit after excluding client.ts"
               git reset --hard HEAD
-              echo "SKIP_SUPABASE=true" >> $GITHUB_ENV
+              echo "GIT_CHANGES=false" >> $GITHUB_ENV
             else
               # Complete the merge commit
               git commit -m "Deploy: Merge dev to main via GitHub Actions (excluding client.ts)"
@@ -95,7 +96,6 @@ jobs:
           version: latest
 
       - name: Generate production migrations from schema diff
-        if: env.SKIP_SUPABASE != 'true'
         run: |
           echo "🔄 Generating fresh production migrations..."
           
@@ -154,7 +154,6 @@ jobs:
           ls -la supabase/migrations/
 
       - name: Deploy Supabase changes
-        if: env.SKIP_SUPABASE != 'true'
         run: |
           # Active migration files after generation
           echo "Production migration files:"
@@ -217,10 +216,13 @@ jobs:
       - name: Deployment Summary
         run: |
           echo "🚀 Deployment Status:"
-          if [ "$SKIP_SUPABASE" = "true" ]; then
-            echo "ℹ️  No changes detected between dev and main"
-            echo "⏭️  Skipped Supabase deployment"
-            echo "✅ No action needed - branches are in sync"
+          if [ "$GIT_CHANGES" = "false" ]; then
+            echo "ℹ️  No Git changes detected between dev and main"
+            if ls supabase/migrations/*.sql 1> /dev/null 2>&1; then
+              echo "✅ But schema migrations were generated and applied"
+            else
+              echo "ℹ️  No schema changes detected either"
+            fi
           else
             echo "✅ Merged dev → main"
             echo "🚫 Generated fresh production migration (bypassing Lovable migration conflicts)"
