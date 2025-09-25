@@ -313,7 +313,7 @@ jobs:
             
             # Apply the new migration
             echo "Applying new migrations to production..."
-            if echo "y" | supabase db push --linked 2>&1 | tee migration_output.log; then
+            if supabase migration up --linked 2>&1 | tee migration_output.log; then
               echo "New migrations applied successfully!"
             else
               echo "Migration failed. Check the logs above for specific errors"
