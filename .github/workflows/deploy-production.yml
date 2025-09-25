@@ -146,15 +146,33 @@ jobs:
           echo "Cleanup complete. Remaining files:"
           ls -la supabase/migrations/*.sql 2>/dev/null || echo "No migration files found"
           
+          # FORCE clean Supabase CLI state and config
+          echo "Cleaning Supabase CLI state to prevent wrong project connections..."
+          rm -rf .supabase 2>/dev/null || true
+          rm -f supabase/.temp/project-ref 2>/dev/null || true
+          
+          # Override any local config that might point to wrong project
+          echo "Ensuring correct project configuration..."
+          if [ -f "supabase/config.toml" ]; then
+            echo "Found supabase/config.toml - checking project_id..."
+            grep "project_id" supabase/config.toml || echo "No project_id found in config"
+            
+            # Force update the project_id in config.toml to match our secret
+            sed -i "s/project_id = .*/project_id = \"${{ secrets.SUPABASE_PROJECT_REF }}\"/" supabase/config.toml
+            echo "Updated config.toml with correct project_id"
+          fi
+          
           # Define cutoff date - migrations after this date should be processed
           CUTOFF_DATE="20250923"
           
-          echo "Current migration files after cleanup:"
-          ls -la supabase/migrations/*.sql 2>/dev/null || echo "No migration files found"
-          
           # Connect to production to check which migrations have already been applied
-          echo "Connecting to production to check migration history..."
+          echo "Connecting to production with explicit project reference..."
           supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} --password ${{ secrets.SUPABASE_DB_PASSWORD }}
+          
+          # Verify connection is to correct project
+          echo "Verifying project connection..."
+          PROJECT_STATUS=$(supabase status 2>&1)
+          echo "$PROJECT_STATUS"
           
           # Get list of already applied migrations from production with detailed debugging
           echo "Fetching applied migrations from production..."
@@ -219,6 +237,13 @@ jobs:
               fi
               
               echo "Processing NEW migration: $filename (date: $migration_date > $CUTOFF_DATE)"
+              echo "Reading migration content from: $migration_file"
+              
+              # Debug: Show the original migration content
+              echo "Original migration content:"
+              cat "$migration_file"
+              echo "--- End of original content ---"
+              
               echo "" >> "$NEW_MIGRATIONS_FILE"
               echo "-- NEW Migration: $filename" >> "$NEW_MIGRATIONS_FILE"
               echo "-- Timestamp: $migration_timestamp" >> "$NEW_MIGRATIONS_FILE"
@@ -229,8 +254,10 @@ jobs:
               
               # Read and include the SQL content with better error handling
               if [ -f "$migration_file" ] && [ -s "$migration_file" ]; then
+                echo "  -- Original migration content:" >> "$NEW_MIGRATIONS_FILE"
                 while IFS= read -r line; do
-                  if [[ -n "$line" && ! "$line" =~ ^[[:space:]]*$ ]]; then
+                  # Include all non-empty lines, preserving SQL structure
+                  if [[ -n "$line" ]]; then
                     echo "  $line" >> "$NEW_MIGRATIONS_FILE"
                   fi
                 done < "$migration_file"
@@ -263,8 +290,8 @@ jobs:
             echo "Created migration file with $new_migration_count NEW migrations:"
             ls -la supabase/migrations/
             echo ""
-            echo "Preview of new migration file:"
-            head -50 "$NEW_MIGRATIONS_FILE"
+            echo "Complete generated migration file:"
+            cat "$NEW_MIGRATIONS_FILE"
             echo "SKIP_MIGRATION=false" >> $GITHUB_ENV
           fi
         env:
