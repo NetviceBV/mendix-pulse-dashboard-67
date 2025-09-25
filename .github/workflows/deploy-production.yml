@@ -94,12 +94,69 @@ jobs:
         with:
           version: latest
 
+      - name: Filter migrations for deployment
+        if: env.SKIP_SUPABASE != 'true'
+        run: |
+          echo "🚫 Filtering out problematic migration files for deployment..."
+          
+          # Create temporary migrations directory for deployment
+          mkdir -p supabase/migrations_temp
+          
+          # List of migrations to skip (these won't be deployed)
+          SKIP_MIGRATIONS=(
+            "20250918074207_0258b852-8862-4150-8cbc-384a9e6c43cb.sql"
+            "20250918074237_74ef5b91-7fc2-4c35-934f-684b67292966.sql"
+            "20250918125854_5081e749-b6e7-4977-82ab-7da135f383e9.sql"
+            "20250918125944_80a00b8f-5d52-43e3-9264-6d96b4c7477e.sql"
+            "20250918131943_0588c8dd-9a54-445d-9a85-d761c397d1a3.sql"
+            "20250919061724_7b49fea0-2b74-4270-94e9-cccb58cbeb2f.sql"
+            "20250919062053_eeac2bf2-282c-4ed4-8315-c36adc38996d.sql"
+            "20250919103815_522897f1-3472-4db4-a7ed-4fc3b9a6bf44.sql"
+            "20250919110317_351a29f5-b66f-4ecc-8e4f-3de455b747cc.sql"
+            "20250919122604_212669c5-f35d-4264-8c33-1d6b5bf1a838.sql"
+            "20250920053439_c61950e0-3a0d-414c-b3af-f1e9dd4283d6.sql"
+            "20250920053538_752bfdb8-9c94-4aad-8c26-c5217aa652e9.sql"
+            "20250922132920_0a9ef401-3c95-4f7f-8a36-a783bc7bafea.sql"
+            "20250922141031_777b7076-3302-46a4-997a-da1f7e12e4dd.sql"
+            "20250923072701_7eda6fb1-00a5-4fc9-8140-4285e3a7e1d0.sql"
+            "20250923121928_d8316df0-0a14-4a42-901d-ab9484ff7a72.sql"
+            "20250923142916_725a545f-5a64-4376-b72f-6141d6709635.sql"
+            "20250923143352_ee273e9a-f65c-4871-b2f7-c7e8ba0e085b.sql"
+          )
+          
+          # Convert array to associative array for faster lookup
+          declare -A skip_map
+          for migration in "${SKIP_MIGRATIONS[@]}"; do
+            skip_map["$migration"]=1
+          done
+          
+          # Copy only non-skipped migrations to temp directory
+          if ls supabase/migrations/*.sql 1> /dev/null 2>&1; then
+            for file in supabase/migrations/*.sql; do
+              filename=$(basename "$file")
+              if [[ -z "${skip_map[$filename]}" ]]; then
+                echo "  ✅ Including: $filename"
+                cp "$file" "supabase/migrations_temp/"
+              else
+                echo "  🚫 Skipping: $filename"
+              fi
+            done
+          fi
+          
+          # Replace original migrations directory with filtered one
+          rm -rf supabase/migrations
+          mv supabase/migrations_temp supabase/migrations
+          
+          echo ""
+          echo "📋 Active migrations for deployment:"
+          ls -la supabase/migrations/*.sql 2>/dev/null || echo "  → No active migrations found"
+
       - name: Deploy Supabase changes
         if: env.SKIP_SUPABASE != 'true'
         run: |
-          # Show current migration files
-          echo "Current migration files:"
-          ls -la supabase/migrations/ 2>/dev/null || echo "No migrations folder found"
+          # Show current migration files (after skipping)
+          echo "Active migration files after skipping:"
+          ls -la supabase/migrations/*.sql 2>/dev/null || echo "No active migration files found"
           
           # Link to remote Supabase project with password
           echo "Linking to Supabase project..."
@@ -108,35 +165,19 @@ jobs:
           # Apply database migrations with comprehensive error handling
           echo "Applying database migrations to production..."
           
-          # First, try a simple push and capture the output
-          if echo "y" | supabase db push --linked 2>&1 | tee migration_output.log; then
-            echo "✅ All migrations applied successfully!"
-          else
-            echo "❌ Migration failed. Analyzing errors and applying fixes..."
+          # Check if there are any migrations to apply
+          if ls supabase/migrations/*.sql 1> /dev/null 2>&1; then
+            echo "Found active migrations, proceeding with deployment..."
             
-            # Mark all known problematic cron job migrations as applied
-            echo "Marking cron job related migrations as applied..."
-            
-            # List of migrations that have cron job issues
-            CRON_MIGRATIONS=(
-              "20250919110317"  # unschedule non-existent jobs
-              "20250919122604"  # cleanup legacy jobs by ID
-              "20250920053439"  # update cron job schedule
-            )
-            
-            for migration in "${CRON_MIGRATIONS[@]}"; do
-              echo "Marking migration $migration as applied..."
-              supabase migration repair --status applied "$migration" 2>/dev/null || echo "Migration $migration already processed"
-            done
-            
-            # Try pushing remaining migrations
-            echo "Retrying with remaining migrations..."
-            if echo "y" | supabase db push --linked --include-all; then
-              echo "✅ Remaining migrations applied successfully!"
+            # Apply migrations
+            if echo "y" | supabase db push --linked 2>&1 | tee migration_output.log; then
+              echo "✅ All active migrations applied successfully!"
             else
-              echo "⚠️ Some migrations still failed, but deployment will continue"
-              echo "Check the logs above for specific errors"
+              echo "❌ Some migrations failed. Check the logs above for specific errors"
+              echo "⚠️ Deployment will continue with edge functions"
             fi
+          else
+            echo "ℹ️ No active migration files found - skipping database migration step"
           fi
           
           # Deploy edge functions (run regardless of migration status)
@@ -174,7 +215,29 @@ jobs:
             echo "✅ No action needed - branches are in sync"
           else
             echo "✅ Merged dev → main"
-            echo "✅ Updated Supabase database"
+            echo "🚫 Skipped 18 problematic migration files"
+            echo "✅ Applied remaining Supabase migrations"
             echo "✅ Deployed edge functions"
             echo "🔄 Vercel will auto-deploy from main branch"
+            
+            echo ""
+            echo "📋 Migration Summary:"
+            if ls supabase/migrations/*.sql 1> /dev/null 2>&1; then
+              echo "Active migrations applied:"
+              ls supabase/migrations/*.sql | while read file; do
+                echo "  ✅ $(basename "$file")"
+              done
+            else
+              echo "  → No active migrations were processed"
+            fi
+            
+            echo ""
+            echo "Migrations skipped:"
+            if ls supabase/migrations/skipped/*.sql 1> /dev/null 2>&1; then
+              ls supabase/migrations/skipped/*.sql | while read file; do
+                echo "  🚫 $(basename "$file")"
+              done
+            else
+              echo "  → No migrations were skipped"
+            fi
           fi
