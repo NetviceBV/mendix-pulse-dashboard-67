@@ -95,47 +95,113 @@ jobs:
         with:
           version: latest
 
-      - name: Create production migration for missing schema changes
+      - name: Process only new Lovable migrations for production
         run: |
-          echo "🔄 Creating production migration for missing schema changes..."
+          echo "Processing only NEW Lovable migrations for production deployment..."
           
           # Create migrations directory if it doesn't exist
           mkdir -p supabase/migrations
           
-          # Remove any existing migrations to avoid conflicts
-          rm -f supabase/migrations/*.sql
+          # Define cutoff date - migrations before this are problematic and should be skipped
+          CUTOFF_DATE="20250924"
           
-          # Create a single migration with the specific changes we know are missing
-          MIGRATION_FILE="supabase/migrations/$(date +%Y%m%d%H%M%S)_add_missing_schema_changes.sql"
+          echo "Current migration files:"
+          ls -la supabase/migrations/*.sql 2>/dev/null || echo "No migration files found"
           
-          cat > "$MIGRATION_FILE" << 'EOF'
--- Add missing schema changes from Lovable development
--- Generated: $(date)
-
--- Add whitelist_patterns column to log_monitoring_settings table (from 20250924111937)
-DO $
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                   WHERE table_name = 'log_monitoring_settings' 
-                   AND column_name = 'whitelist_patterns') THEN
-        ALTER TABLE public.log_monitoring_settings 
-        ADD COLUMN whitelist_patterns JSONB DEFAULT '[]'::jsonb;
-        
-        RAISE NOTICE 'Added whitelist_patterns column to log_monitoring_settings';
-    ELSE
-        RAISE NOTICE 'whitelist_patterns column already exists in log_monitoring_settings';
-    END IF;
-END $;
-
--- Add any other missing schema changes here as needed
--- (Add more schema changes based on what's actually missing in production)
-EOF
+          # Connect to production to check which migrations have already been applied
+          echo "Connecting to production to check migration history..."
+          supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} --password ${{ secrets.SUPABASE_DB_PASSWORD }}
           
-          echo "✅ Created production migration file:"
-          ls -la supabase/migrations/
-          echo ""
-          echo "Migration content:"
-          cat "$MIGRATION_FILE"
+          # Get list of already applied migrations from production
+          echo "Fetching applied migrations from production..."
+          APPLIED_MIGRATIONS=$(supabase migration list --linked 2>/dev/null | grep "Applied" | awk '{print $2}' || echo "")
+          
+          echo "Already applied migrations in production:"
+          echo "$APPLIED_MIGRATIONS"
+          
+          # Create array of applied migration timestamps (extract YYYYMMDDHHMMSS part)
+          declare -A applied_map
+          while IFS= read -r applied_migration; do
+            if [[ -n "$applied_migration" ]]; then
+              # Extract timestamp from migration name (first 14 characters: YYYYMMDDHHMMSS)
+              timestamp=${applied_migration:0:14}
+              applied_map["$timestamp"]=1
+              echo "  Already applied: $timestamp"
+            fi
+          done <<< "$APPLIED_MIGRATIONS"
+          
+          # Process only NEW migration files that haven't been applied yet
+          new_migration_count=0
+          NEW_MIGRATIONS_FILE="supabase/migrations/$(date +%Y%m%d%H%M%S)_new_lovable_changes.sql"
+          
+          echo "-- New Lovable migrations for production" > "$NEW_MIGRATIONS_FILE"
+          echo "-- Generated: $(date)" >> "$NEW_MIGRATIONS_FILE"
+          echo "-- Only includes migrations not yet applied to production" >> "$NEW_MIGRATIONS_FILE"
+          echo "" >> "$NEW_MIGRATIONS_FILE"
+          
+          for migration_file in supabase/migrations/*.sql; do
+            if [ -f "$migration_file" ]; then
+              filename=$(basename "$migration_file")
+              migration_date=${filename:0:8}
+              migration_timestamp=${filename:0:14}
+              
+              # Skip old problematic migrations
+              if [ "$migration_date" -le "$CUTOFF_DATE" ]; then
+                echo "Skipping old migration: $filename"
+                continue
+              fi
+              
+              # Skip if this migration has already been applied to production
+              if [[ -n "${applied_map[$migration_timestamp]}" ]]; then
+                echo "Skipping already applied migration: $filename"
+                continue
+              fi
+              
+              echo "Processing NEW migration: $filename"
+              echo "" >> "$NEW_MIGRATIONS_FILE"
+              echo "-- NEW Migration: $filename" >> "$NEW_MIGRATIONS_FILE"
+              echo "-- Timestamp: $migration_timestamp" >> "$NEW_MIGRATIONS_FILE"
+              
+              # Wrap in transaction block with error handling
+              echo "DO \$migration_${new_migration_count}\$" >> "$NEW_MIGRATIONS_FILE"
+              echo "BEGIN" >> "$NEW_MIGRATIONS_FILE"
+              
+              # Read and include the SQL content
+              while IFS= read -r line; do
+                if [[ -n "$line" && ! "$line" =~ ^[[:space:]]*$ ]]; then
+                  echo "  $line" >> "$NEW_MIGRATIONS_FILE"
+                fi
+              done < "$migration_file"
+              
+              echo "" >> "$NEW_MIGRATIONS_FILE"
+              echo "  RAISE NOTICE 'Successfully applied NEW migration: $filename';" >> "$NEW_MIGRATIONS_FILE"
+              echo "EXCEPTION" >> "$NEW_MIGRATIONS_FILE"
+              echo "  WHEN OTHERS THEN" >> "$NEW_MIGRATIONS_FILE"
+              echo "    RAISE WARNING 'Failed to apply migration $filename: %', SQLERRM;" >> "$NEW_MIGRATIONS_FILE"
+              echo "END;" >> "$NEW_MIGRATIONS_FILE"
+              echo "\$migration_${new_migration_count}\$;" >> "$NEW_MIGRATIONS_FILE"
+              echo "" >> "$NEW_MIGRATIONS_FILE"
+              
+              new_migration_count=$((new_migration_count + 1))
+            fi
+          done
+          
+          # Clean up original migration files to avoid conflicts
+          rm -f supabase/migrations/202509*.sql
+          
+          if [ "$new_migration_count" -eq 0 ]; then
+            echo "No new migrations to apply - removing empty migration file"
+            rm -f "$NEW_MIGRATIONS_FILE"
+            echo "SKIP_MIGRATION=true" >> $GITHUB_ENV
+          else
+            echo ""
+            echo "Created migration file with $new_migration_count NEW migrations:"
+            ls -la supabase/migrations/
+            echo ""
+            echo "Preview of new migration:"
+            head -30 "$NEW_MIGRATIONS_FILE"
+            echo "SKIP_MIGRATION=false" >> $GITHUB_ENV
+          fi
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
@@ -150,7 +216,7 @@ EOF
           supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} --password ${{ secrets.SUPABASE_DB_PASSWORD }}
           
           # Verify which project we're connected to
-          echo "🔍 Verifying Supabase project connection..."
+          echo "Verifying Supabase project connection..."
           supabase status | grep "Project ref:" || echo "Could not determine project ref"
           echo "Target project ref should be: rewepsqarjbdjvfyuvnu"
           
@@ -158,19 +224,21 @@ EOF
           echo "Applying fresh database migrations to production..."
           
           # Check if there are any migrations to apply
-          if ls supabase/migrations/*.sql 1> /dev/null 2>&1; then
-            echo "Found generated migrations, proceeding with deployment..."
+          if [ "$SKIP_MIGRATION" = "true" ]; then
+            echo "No new migrations to apply - skipping database migration step"
+          elif ls supabase/migrations/*.sql 1> /dev/null 2>&1; then
+            echo "Found new migrations, proceeding with deployment..."
             
-            # Apply the fresh migration directly (no version conflicts)
-            echo "Applying new migration to production..."
+            # Apply the new migration
+            echo "Applying new migrations to production..."
             if echo "y" | supabase db push --linked 2>&1 | tee migration_output.log; then
-              echo "✅ Production migration applied successfully!"
+              echo "New migrations applied successfully!"
             else
-              echo "❌ Migration failed. Check the logs above for specific errors"
-              echo "⚠️ Deployment will continue with edge functions"
+              echo "Migration failed. Check the logs above for specific errors"
+              echo "Deployment will continue with edge functions"
             fi
           else
-            echo "ℹ️ No migration files generated - skipping database migration step"
+            echo "No migration files found - skipping database migration step"
           fi
           
           # Deploy edge functions (run regardless of migration status)
@@ -201,29 +269,29 @@ EOF
 
       - name: Deployment Summary
         run: |
-          echo "🚀 Deployment Status:"
+          echo "Deployment Status:"
           if [ "$GIT_CHANGES" = "false" ]; then
-            echo "ℹ️  No Git changes detected between dev and main"
+            echo "No Git changes detected between dev and main"
             if ls supabase/migrations/*.sql 1> /dev/null 2>&1; then
-              echo "✅ But schema migrations were generated and applied"
+              echo "But schema migrations were generated and applied"
             else
-              echo "ℹ️  No schema changes detected either"
+              echo "No schema changes detected either"
             fi
           else
-            echo "✅ Merged dev → main"
-            echo "🚫 Applied manual schema fixes + filtered out old problematic migrations"
-            echo "✅ Applied remaining Supabase migrations"
-            echo "✅ Deployed edge functions"
-            echo "🔄 Vercel will auto-deploy from main branch"
+            echo "Merged dev to main"
+            echo "Applied manual schema fixes and filtered out old problematic migrations"
+            echo "Applied remaining Supabase migrations"
+            echo "Deployed edge functions"
+            echo "Vercel will auto-deploy from main branch"
             
             echo ""
-            echo "📋 Migration Summary:"
+            echo "Migration Summary:"
             if ls supabase/migrations/*.sql 1> /dev/null 2>&1; then
               echo "Migrations deployed to production:"
               ls supabase/migrations/*.sql | while read file; do
-                echo "  ✅ $(basename "$file")"
+                echo "  Applied: $(basename "$file")"
               done
             else
-              echo "  → No new migrations were deployed"
+              echo "  No new migrations were deployed"
             fi
           fi
