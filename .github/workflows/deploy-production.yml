@@ -1,379 +1,51 @@
-name: Deploy to Production
+name: Deploy Supabase changes
 
 on:
   workflow_dispatch:
-    inputs:
-      confirm_merge:
-        description: 'Merge dev to main and deploy to production?'
-        required: true
-        default: 'no'
-        type: choice
-        options:
-        - 'yes'
-        - 'no'
-
-permissions:
-  contents: write
-  pull-requests: write
-  actions: read
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: github.event.inputs.confirm_merge == 'yes'
-    
     steps:
-      - name: Checkout dev branch
-        uses: actions/checkout@v4
-        with:
-          ref: dev
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      - name: Configure Git
+      - name: Set up Supabase CLI
         run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
+          curl -sL https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz | tar -xz
+          sudo mv supabase /usr/local/bin/
 
-      - name: Merge dev to main
+      - name: Link to Supabase project
+        run: supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} --password ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+      - name: Generate new migration
+        id: gen-migration
         run: |
-          # Switch to main branch
-          git checkout main
-          git pull origin main
-          
-          # Check if there are any differences between dev and main
-          if git diff --quiet origin/main origin/dev; then
-            echo "No Git changes between dev and main branches"
-            echo "GIT_CHANGES=false" >> $GITHUB_ENV
-          else
-            echo "Git changes detected - proceeding with merge"
-            echo "GIT_CHANGES=true" >> $GITHUB_ENV
-            
-            # Merge dev into main without committing, excluding client.ts
-            git merge origin/dev --no-ff --no-commit || {
-              echo "Merge conflict detected, resolving automatically..."
-              
-              # For workflow file conflicts, use the dev version
-              if [ -f .github/workflows/deploy-production.yml ]; then
-                git checkout --theirs .github/workflows/deploy-production.yml
-              fi
-              
-              # Mark conflicts as resolved
-              git add .
-            }
-            
-            # Restore client.ts from main branch (exclude it from merge)
-            git checkout HEAD -- src/integrations/supabase/client.ts 2>/dev/null || echo "client.ts not found, continuing..."
-            
-            # Check if there are still changes to commit after excluding client.ts
-            if git diff --cached --quiet; then
-              echo "No changes to commit after excluding client.ts"
-              git reset --hard HEAD
-              echo "GIT_CHANGES=false" >> $GITHUB_ENV
-            else
-              # Complete the merge commit
-              git commit -m "Deploy: Merge dev to main via GitHub Actions (excluding client.ts)"
-              
-              # Push the merge to main
-              git push origin main
-              
-              echo "Successfully merged dev to main (excluding client.ts)"
-            fi
-          fi
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
-        with:
-          version: latest
-
-      - name: Verify Supabase Configuration
-        run: |
-          echo "Verifying Supabase configuration (secrets masked for security)..."
-          
-          # Verify project ref exists (show only first/last 3 chars for security)
-          if [ -n "${{ secrets.SUPABASE_PROJECT_REF }}" ]; then
-            PROJECT_REF="${{ secrets.SUPABASE_PROJECT_REF }}"
-            MASKED_REF="${PROJECT_REF:0:3}***${PROJECT_REF: -3}"
-            echo "Project ref configured: $MASKED_REF"
-            echo "Expected project ref should end with: ...vnu"
-          else
-            echo "WARNING: SUPABASE_PROJECT_REF secret not configured!"
-          fi
-          
-          # Verify access token exists
-          if [ -n "${{ secrets.SUPABASE_ACCESS_TOKEN }}" ]; then
-            echo "Access token: Configured"
-          else
-            echo "WARNING: SUPABASE_ACCESS_TOKEN secret not configured!"
-          fi
-          
-          # Verify database password exists  
-          if [ -n "${{ secrets.SUPABASE_DB_PASSWORD }}" ]; then
-            echo "Database password: Configured"
-          else
-            echo "WARNING: SUPABASE_DB_PASSWORD secret not configured!"
-          fi
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-
-      - name: Process only new Lovable migrations for production
-        run: |
-          echo "Processing only NEW Lovable migrations for production deployment..."
-          
-          # Create migrations directory if it doesn't exist
           mkdir -p supabase/migrations
-          
-          # Clean up any previously generated migration files first
-          echo "Cleaning up previously generated workflow files..."
-          rm -f supabase/migrations/*_new_lovable_changes.sql
-          rm -f supabase/migrations/*_consolidated_*.sql
-          rm -f supabase/migrations/*_add_missing_*.sql
-          rm -f supabase/migrations/*_production_sync.sql
-          
-          # Also remove any files that look like workflow-generated timestamps (today's date)
-          TODAY=$(date +%Y%m%d)
-          rm -f supabase/migrations/${TODAY}*_*.sql
-          
-          echo "Cleanup complete. Remaining files:"
-          ls -la supabase/migrations/*.sql 2>/dev/null || echo "No migration files found"
-          
-          # FORCE clean Supabase CLI state and config
-          echo "Cleaning Supabase CLI state to prevent wrong project connections..."
-          rm -rf .supabase 2>/dev/null || true
-          rm -f supabase/.temp/project-ref 2>/dev/null || true
-          
-          # Override any local config that might point to wrong project
-          echo "Ensuring correct project configuration..."
-          if [ -f "supabase/config.toml" ]; then
-            echo "Found supabase/config.toml - checking project_id..."
-            grep "project_id" supabase/config.toml || echo "No project_id found in config"
-            
-            # Force update the project_id in config.toml to match our secret
-            sed -i "s/project_id = .*/project_id = \"${{ secrets.SUPABASE_PROJECT_REF }}\"/" supabase/config.toml
-            echo "Updated config.toml with correct project_id"
-          fi
-          
-          # Define cutoff date - migrations after this date should be processed
-          CUTOFF_DATE="20250923"
-          
-          # Connect to production to check which migrations have already been applied
-          echo "Connecting to production with explicit project reference..."
-          supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} --password ${{ secrets.SUPABASE_DB_PASSWORD }}
-          
-          # Verify connection worked (skip status check that requires local containers)
-          echo "Connection established successfully"
-          
-          # Get list of already applied migrations from production with detailed debugging
-          echo "Fetching applied migrations from production..."
-          supabase migration list --linked 2>&1 | tee migration_list_debug.log
-          
-          # Extract applied migrations more carefully
-          APPLIED_MIGRATIONS=$(grep -E "Applied|applied" migration_list_debug.log | awk '{print $NF}' 2>/dev/null || echo "")
-          
-          echo "Applied migrations found in production:"
-          if [ -z "$APPLIED_MIGRATIONS" ]; then
-            echo "  (No applied migrations found - this might be the first deployment)"
-          else
-            echo "$APPLIED_MIGRATIONS" | while IFS= read -r line; do
-              echo "  - $line"
-            done
-          fi
-          
-          # Create array of applied migration timestamps
-          declare -A applied_map
-          while IFS= read -r applied_migration; do
-            if [[ -n "$applied_migration" ]]; then
-              # Extract timestamp from migration name (first 14 characters: YYYYMMDDHHMMSS)
-              timestamp=${applied_migration:0:14}
-              if [[ "$timestamp" =~ ^[0-9]{14}$ ]]; then
-                applied_map["$timestamp"]=1
-                echo "  Marking as applied: $timestamp"
-              fi
-            fi
-          done <<< "$APPLIED_MIGRATIONS"
-          
-          # Process only NEW migration files that haven't been applied yet
-          new_migration_count=0
-          NEW_MIGRATIONS_FILE="supabase/migrations/$(date +%Y%m%d%H%M%S)_new_lovable_changes.sql"
-          
-          echo "-- New Lovable migrations for production" > "$NEW_MIGRATIONS_FILE"
-          echo "-- Generated: $(date)" >> "$NEW_MIGRATIONS_FILE"
-          echo "-- Only includes migrations not yet applied to production" >> "$NEW_MIGRATIONS_FILE"
-          echo "" >> "$NEW_MIGRATIONS_FILE"
-          
-          for migration_file in supabase/migrations/*.sql; do
-            if [ -f "$migration_file" ]; then
-              filename=$(basename "$migration_file")
-              migration_date=${filename:0:8}
-              migration_timestamp=${filename:0:14}
-              
-              # Skip files that don't match Lovable migration pattern (YYYYMMDDHHMMSS_uuid.sql)
-              if [[ ! "$filename" =~ ^[0-9]{14}_[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.sql$ ]]; then
-                echo "Skipping non-Lovable file: $filename (doesn't match UUID pattern)"
-                continue
-              fi
-              
-              # Skip old problematic migrations (before cutoff date)
-              if [ "$migration_date" -le "$CUTOFF_DATE" ]; then
-                echo "Skipping old migration: $filename (date: $migration_date <= $CUTOFF_DATE)"
-                continue
-              fi
-              
-              # Skip if this migration has already been applied to production
-              if [[ -n "${applied_map[$migration_timestamp]}" ]]; then
-                echo "Skipping already applied migration: $filename"
-                continue
-              fi
-              
-              echo "Processing NEW migration: $filename (date: $migration_date > $CUTOFF_DATE)"
-              echo "Reading migration content from: $migration_file"
-              
-              # Debug: Show the original migration content
-              echo "Original migration content:"
-              cat "$migration_file"
-              echo "--- End of original content ---"
-              
-              echo "" >> "$NEW_MIGRATIONS_FILE"
-              echo "-- NEW Migration: $filename" >> "$NEW_MIGRATIONS_FILE"
-              echo "-- Timestamp: $migration_timestamp" >> "$NEW_MIGRATIONS_FILE"
-              
-              # Wrap in transaction block with error handling
-              echo "DO \$migration_${new_migration_count}\$" >> "$NEW_MIGRATIONS_FILE"
-              echo "BEGIN" >> "$NEW_MIGRATIONS_FILE"
-              
-              # Read and include the SQL content with better error handling
-              if [ -f "$migration_file" ] && [ -s "$migration_file" ]; then
-                echo "  -- Original migration content:" >> "$NEW_MIGRATIONS_FILE"
-                while IFS= read -r line || [ -n "$line" ]; do
-                  # Include all lines, even empty ones, to preserve SQL structure
-                  echo "  $line" >> "$NEW_MIGRATIONS_FILE"
-                done < "$migration_file"
-              else
-                echo "  -- WARNING: Migration file is empty or unreadable" >> "$NEW_MIGRATIONS_FILE"
-              fi
-              
-              echo "" >> "$NEW_MIGRATIONS_FILE"
-              echo "  RAISE NOTICE 'Successfully applied NEW migration: $filename';" >> "$NEW_MIGRATIONS_FILE"
-              echo "EXCEPTION" >> "$NEW_MIGRATIONS_FILE"
-              echo "  WHEN OTHERS THEN" >> "$NEW_MIGRATIONS_FILE"
-              echo "    RAISE WARNING 'Failed to apply migration $filename: %', SQLERRM;" >> "$NEW_MIGRATIONS_FILE"
-              echo "END;" >> "$NEW_MIGRATIONS_FILE"
-              echo "\$migration_${new_migration_count}\$;" >> "$NEW_MIGRATIONS_FILE"
-              echo "" >> "$NEW_MIGRATIONS_FILE"
-              
-              new_migration_count=$((new_migration_count + 1))
-            fi
-          done
-          
-          # Clean up original migration files to avoid conflicts, but preserve the new one
-          find supabase/migrations/ -name "20250[89]*.sql" -not -name "*new_lovable_changes.sql" -delete
-          
-          if [ "$new_migration_count" -eq 0 ]; then
-            echo "No new migrations to apply - removing empty migration file"
-            rm -f "$NEW_MIGRATIONS_FILE"
-            echo "SKIP_MIGRATION=true" >> $GITHUB_ENV
-          else
-            echo ""
-            echo "Created migration file with $new_migration_count NEW migrations:"
-            ls -la supabase/migrations/
-            echo ""
-            echo "Complete generated migration file:"
-            cat "$NEW_MIGRATIONS_FILE"
-            echo "SKIP_MIGRATION=false" >> $GITHUB_ENV
-          fi
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          TIMESTAMP=$(date +"%Y%m%d%H%M%S")
+          UUID=$(uuidgen)
+          MIGRATION_FILE="supabase/migrations/${TIMESTAMP}_${UUID}.sql"
 
-      - name: Deploy Supabase changes
-        run: |
-          # Active migration files after generation
-          echo "Production migration files:"
-          ls -la supabase/migrations/*.sql 2>/dev/null || echo "No migration files found"
-          
-          # Skip re-linking - already connected in previous step
-          echo "Using existing Supabase connection from previous step..."
-          
-          # Apply database migrations with comprehensive error handling
-          echo "Applying fresh database migrations to production..."
-          
-          # Check if there are any migrations to apply
-          if [ "$SKIP_MIGRATION" = "true" ]; then
-            echo "No new migrations to apply - skipping database migration step"
-          elif ls supabase/migrations/*.sql 1> /dev/null 2>&1; then
-            echo "Found new migrations, proceeding with deployment..."
-            
-            # Apply the new migration
-            echo "Applying new migrations to production..."
-            if supabase migration up --linked 2>&1 | tee migration_output.log; then
-              echo "New migrations applied successfully!"
-            else
-              echo "Migration failed. Check the logs above for specific errors"
-              echo "Deployment will continue with edge functions"
-            fi
-          else
-            echo "No migration files found - skipping database migration step"
-          fi
-          
-          # Deploy edge functions (run regardless of migration status)
-          echo "Deploying edge functions..."
-          echo "Checking for edge functions..."
-          if [ -d "supabase/functions" ] && [ "$(ls -A supabase/functions 2>/dev/null)" ]; then
-            echo "Found edge functions directory with content"
-            ls -la supabase/functions/
-            
-            # Deploy all functions with detailed output
-            supabase functions deploy --no-verify-jwt --debug || {
-              echo "Function deployment failed, trying individual function deployment..."
-              
-              # Try deploying each function individually
-              for func_dir in supabase/functions/*/; do
-                if [ -d "$func_dir" ]; then
-                  func_name=$(basename "$func_dir")
-                  echo "Deploying function: $func_name"
-                  supabase functions deploy "$func_name" --no-verify-jwt || echo "Failed to deploy $func_name"
-                fi
-              done
-            }
-          else
-            echo "No edge functions found in supabase/functions directory"
-          fi
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          echo "-- Migration for whitelist_patterns column" > $MIGRATION_FILE
+          echo "ALTER TABLE public.log_monitoring_settings ADD COLUMN IF NOT EXISTS whitelist_patterns JSONB DEFAULT '[]'::jsonb;" >> $MIGRATION_FILE
 
-      - name: Deployment Summary
+          echo "Generated migration: $MIGRATION_FILE"
+          echo "migration_file=$MIGRATION_FILE" >> $GITHUB_OUTPUT
+
+      - name: Apply migrations to Supabase
         run: |
-          echo "Deployment Status:"
-          if [ "$GIT_CHANGES" = "false" ]; then
-            echo "No Git changes detected between dev and main"
-            if [ "$SKIP_MIGRATION" != "true" ] && ls supabase/migrations/*.sql 1> /dev/null 2>&1; then
-              echo "But schema migrations were generated and applied"
-            else
-              echo "No schema changes detected either"
-            fi
+          if supabase migration up --linked 2>&1 | tee migration_output.log; then
+            echo "✅ Migration applied successfully"
           else
-            echo "Merged dev to main"
-            echo "Applied manual schema fixes and filtered out old problematic migrations"
-            echo "Applied remaining Supabase migrations"
-            echo "Deployed edge functions"
-            echo "Vercel will auto-deploy from main branch"
-            
-            echo ""
-            echo "Migration Summary:"
-            if [ "$SKIP_MIGRATION" != "true" ] && ls supabase/migrations/*.sql 1> /dev/null 2>&1; then
-              echo "Migrations deployed to production:"
-              ls supabase/migrations/*.sql | while read file; do
-                echo "  Applied: $(basename "$file")"
-              done
-            else
-              echo "  No new migrations were deployed"
-            fi
+            echo "❌ Migration failed"
+            exit 1
           fi
+
+      - name: Commit and push migration
+        if: success()
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add supabase/migrations
+          git commit -m "Add migration: whitelist_patterns column"
+          git push
