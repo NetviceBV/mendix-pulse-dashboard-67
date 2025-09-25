@@ -133,9 +133,18 @@ jobs:
           mkdir -p supabase/migrations
           
           # Clean up any previously generated migration files first
+          echo "Cleaning up previously generated workflow files..."
           rm -f supabase/migrations/*_new_lovable_changes.sql
           rm -f supabase/migrations/*_consolidated_*.sql
           rm -f supabase/migrations/*_add_missing_*.sql
+          rm -f supabase/migrations/*_production_sync.sql
+          
+          # Also remove any files that look like workflow-generated timestamps (today's date)
+          TODAY=$(date +%Y%m%d)
+          rm -f supabase/migrations/${TODAY}*_*.sql
+          
+          echo "Cleanup complete. Remaining files:"
+          ls -la supabase/migrations/*.sql 2>/dev/null || echo "No migration files found"
           
           # Define cutoff date - migrations after this date should be processed
           CUTOFF_DATE="20250923"
@@ -190,6 +199,12 @@ jobs:
               filename=$(basename "$migration_file")
               migration_date=${filename:0:8}
               migration_timestamp=${filename:0:14}
+              
+              # Skip files that don't match Lovable migration pattern (YYYYMMDDHHMMSS_uuid.sql)
+              if [[ ! "$filename" =~ ^[0-9]{14}_[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.sql$ ]]; then
+                echo "Skipping non-Lovable file: $filename (doesn't match UUID pattern)"
+                continue
+              fi
               
               # Skip old problematic migrations (before cutoff date)
               if [ "$migration_date" -le "$CUTOFF_DATE" ]; then
