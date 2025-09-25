@@ -17,6 +17,8 @@ jobs:
           version: latest
 
       - name: Link to Supabase project
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           supabase link \
             --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} \
@@ -37,6 +39,8 @@ jobs:
           echo "migration_file=$MIGRATION_FILE" >> $GITHUB_OUTPUT
 
       - name: Apply migrations to Supabase
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           if supabase migration up --linked 2>&1 | tee migration_output.log; then
             echo "✅ Migration applied successfully"
