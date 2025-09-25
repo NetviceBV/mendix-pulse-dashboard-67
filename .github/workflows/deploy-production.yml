@@ -95,63 +95,49 @@ jobs:
         with:
           version: latest
 
-      - name: Generate production migrations from schema diff
+      - name: Create production migration for missing schema changes
         run: |
-          echo "🔄 Generating fresh production migrations..."
+          echo "🔄 Creating production migration for missing schema changes..."
           
-          # Link to production project first
-          supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} --password ${{ secrets.SUPABASE_DB_PASSWORD }}
+          # Create migrations directory if it doesn't exist
+          mkdir -p supabase/migrations
           
-          # Verify connection
-          echo "🔍 Connected to Supabase project:"
-          supabase status | grep "Project ref:" || echo "Could not determine project ref"
+          # Remove any existing migrations to avoid conflicts
+          rm -f supabase/migrations/*.sql
           
-          # Clear any existing migrations to start fresh
-          rm -rf supabase/migrations/*.sql 2>/dev/null || true
+          # Create a single migration with the specific changes we know are missing
+          MIGRATION_FILE="supabase/migrations/$(date +%Y%m%d%H%M%S)_add_missing_schema_changes.sql"
           
-          # Get current production schema
-          supabase db dump --schema-only > current_production_schema.sql
+          cat > "$MIGRATION_FILE" << 'EOF'
+-- Add missing schema changes from Lovable development
+-- Generated: $(date)
+
+-- Add whitelist_patterns column to log_monitoring_settings table (from 20250924111937)
+DO $
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                   WHERE table_name = 'log_monitoring_settings' 
+                   AND column_name = 'whitelist_patterns') THEN
+        ALTER TABLE public.log_monitoring_settings 
+        ADD COLUMN whitelist_patterns JSONB DEFAULT '[]'::jsonb;
+        
+        RAISE NOTICE 'Added whitelist_patterns column to log_monitoring_settings';
+    ELSE
+        RAISE NOTICE 'whitelist_patterns column already exists in log_monitoring_settings';
+    END IF;
+END $;
+
+-- Add any other missing schema changes here as needed
+-- (Add more schema changes based on what's actually missing in production)
+EOF
           
-          # Apply all Lovable schema changes to a temporary local database
-          supabase start
-          
-          # Apply Lovable migrations to local DB to get target schema
-          LOVABLE_MIGRATIONS=(
-            "20250918074207_0258b852-8862-4150-8cbc-384a9e6c43cb.sql"
-            "20250918074237_74ef5b91-7fc2-4c35-934f-684b67292966.sql"
-            "20250918125854_5081e749-b6e7-4977-82ab-7da135f383e9.sql"
-            "20250918125944_80a00b8f-5d52-43e3-9264-6d96b4c7477e.sql"
-            "20250918131943_0588c8dd-9a54-445d-9a85-d761c397d1a3.sql"
-            "20250919061724_7b49fea0-2b74-4270-94e9-cccb58cbeb2f.sql"
-            "20250919062053_eeac2bf2-282c-4ed4-8315-c36adc38996d.sql"
-            "20250919103815_522897f1-3472-4db4-a7ed-4fc3b9a6bf44.sql"
-            "20250919110317_351a29f5-b66f-4ecc-8e4f-3de455b747cc.sql"
-            "20250919122604_212669c5-f35d-4264-8c33-1d6b5bf1a838.sql"
-            "20250920053439_c61950e0-3a0d-414c-b3af-f1e9dd4283d6.sql"
-            "20250920053538_752bfdb8-9c94-4aad-8c26-c5217aa652e9.sql"
-            "20250922132920_0a9ef401-3c95-4f7f-8a36-a783bc7bafea.sql"
-            "20250922141031_777b7076-3302-46a4-997a-da1f7e12e4dd.sql"
-            "20250923072701_7eda6fb1-00a5-4fc9-8140-4285e3a7e1d0.sql"
-            "20250923121928_d8316df0-0a14-4a42-901d-ab9484ff7a72.sql"
-            "20250923142916_725a545f-5a64-4376-b72f-6141d6709635.sql"
-            "20250923143352_ee273e9a-f65c-4871-b2f7-c7e8ba0e085b.sql"
-            "20250924111937_8cc0a6fd-a4fe-4979-bc97-d95e73a9ef35.sql"
-          )
-          
-          # Create a single migration file with all the schema changes we want
-          echo "-- Production schema sync generated $(date)" > supabase/migrations/$(date +%Y%m%d%H%M%S)_production_sync.sql
-          
-          # Extract just the SQL content from recent migrations (skip the older problematic ones)
-          for migration_file in supabase/migrations/2025092[2-4]*.sql; do
-            if [ -f "$migration_file" ]; then
-              echo "-- From $(basename "$migration_file")" >> supabase/migrations/$(date +%Y%m%d%H%M%S)_production_sync.sql
-              cat "$migration_file" >> supabase/migrations/$(date +%Y%m%d%H%M%S)_production_sync.sql
-              echo "" >> supabase/migrations/$(date +%Y%m%d%H%M%S)_production_sync.sql
-            fi
-          done
-          
-          echo "✅ Generated production migration file"
+          echo "✅ Created production migration file:"
           ls -la supabase/migrations/
+          echo ""
+          echo "Migration content:"
+          cat "$MIGRATION_FILE"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
       - name: Deploy Supabase changes
         run: |
@@ -225,7 +211,7 @@ jobs:
             fi
           else
             echo "✅ Merged dev → main"
-            echo "🚫 Generated fresh production migration (bypassing Lovable migration conflicts)"
+            echo "🚫 Applied manual schema fixes + filtered out old problematic migrations"
             echo "✅ Applied remaining Supabase migrations"
             echo "✅ Deployed edge functions"
             echo "🔄 Vercel will auto-deploy from main branch"
