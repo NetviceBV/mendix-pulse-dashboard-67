@@ -253,11 +253,9 @@ jobs:
               # Read and include the SQL content with better error handling
               if [ -f "$migration_file" ] && [ -s "$migration_file" ]; then
                 echo "  -- Original migration content:" >> "$NEW_MIGRATIONS_FILE"
-                while IFS= read -r line; do
-                  # Include all non-empty lines, preserving SQL structure
-                  if [[ -n "$line" ]]; then
-                    echo "  $line" >> "$NEW_MIGRATIONS_FILE"
-                  fi
+                while IFS= read -r line || [ -n "$line" ]; do
+                  # Include all lines, even empty ones, to preserve SQL structure
+                  echo "  $line" >> "$NEW_MIGRATIONS_FILE"
                 done < "$migration_file"
               else
                 echo "  -- WARNING: Migration file is empty or unreadable" >> "$NEW_MIGRATIONS_FILE"
