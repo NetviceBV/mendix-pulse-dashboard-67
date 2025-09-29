@@ -19,11 +19,19 @@ jobs:
           git config user.name "GitHub Actions Bot"
           git config user.email "actions@github.com"
       
-      - name: Merge dev into main
+      - name: Merge dev into main (excluding specific files)
         run: |
           git checkout main
           git pull origin main
-          git merge origin/dev --no-ff -m "Auto-merge dev to main for production deployment"
+          
+          # Merge dev into main without committing
+          git merge origin/dev --no-ff --no-commit || true
+          
+          # Restore the excluded file from main branch
+          git checkout HEAD -- src/integrations/supabase/client.ts
+          
+          # Complete the merge
+          git commit -m "Auto-merge dev to main for production deployment (excluding src/integrations/supabase/client.ts)"
           git push origin main
       
       - name: Setup Supabase CLI
