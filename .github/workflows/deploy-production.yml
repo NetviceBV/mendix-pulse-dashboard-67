@@ -1,18 +1,30 @@
-name: Deploy to Production Supabase
+name: Merge Dev to Main and Deploy to Production
 
 on:
-  workflow_dispatch:  # Manual trigger from GitHub UI
-  push:
-    branches:
-      - main
+  workflow_dispatch:  # Manual trigger button in GitHub Actions tab
 
 jobs:
-  deploy-production:
+  merge-and-deploy:
     runs-on: ubuntu-latest
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+      
+      - name: Merge dev into main
+        run: |
+          git checkout main
+          git pull origin main
+          git merge origin/dev --no-ff -m "Auto-merge dev to main for production deployment"
+          git push origin main
       
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
