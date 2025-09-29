@@ -351,7 +351,7 @@ async function sendCloudActionEmail(supabase: any, action: CloudAction, type: 's
     const { data: appData, error: appError } = await supabase
       .from('mendix_apps')
       .select('app_name')
-      .eq('app_id', action.app_id)
+      .eq('project_id', action.app_id)
       .eq('user_id', action.user_id)
       .single();
 
