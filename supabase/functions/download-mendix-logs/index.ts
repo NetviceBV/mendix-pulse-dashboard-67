@@ -239,9 +239,10 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error downloading logs:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to download logs';
     return new Response(
       JSON.stringify({ 
-        error: error.message || 'Failed to download logs',
+        error: errorMessage,
         success: false 
       }),
       { 

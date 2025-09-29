@@ -114,7 +114,7 @@ serve(async (req) => {
 
     // Start background processing
     if (actions && actions.length > 0) {
-      EdgeRuntime.waitUntil(processActionsInBackground(actions, supabase));
+      // EdgeRuntime.waitUntil(processActionsInBackground(actions, supabase));
     }
 
     return new Response(JSON.stringify({ 

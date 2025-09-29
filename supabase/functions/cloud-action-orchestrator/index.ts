@@ -104,12 +104,13 @@ serve(async (req) => {
     // Process each user's actions
     const processingPromises = Object.entries(actionsByUser).map(async ([userId, userActions]) => {
       try {
-        console.log(`Processing ${userActions.length} actions for user ${userId}`);
+        const typedUserActions = userActions as any[];
+        console.log(`Processing ${typedUserActions.length} actions for user ${userId}`);
         
         // Call run-cloud-actions-v2 for this user's actions
         const { data, error } = await supabase.functions.invoke('run-cloud-actions-v2', {
           body: {
-            actionIds: userActions.map(a => a.id)
+            actionIds: typedUserActions.map((a: any) => a.id)
           },
           headers: {
             'x-cron-signature': 'orchestrator-internal-call'
@@ -120,7 +121,7 @@ serve(async (req) => {
           console.error(`Error processing actions for user ${userId}:`, error);
           
           // Log errors for failed user batch
-          for (const action of userActions) {
+          for (const action of typedUserActions) {
             await supabase.from('cloud_action_logs').insert({
               action_id: action.id,
               user_id: action.user_id,
@@ -182,7 +183,8 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in cloud action orchestrator:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -191,5 +193,5 @@ serve(async (req) => {
 
 // Handle graceful shutdown
 addEventListener('beforeunload', (ev) => {
-  console.log('Cloud Action Orchestrator shutdown due to:', ev.detail?.reason);
+  console.log('Cloud Action Orchestrator shutdown due to:', (ev as any).detail?.reason);
 });

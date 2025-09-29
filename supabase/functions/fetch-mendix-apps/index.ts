@@ -15,6 +15,11 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Missing required environment variables');
+    }
+    
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Get the authorization header
@@ -105,7 +110,7 @@ serve(async (req) => {
       
       // Process apps in parallel without deployment info to avoid timeouts
       const BATCH_SIZE = 8; // Process 8 apps concurrently
-      const appResults = [];
+      const appResults: any[] = [];
       
       for (let i = 0; i < apps.length; i += BATCH_SIZE) {
         const batch = apps.slice(i, i + BATCH_SIZE);
@@ -399,7 +404,8 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in fetch-mendix-apps function:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
