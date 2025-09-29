@@ -30,9 +30,10 @@ jobs:
           # Restore the excluded files from origin/main (before merge)
           git checkout origin/main -- src/integrations/supabase/client.ts
           git checkout origin/main -- src/config/supabase.ts
+          git checkout origin/main -- src/integrations/supabase/client.ts
           
           # Complete the merge
-          git commit -m "Auto-merge dev to main for production deployment (excluding src/integrations/supabase/client.ts, src/config/supabase.ts)"
+          git commit -m "Auto-merge dev to main for production deployment (excluding src/integrations/supabase/client.ts, src/config/supabase.ts, src/integrations/supabase/client.ts)"
           git push origin main
       
       - name: Setup Supabase CLI
