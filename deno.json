@@ -1,0 +1,10 @@
+{
+  "imports": {
+    "npm:mendixplatformsdk@5.2.0": "npm:mendixplatformsdk@5.2.0"
+  },
+  "nodeModulesDir": "auto",
+  "compilerOptions": {
+    "allowJs": true,
+    "lib": ["deno.window"]
+  }
+}
