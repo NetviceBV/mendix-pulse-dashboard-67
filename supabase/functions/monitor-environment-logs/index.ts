@@ -314,13 +314,27 @@ async function sendLogAlertEmail(supabase: any, user_id: string, environment: an
       name: addr.display_name || addr.email_address
     }));
 
+    // Helper function to format dates in Dutch format
+    const formatDutchDateTime = (date: Date): string => {
+      return new Intl.DateTimeFormat('nl-NL', {
+        timeZone: 'Europe/Amsterdam',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).format(date);
+    };
+
     // Template variables
     const templateVariables = {
       app_name: appName,
       environment_name: environment.environment_name,
       error_count: error_count.toString(),
       critical_count: critical_count.toString(),
-      timestamp: new Date().toLocaleString(),
+      timestamp: formatDutchDateTime(new Date()),
       log_content: log_content
     };
 

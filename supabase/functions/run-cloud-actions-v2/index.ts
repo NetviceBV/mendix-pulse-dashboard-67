@@ -387,14 +387,28 @@ async function sendCloudActionEmail(supabase: any, action: CloudAction, type: 's
       duration = diffMins > 0 ? `${diffMins} minutes` : 'less than 1 minute';
     }
 
+    // Helper function to format dates in Dutch format
+    const formatDutchDateTime = (date: Date): string => {
+      return new Intl.DateTimeFormat('nl-NL', {
+        timeZone: 'Europe/Amsterdam',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).format(date);
+    };
+
     // Template variables
     const templateVariables = {
       app_name: appName,
       action_type: action.action_type.charAt(0).toUpperCase() + action.action_type.slice(1),
       environment_name: action.environment_name,
-      started_at: (action as any).started_at ? new Date((action as any).started_at).toLocaleString() : 'N/A',
-      completed_at: new Date().toLocaleString(),
-      failed_at: type === 'failure' ? new Date().toLocaleString() : 'N/A',
+      started_at: (action as any).started_at ? formatDutchDateTime(new Date((action as any).started_at)) : 'N/A',
+      completed_at: formatDutchDateTime(new Date()),
+      failed_at: type === 'failure' ? formatDutchDateTime(new Date()) : 'N/A',
       duration: duration,
       attempt_count: (action.attempt_count || 0).toString(),
       error_message: errorMessage || 'N/A',

@@ -258,18 +258,32 @@ export const EmailTemplates = () => {
       return;
     }
 
+    // Helper function to format dates in Dutch format
+    const formatDutchDateTime = (date: Date): string => {
+      return new Intl.DateTimeFormat('nl-NL', {
+        timeZone: 'Europe/Amsterdam',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).format(date);
+    };
+
     try {
       const testVariables = {
         app_name: "Sample Mendix App",
         environment_name: "Test Environment",
         error_count: "5",
         critical_count: "2",
-        timestamp: new Date().toLocaleString(),
+        timestamp: formatDutchDateTime(new Date()),
         log_content: "ERROR: Database connection failed\nCRITICAL: Memory usage exceeded 90%",
         action_type: "Deploy",
-        started_at: new Date(Date.now() - 300000).toLocaleString(),
-        completed_at: new Date().toLocaleString(),
-        failed_at: new Date().toLocaleString(),
+        started_at: formatDutchDateTime(new Date(Date.now() - 300000)),
+        completed_at: formatDutchDateTime(new Date()),
+        failed_at: formatDutchDateTime(new Date()),
         duration: "5 minutes",
         attempt_count: "1",
         error_message: "Package validation failed: Missing dependency",
@@ -303,17 +317,31 @@ export const EmailTemplates = () => {
   const getPreviewHtml = () => {
     if (!selectedTemplate) return "";
     
+    // Helper function to format dates in Dutch format
+    const formatDutchDateTime = (date: Date): string => {
+      return new Intl.DateTimeFormat('nl-NL', {
+        timeZone: 'Europe/Amsterdam',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).format(date);
+    };
+    
     return selectedTemplate.html_template
       .replace(/{{app_name}}/g, "Sample Mendix App")
       .replace(/{{environment_name}}/g, "Test Environment")
       .replace(/{{error_count}}/g, "5")
       .replace(/{{critical_count}}/g, "2")
-      .replace(/{{timestamp}}/g, new Date().toLocaleString())
+      .replace(/{{timestamp}}/g, formatDutchDateTime(new Date()))
       .replace(/{{log_content}}/g, "ERROR: Database connection failed\nCRITICAL: Memory usage exceeded 90%")
       .replace(/{{action_type}}/g, "Deploy")
-      .replace(/{{started_at}}/g, new Date(Date.now() - 300000).toLocaleString())
-      .replace(/{{completed_at}}/g, new Date().toLocaleString())
-      .replace(/{{failed_at}}/g, new Date().toLocaleString())
+      .replace(/{{started_at}}/g, formatDutchDateTime(new Date(Date.now() - 300000)))
+      .replace(/{{completed_at}}/g, formatDutchDateTime(new Date()))
+      .replace(/{{failed_at}}/g, formatDutchDateTime(new Date()))
       .replace(/{{duration}}/g, "5 minutes")
       .replace(/{{attempt_count}}/g, "1")
       .replace(/{{error_message}}/g, "Package validation failed: Missing dependency")
