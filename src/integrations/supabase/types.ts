@@ -487,6 +487,30 @@ export type Database = {
         }
         Relationships: []
       }
+      test_table: {
+        Row: {
+          created_at: string
+          id: string
+          test_column_1: string | null
+          test_column_2: number | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          test_column_1?: string | null
+          test_column_2?: number | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          test_column_1?: string | null
+          test_column_2?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       vulnerability_findings: {
         Row: {
           created_at: string
