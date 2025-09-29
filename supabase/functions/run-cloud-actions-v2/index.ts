@@ -126,7 +126,8 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in cloud actions v2:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -161,7 +162,7 @@ async function processActionsInBackground(actions: CloudAction[], supabase: any)
         .update({
           status: 'running',
           last_heartbeat: new Date().toISOString(),
-          started_at: action.started_at || new Date().toISOString()
+          started_at: (action as any).started_at || new Date().toISOString()
         })
         .eq('id', action.id);
 
@@ -282,7 +283,7 @@ async function processActionsInBackground(actions: CloudAction[], supabase: any)
         .from('cloud_actions')
         .update({
           status: newAttemptCount >= 3 ? 'failed' : 'scheduled',
-          error_message: error.message,
+          error_message: error instanceof Error ? error.message : 'Unknown error',
           attempt_count: newAttemptCount,
           scheduled_for: newAttemptCount < 3 ? new Date(Date.now() + (newAttemptCount * 60000)).toISOString() : undefined,
           completed_at: newAttemptCount >= 3 ? new Date().toISOString() : undefined,
@@ -294,12 +295,12 @@ async function processActionsInBackground(actions: CloudAction[], supabase: any)
         action_id: action.id,
         user_id: action.user_id,
         level: 'error',
-        message: `💥 Processing error: ${error.message}`
+        message: `💥 Processing error: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
 
       if (newAttemptCount >= 3) {
         // Send failure email notification on final failure
-        await sendCloudActionEmail(supabase, action, 'failure', error.message);
+        await sendCloudActionEmail(supabase, action, 'failure', error instanceof Error ? error.message : 'Unknown error');
         failed++;
       }
     }
@@ -356,8 +357,8 @@ async function sendCloudActionEmail(supabase: any, action: CloudAction, type: 's
 
     // Calculate duration if we have timestamps
     let duration = 'N/A';
-    if (action.started_at) {
-      const start = new Date(action.started_at);
+    if ((action as any).started_at) {
+      const start = new Date((action as any).started_at);
       const end = new Date();
       const diffMs = end.getTime() - start.getTime();
       const diffMins = Math.round(diffMs / 60000);
@@ -369,7 +370,7 @@ async function sendCloudActionEmail(supabase: any, action: CloudAction, type: 's
       app_name: appName,
       action_type: action.action_type.charAt(0).toUpperCase() + action.action_type.slice(1),
       environment_name: action.environment_name,
-      started_at: action.started_at ? new Date(action.started_at).toLocaleString() : 'N/A',
+      started_at: (action as any).started_at ? new Date((action as any).started_at).toLocaleString() : 'N/A',
       completed_at: new Date().toLocaleString(),
       failed_at: type === 'failure' ? new Date().toLocaleString() : 'N/A',
       duration: duration,
