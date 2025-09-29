@@ -27,11 +27,12 @@ jobs:
           # Merge dev into main without committing
           git merge origin/dev --no-ff --no-commit || true
           
-          # Restore the excluded file from main branch
-          git checkout HEAD -- src/integrations/supabase/client.ts
+          # Restore the excluded files from origin/main (before merge)
+          git checkout origin/main -- src/integrations/supabase/client.ts
+          git checkout origin/main -- src/config/supabase.ts
           
           # Complete the merge
-          git commit -m "Auto-merge dev to main for production deployment (excluding src/integrations/supabase/client.ts)"
+          git commit -m "Auto-merge dev to main for production deployment (excluding src/integrations/supabase/client.ts, src/config/supabase.ts)"
           git push origin main
       
       - name: Setup Supabase CLI
