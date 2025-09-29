@@ -114,7 +114,27 @@ serve(async (req) => {
 
     // Start background processing
     if (actions && actions.length > 0) {
-      // EdgeRuntime.waitUntil(processActionsInBackground(actions, supabase));
+      console.log(`🚀 Starting background processing for ${actions.length} actions`);
+      try {
+        // Check if EdgeRuntime is available (Supabase Edge Functions support)
+        const global = globalThis as any;
+        if (typeof global.EdgeRuntime !== 'undefined' && global.EdgeRuntime?.waitUntil) {
+          global.EdgeRuntime.waitUntil(processActionsInBackground(actions, supabase));
+          console.log('📝 Background processing task registered successfully with EdgeRuntime');
+        } else {
+          // Fallback to async processing without blocking response
+          console.log('⚠️ EdgeRuntime not available, using async processing');
+          processActionsInBackground(actions, supabase).catch(backgroundError => {
+            console.error('💥 Background processing failed:', backgroundError);
+          });
+        }
+      } catch (error) {
+        console.error('❌ Failed to register background task:', error);
+        // Fallback to async processing
+        processActionsInBackground(actions, supabase).catch(backgroundError => {
+          console.error('💥 Background processing failed:', backgroundError);
+        });
+      }
     }
 
     return new Response(JSON.stringify({ 
@@ -305,7 +325,9 @@ async function processActionsInBackground(actions: CloudAction[], supabase: any)
       }
     }
   }
-
+  
+  const endTime = Date.now();
+  console.log(`✅ Background processing completed in ${endTime - startTime}ms`);
   console.log(`🏁 Background processing completed: ${processed} processed, ${succeeded} succeeded, ${failed} failed`);
 }
 
