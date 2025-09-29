@@ -94,8 +94,19 @@ serve(async (req) => {
 
     // Environment name normalization function for Mendix API v1
     const normalizeEnvironmentName = (envName: string): string => {
-      // Capitalize the first letter and make the rest lowercase
-      return envName.charAt(0).toUpperCase() + envName.slice(1).toLowerCase();
+      const lowerName = envName.toLowerCase();
+      // Explicit mapping for common environment names
+      switch (lowerName) {
+        case 'production':
+          return 'Production';
+        case 'acceptance':
+          return 'Acceptance';
+        case 'test':
+          return 'Test';
+        default:
+          // Fallback: capitalize first letter and make rest lowercase
+          return envName.charAt(0).toUpperCase() + envName.slice(1).toLowerCase();
+      }
     };
 
     // Normalize app name for Mendix API v1 (convert to slug format)
@@ -159,14 +170,48 @@ serve(async (req) => {
 
     console.log(`Downloading logs from: ${downloadResponse.DownloadUrl}`);
     
-    // Step 2: Download the actual logs using the DownloadUrl
-    const logsResponse = await fetch(downloadResponse.DownloadUrl, {
-      method: 'GET',
-      headers: {
-        'Mendix-Username': credentials.username,
-        'Mendix-ApiKey': credentials.api_key || credentials.pat || ''
+    // Extract and log expire parameter for debugging
+    try {
+      const urlObj = new URL(downloadResponse.DownloadUrl);
+      const expireParam = urlObj.searchParams.get('expire');
+      if (expireParam) {
+        console.log(`DownloadUrl expires at: ${expireParam}, current time: ${new Date().toISOString()}`);
       }
+    } catch (e) {
+      console.log('Could not parse DownloadUrl for expire parameter');
+    }
+    
+    // Step 2: Download the actual logs using the DownloadUrl (pre-signed, no auth headers needed)
+    let logsResponse = await fetch(downloadResponse.DownloadUrl, {
+      method: 'GET',
+      redirect: 'follow'
     });
+
+    // If we get 403 Invalid signature, retry once with fresh DownloadUrl
+    if (!logsResponse.ok && logsResponse.status === 403) {
+      console.log('Got 403 on first attempt, retrying with fresh DownloadUrl...');
+      
+      // Get fresh DownloadUrl
+      const retryResponse = await fetch(logsUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Mendix-Username': credentials.username,
+          'Mendix-ApiKey': credentials.api_key || credentials.pat || ''
+        }
+      });
+      
+      if (retryResponse.ok) {
+        const retryDownloadResponse = await retryResponse.json();
+        if (retryDownloadResponse.DownloadUrl) {
+          console.log(`Retrying with fresh DownloadUrl: ${retryDownloadResponse.DownloadUrl}`);
+          logsResponse = await fetch(retryDownloadResponse.DownloadUrl, {
+            method: 'GET',
+            redirect: 'follow'
+          });
+        }
+      }
+    }
 
     if (!logsResponse.ok) {
       const errorText = await logsResponse.text();
