@@ -1,6 +1,7 @@
 name: Deploy to Production Supabase
 
 on:
+  workflow_dispatch:  # Manual trigger from GitHub UI
   push:
     branches:
       - main
