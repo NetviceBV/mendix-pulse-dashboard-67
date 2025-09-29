@@ -19,6 +19,7 @@ interface CloudAction {
   step_data?: any;
   package_id?: string;
   backup_id?: string;
+  started_at?: string;
 }
 
 interface StepResult {
@@ -28,6 +29,7 @@ interface StepResult {
   packageId?: string;
   backupId?: string;
   error?: string;
+  success?: boolean;
 }
 
 serve(async (req) => {
@@ -56,7 +58,8 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in cloud action steps:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -330,7 +333,8 @@ async function createPackage(credential: any, app: any, action: CloudAction): Pr
     };
 
   } catch (error) {
-    return { error: `Package creation failed: ${error.message}` };
+    const errorMessage = error instanceof Error ? error.message : 'Package creation failed';
+    return { error: `Package creation failed: ${errorMessage}` };
   }
 }
 
@@ -375,7 +379,8 @@ async function waitPackageBuild(credential: any, app: any, action: CloudAction):
     }
 
   } catch (error) {
-    return { error: `Package status check failed: ${error.message}` };
+    const errorMessage = error instanceof Error ? error.message : 'Package status check failed';
+    return { error: `Package status check failed: ${errorMessage}` };
   }
 }
 
@@ -410,7 +415,8 @@ async function transportPackage(credential: any, app: any, action: CloudAction, 
     return { nextStep: 'stop_environment' };
 
   } catch (error) {
-    return { error: `Package transport failed: ${error.message}` };
+    const errorMessage = error instanceof Error ? error.message : 'Package transport failed';
+    return { error: `Package transport failed: ${errorMessage}` };
   }
 }
 
@@ -451,7 +457,8 @@ async function createBackup(credential: any, app: any, action: CloudAction, envi
 
   } catch (error) {
     // Backup failure shouldn't stop deployment
-    console.log(`Backup creation failed (continuing): ${error.message}`);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.log(`Backup creation failed (continuing): ${errorMessage}`);
     return { nextStep: 'start_environment' };
   }
 }
@@ -503,7 +510,8 @@ async function waitBackupComplete(credential: any, app: any, action: CloudAction
 
   } catch (error) {
     // Backup check failed, continue anyway
-    console.log(`Backup status check failed (continuing): ${error.message}`);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.log(`Backup status check failed (continuing): ${errorMessage}`);
     return { nextStep };
   }
 }
@@ -546,7 +554,8 @@ async function retrieveSourcePackage(credential: any, app: any, action: CloudAct
     };
 
   } catch (error) {
-    return { error: `Failed to retrieve source package: ${error.message}` };
+    const errorMessage = error instanceof Error ? error.message : 'Failed to retrieve source package';
+    return { error: `Failed to retrieve source package: ${errorMessage}` };
   }
 }
 
@@ -578,9 +587,10 @@ async function callMendix(action: string, credential: any, appSlug: string, envi
       };
     }
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Mendix API call failed';
     return { 
       success: false, 
-      error: `Mendix API call failed: ${error.message}` 
+      error: `Mendix API call failed: ${errorMessage}` 
     };
   }
 }

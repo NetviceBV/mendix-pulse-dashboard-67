@@ -92,6 +92,23 @@ serve(async (req) => {
       console.log(`Found environment name: ${actualEnvironmentName} for ID: ${environmentId}`);
     }
 
+    // Environment name normalization function for Mendix API v1 (requires lowercase)
+    const normalizeEnvironmentName = (envName: string): string => {
+      const lowerName = envName.toLowerCase();
+      // Explicit mapping for common environment names to lowercase
+      switch (lowerName) {
+        case 'production':
+          return 'production';
+        case 'acceptance':
+          return 'acceptance';
+        case 'test':
+          return 'test';
+        default:
+          // Fallback: convert to lowercase
+          return lowerName;
+      }
+    };
+
     // Normalize app name for Mendix API v1 (convert to slug format)
     const normalizedAppName = appName.toLowerCase()
       .replace(/\s+/g, '-')           // Replace spaces with hyphens
@@ -99,8 +116,11 @@ serve(async (req) => {
       .replace(/-+/g, '-')            // Replace multiple hyphens with single
       .replace(/^-|-$/g, '');         // Remove leading/trailing hyphens
     
+    // Normalize environment name for Mendix API v1 (proper case)
+    const normalizedEnvironmentName = normalizeEnvironmentName(actualEnvironmentName);
+    
     console.log(`Original app name: "${appName}" -> normalized slug: "${normalizedAppName}"`);
-    console.log(`Using environment name: "${actualEnvironmentName}"`);
+    console.log(`Original environment name: "${actualEnvironmentName}" -> normalized to lowercase: "${normalizedEnvironmentName}"`);
     
     if (!actualEnvironmentName) {
       throw new Error('Environment name is required but not found');
@@ -118,8 +138,8 @@ serve(async (req) => {
     console.log(`Using date: ${selectedDate} for logs download`);
     
     // Use selected date in the URL path as required by Mendix API v1
-    // IMPORTANT: v1 API requires app slug and environment NAME (not UUID)
-    const logsUrl = `https://deploy.mendix.com/api/1/apps/${normalizedAppName}/environments/${actualEnvironmentName}/logs/${selectedDate}`;
+    // IMPORTANT: v1 API requires app slug and NORMALIZED environment NAME
+    const logsUrl = `https://deploy.mendix.com/api/1/apps/${normalizedAppName}/environments/${normalizedEnvironmentName}/logs/${selectedDate}`;
     
     console.log(`Constructed logs URL: ${logsUrl}`);
     
@@ -150,14 +170,48 @@ serve(async (req) => {
 
     console.log(`Downloading logs from: ${downloadResponse.DownloadUrl}`);
     
-    // Step 2: Download the actual logs using the DownloadUrl
-    const logsResponse = await fetch(downloadResponse.DownloadUrl, {
-      method: 'GET',
-      headers: {
-        'Mendix-Username': credentials.username,
-        'Mendix-ApiKey': credentials.api_key || credentials.pat || ''
+    // Extract and log expire parameter for debugging
+    try {
+      const urlObj = new URL(downloadResponse.DownloadUrl);
+      const expireParam = urlObj.searchParams.get('expire');
+      if (expireParam) {
+        console.log(`DownloadUrl expires at: ${expireParam}, current time: ${new Date().toISOString()}`);
       }
+    } catch (e) {
+      console.log('Could not parse DownloadUrl for expire parameter');
+    }
+    
+    // Step 2: Download the actual logs using the DownloadUrl (pre-signed, no auth headers needed)
+    let logsResponse = await fetch(downloadResponse.DownloadUrl, {
+      method: 'GET',
+      redirect: 'follow'
     });
+
+    // If we get 403 Invalid signature, retry once with fresh DownloadUrl
+    if (!logsResponse.ok && logsResponse.status === 403) {
+      console.log('Got 403 on first attempt, retrying with fresh DownloadUrl...');
+      
+      // Get fresh DownloadUrl
+      const retryResponse = await fetch(logsUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Mendix-Username': credentials.username,
+          'Mendix-ApiKey': credentials.api_key || credentials.pat || ''
+        }
+      });
+      
+      if (retryResponse.ok) {
+        const retryDownloadResponse = await retryResponse.json();
+        if (retryDownloadResponse.DownloadUrl) {
+          console.log(`Retrying with fresh DownloadUrl: ${retryDownloadResponse.DownloadUrl}`);
+          logsResponse = await fetch(retryDownloadResponse.DownloadUrl, {
+            method: 'GET',
+            redirect: 'follow'
+          });
+        }
+      }
+    }
 
     if (!logsResponse.ok) {
       const errorText = await logsResponse.text();
@@ -185,9 +239,10 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error downloading logs:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to download logs';
     return new Response(
       JSON.stringify({ 
-        error: error.message || 'Failed to download logs',
+        error: errorMessage,
         success: false 
       }),
       { 

@@ -114,7 +114,27 @@ serve(async (req) => {
 
     // Start background processing
     if (actions && actions.length > 0) {
-      EdgeRuntime.waitUntil(processActionsInBackground(actions, supabase));
+      console.log(`🚀 Starting background processing for ${actions.length} actions`);
+      try {
+        // Check if EdgeRuntime is available (Supabase Edge Functions support)
+        const global = globalThis as any;
+        if (typeof global.EdgeRuntime !== 'undefined' && global.EdgeRuntime?.waitUntil) {
+          global.EdgeRuntime.waitUntil(processActionsInBackground(actions, supabase));
+          console.log('📝 Background processing task registered successfully with EdgeRuntime');
+        } else {
+          // Fallback to async processing without blocking response
+          console.log('⚠️ EdgeRuntime not available, using async processing');
+          processActionsInBackground(actions, supabase).catch(backgroundError => {
+            console.error('💥 Background processing failed:', backgroundError);
+          });
+        }
+      } catch (error) {
+        console.error('❌ Failed to register background task:', error);
+        // Fallback to async processing
+        processActionsInBackground(actions, supabase).catch(backgroundError => {
+          console.error('💥 Background processing failed:', backgroundError);
+        });
+      }
     }
 
     return new Response(JSON.stringify({ 
@@ -126,7 +146,8 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in cloud actions v2:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -161,7 +182,7 @@ async function processActionsInBackground(actions: CloudAction[], supabase: any)
         .update({
           status: 'running',
           last_heartbeat: new Date().toISOString(),
-          started_at: action.started_at || new Date().toISOString()
+          started_at: (action as any).started_at || new Date().toISOString()
         })
         .eq('id', action.id);
 
@@ -282,7 +303,7 @@ async function processActionsInBackground(actions: CloudAction[], supabase: any)
         .from('cloud_actions')
         .update({
           status: newAttemptCount >= 3 ? 'failed' : 'scheduled',
-          error_message: error.message,
+          error_message: error instanceof Error ? error.message : 'Unknown error',
           attempt_count: newAttemptCount,
           scheduled_for: newAttemptCount < 3 ? new Date(Date.now() + (newAttemptCount * 60000)).toISOString() : undefined,
           completed_at: newAttemptCount >= 3 ? new Date().toISOString() : undefined,
@@ -294,17 +315,19 @@ async function processActionsInBackground(actions: CloudAction[], supabase: any)
         action_id: action.id,
         user_id: action.user_id,
         level: 'error',
-        message: `💥 Processing error: ${error.message}`
+        message: `💥 Processing error: ${error instanceof Error ? error.message : 'Unknown error'}`
       });
 
       if (newAttemptCount >= 3) {
         // Send failure email notification on final failure
-        await sendCloudActionEmail(supabase, action, 'failure', error.message);
+        await sendCloudActionEmail(supabase, action, 'failure', error instanceof Error ? error.message : 'Unknown error');
         failed++;
       }
     }
   }
-
+  
+  const endTime = Date.now();
+  console.log(`✅ Background processing completed in ${endTime - startTime}ms`);
   console.log(`🏁 Background processing completed: ${processed} processed, ${succeeded} succeeded, ${failed} failed`);
 }
 
@@ -328,7 +351,7 @@ async function sendCloudActionEmail(supabase: any, action: CloudAction, type: 's
     const { data: appData, error: appError } = await supabase
       .from('mendix_apps')
       .select('app_name')
-      .eq('app_id', action.app_id)
+      .eq('project_id', action.app_id)
       .eq('user_id', action.user_id)
       .single();
 
@@ -356,22 +379,36 @@ async function sendCloudActionEmail(supabase: any, action: CloudAction, type: 's
 
     // Calculate duration if we have timestamps
     let duration = 'N/A';
-    if (action.started_at) {
-      const start = new Date(action.started_at);
+    if ((action as any).started_at) {
+      const start = new Date((action as any).started_at);
       const end = new Date();
       const diffMs = end.getTime() - start.getTime();
       const diffMins = Math.round(diffMs / 60000);
       duration = diffMins > 0 ? `${diffMins} minutes` : 'less than 1 minute';
     }
 
+    // Helper function to format dates in Dutch format
+    const formatDutchDateTime = (date: Date): string => {
+      return new Intl.DateTimeFormat('nl-NL', {
+        timeZone: 'Europe/Amsterdam',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).format(date);
+    };
+
     // Template variables
     const templateVariables = {
       app_name: appName,
       action_type: action.action_type.charAt(0).toUpperCase() + action.action_type.slice(1),
       environment_name: action.environment_name,
-      started_at: action.started_at ? new Date(action.started_at).toLocaleString() : 'N/A',
-      completed_at: new Date().toLocaleString(),
-      failed_at: type === 'failure' ? new Date().toLocaleString() : 'N/A',
+      started_at: (action as any).started_at ? formatDutchDateTime(new Date((action as any).started_at)) : 'N/A',
+      completed_at: formatDutchDateTime(new Date()),
+      failed_at: type === 'failure' ? formatDutchDateTime(new Date()) : 'N/A',
       duration: duration,
       attempt_count: (action.attempt_count || 0).toString(),
       error_message: errorMessage || 'N/A',

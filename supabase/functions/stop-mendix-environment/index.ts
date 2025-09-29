@@ -107,9 +107,10 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error stopping environment:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to stop environment';
     return new Response(
       JSON.stringify({ 
-        error: error.message || 'Failed to stop environment',
+        error: errorMessage,
         success: false 
       }),
       { 
