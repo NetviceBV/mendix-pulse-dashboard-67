@@ -92,20 +92,20 @@ serve(async (req) => {
       console.log(`Found environment name: ${actualEnvironmentName} for ID: ${environmentId}`);
     }
 
-    // Environment name normalization function for Mendix API v1
+    // Environment name normalization function for Mendix API v1 (requires lowercase)
     const normalizeEnvironmentName = (envName: string): string => {
       const lowerName = envName.toLowerCase();
-      // Explicit mapping for common environment names
+      // Explicit mapping for common environment names to lowercase
       switch (lowerName) {
         case 'production':
-          return 'Production';
+          return 'production';
         case 'acceptance':
-          return 'Acceptance';
+          return 'acceptance';
         case 'test':
-          return 'Test';
+          return 'test';
         default:
-          // Fallback: capitalize first letter and make rest lowercase
-          return envName.charAt(0).toUpperCase() + envName.slice(1).toLowerCase();
+          // Fallback: convert to lowercase
+          return lowerName;
       }
     };
 
@@ -120,7 +120,7 @@ serve(async (req) => {
     const normalizedEnvironmentName = normalizeEnvironmentName(actualEnvironmentName);
     
     console.log(`Original app name: "${appName}" -> normalized slug: "${normalizedAppName}"`);
-    console.log(`Original environment name: "${actualEnvironmentName}" -> normalized: "${normalizedEnvironmentName}"`);
+    console.log(`Original environment name: "${actualEnvironmentName}" -> normalized to lowercase: "${normalizedEnvironmentName}"`);
     
     if (!actualEnvironmentName) {
       throw new Error('Environment name is required but not found');
