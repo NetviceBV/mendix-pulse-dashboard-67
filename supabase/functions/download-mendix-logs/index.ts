@@ -92,6 +92,12 @@ serve(async (req) => {
       console.log(`Found environment name: ${actualEnvironmentName} for ID: ${environmentId}`);
     }
 
+    // Environment name normalization function for Mendix API v1
+    const normalizeEnvironmentName = (envName: string): string => {
+      // Capitalize the first letter and make the rest lowercase
+      return envName.charAt(0).toUpperCase() + envName.slice(1).toLowerCase();
+    };
+
     // Normalize app name for Mendix API v1 (convert to slug format)
     const normalizedAppName = appName.toLowerCase()
       .replace(/\s+/g, '-')           // Replace spaces with hyphens
@@ -99,8 +105,11 @@ serve(async (req) => {
       .replace(/-+/g, '-')            // Replace multiple hyphens with single
       .replace(/^-|-$/g, '');         // Remove leading/trailing hyphens
     
+    // Normalize environment name for Mendix API v1 (proper case)
+    const normalizedEnvironmentName = normalizeEnvironmentName(actualEnvironmentName);
+    
     console.log(`Original app name: "${appName}" -> normalized slug: "${normalizedAppName}"`);
-    console.log(`Using environment name: "${actualEnvironmentName}"`);
+    console.log(`Original environment name: "${actualEnvironmentName}" -> normalized: "${normalizedEnvironmentName}"`);
     
     if (!actualEnvironmentName) {
       throw new Error('Environment name is required but not found');
@@ -118,8 +127,8 @@ serve(async (req) => {
     console.log(`Using date: ${selectedDate} for logs download`);
     
     // Use selected date in the URL path as required by Mendix API v1
-    // IMPORTANT: v1 API requires app slug and environment NAME (not UUID)
-    const logsUrl = `https://deploy.mendix.com/api/1/apps/${normalizedAppName}/environments/${actualEnvironmentName}/logs/${selectedDate}`;
+    // IMPORTANT: v1 API requires app slug and NORMALIZED environment NAME
+    const logsUrl = `https://deploy.mendix.com/api/1/apps/${normalizedAppName}/environments/${normalizedEnvironmentName}/logs/${selectedDate}`;
     
     console.log(`Constructed logs URL: ${logsUrl}`);
     
