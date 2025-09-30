@@ -487,26 +487,26 @@ export type Database = {
         }
         Relationships: []
       }
-      test_table: {
+      system_heartbeat: {
         Row: {
           created_at: string
+          heartbeat_counter: number | null
+          heartbeat_type: string | null
           id: string
-          test_column_1: string | null
-          test_column_2: number | null
           user_id: string
         }
         Insert: {
           created_at?: string
+          heartbeat_counter?: number | null
+          heartbeat_type?: string | null
           id?: string
-          test_column_1?: string | null
-          test_column_2?: number | null
           user_id: string
         }
         Update: {
           created_at?: string
+          heartbeat_counter?: number | null
+          heartbeat_type?: string | null
           id?: string
-          test_column_1?: string | null
-          test_column_2?: number | null
           user_id?: string
         }
         Relationships: []

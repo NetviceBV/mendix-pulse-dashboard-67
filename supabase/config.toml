@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.cloud-action-steps]
 verify_jwt = false
+
+[functions.keep-alive-heartbeat]
+verify_jwt = false
