@@ -69,6 +69,8 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
   const [loadingRevisions, setLoadingRevisions] = useState(false);
   const [loadingPackages, setLoadingPackages] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [editingBranch, setEditingBranch] = useState(false);
+  const [editingRevision, setEditingRevision] = useState(false);
   const { toast } = useToast();
 
   const formSchema = z.object({
@@ -129,19 +131,26 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
       loadApps();
       loadEnvironments();
       
-      // If this is a deploy action, load branches and revisions immediately with action values
-      if (action.action_type === "deploy" && action.credential_id && action.app_id) {
-        loadBranches(action.credential_id, action.app_id);
-        const branch = action.payload?.branchName ?? action.payload?.branch;
-        if (branch) {
-          loadRevisions(action.credential_id, action.app_id, branch);
-        }
+      // Pre-populate branches and revisions with current values from payload
+      const currentBranch = action.payload?.branchName ?? action.payload?.branch;
+      const currentRevisionId = action.payload?.revisionId ?? action.payload?.revision;
+      const currentRevisionMessage = action.payload?.revisionMessage ?? "";
+      
+      if (currentBranch) {
+        setBranches([currentBranch]);
+      }
+      if (currentRevisionId) {
+        setRevisions([{ id: currentRevisionId, message: currentRevisionMessage }]);
       }
       
       // If this is a transport action, load packages immediately with action values
       if (action.action_type === "transport" && action.credential_id && action.app_id) {
         loadPackages(action.credential_id, action.app_id);
       }
+    } else {
+      // Reset editing states when dialog closes
+      setEditingBranch(false);
+      setEditingRevision(false);
     }
   }, [open]);
 
@@ -178,16 +187,16 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
   const selectedBranchName = form.watch("branchName");
 
   useEffect(() => {
-    if (open && selectedCredentialId && selectedAppId && (selectedActionType === "deploy")) {
+    if (open && editingBranch && selectedCredentialId && selectedAppId && (selectedActionType === "deploy")) {
       loadBranches(selectedCredentialId, selectedAppId);
     }
-  }, [open, selectedCredentialId, selectedAppId, selectedActionType]);
+  }, [open, editingBranch, selectedCredentialId, selectedAppId, selectedActionType]);
 
   useEffect(() => {
-    if (open && selectedCredentialId && selectedAppId && selectedBranchName && (selectedActionType === "deploy")) {
+    if (open && editingRevision && selectedCredentialId && selectedAppId && selectedBranchName && (selectedActionType === "deploy")) {
       loadRevisions(selectedCredentialId, selectedAppId, selectedBranchName);
     }
-  }, [open, selectedCredentialId, selectedAppId, selectedBranchName, selectedActionType]);
+  }, [open, editingRevision, selectedCredentialId, selectedAppId, selectedBranchName, selectedActionType]);
 
   useEffect(() => {
     if (open && selectedCredentialId && selectedAppId && (selectedActionType === "transport")) {
@@ -301,6 +310,11 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
       }
       if (values.revisionId && values.action_type === "deploy") {
         payload.revisionId = values.revisionId;
+        // Find and save the revision message for future display
+        const selectedRevision = revisions.find(r => r.id === values.revisionId);
+        if (selectedRevision) {
+          payload.revisionMessage = selectedRevision.message;
+        }
       }
       if (values.action_type === "deploy" && (values.versionMajor !== undefined || values.versionMinor !== undefined || values.versionPatch !== undefined)) {
         const major = values.versionMajor || 0;
@@ -344,6 +358,8 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
       });
 
       setOpen(false);
+      setEditingBranch(false);
+      setEditingRevision(false);
       form.reset();
       onUpdated();
     } catch (error) {
@@ -555,8 +571,29 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
                   name="branchName"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Branch {loadingBranches && <Loader2 className="inline h-3 w-3 animate-spin ml-1" />}</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value} disabled={loadingBranches}>
+                      <div className="flex items-center justify-between">
+                        <FormLabel>Branch {loadingBranches && <Loader2 className="inline h-3 w-3 animate-spin ml-1" />}</FormLabel>
+                        {!editingBranch && field.value && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingBranch(true)}
+                            className="h-7 text-xs"
+                          >
+                            Change
+                          </Button>
+                        )}
+                      </div>
+                      <Select 
+                        onValueChange={(value) => {
+                          field.onChange(value);
+                          setEditingRevision(false);
+                          setRevisions([]);
+                        }} 
+                        value={field.value} 
+                        disabled={loadingBranches || (!editingBranch && !!field.value)}
+                      >
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Select branch" />
@@ -580,8 +617,25 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
                   name="revisionId"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Revision {loadingRevisions && <Loader2 className="inline h-3 w-3 animate-spin ml-1" />}</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value} disabled={loadingRevisions || !selectedBranchName}>
+                      <div className="flex items-center justify-between">
+                        <FormLabel>Revision {loadingRevisions && <Loader2 className="inline h-3 w-3 animate-spin ml-1" />}</FormLabel>
+                        {!editingRevision && field.value && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingRevision(true)}
+                            className="h-7 text-xs"
+                          >
+                            Change
+                          </Button>
+                        )}
+                      </div>
+                      <Select 
+                        onValueChange={field.onChange} 
+                        value={field.value} 
+                        disabled={loadingRevisions || !selectedBranchName || (!editingRevision && !!field.value)}
+                      >
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Select revision" />
