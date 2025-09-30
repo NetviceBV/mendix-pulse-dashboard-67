@@ -43,6 +43,7 @@ interface App {
   credential_id: string;
   app_id: string | null;
   app_name: string;
+  project_id: string | null;
 }
 
 interface Env {
@@ -61,8 +62,8 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [apps, setApps] = useState<App[]>([]);
   const [environments, setEnvironments] = useState<Env[]>([]);
-  const [branches, setBranches] = useState<any[]>([]);
-  const [revisions, setRevisions] = useState<any[]>([]);
+  const [branches, setBranches] = useState<string[]>([]);
+  const [revisions, setRevisions] = useState<{ id: string; message: string }[]>([]);
   const [packages, setPackages] = useState<any[]>([]);
   const [loadingBranches, setLoadingBranches] = useState(false);
   const [loadingRevisions, setLoadingRevisions] = useState(false);
@@ -79,8 +80,8 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
     retry_until: z.string().optional(),
     source_environment: z.string().optional(),
     package_id: z.string().optional(),
-    branch: z.string().optional(),
-    revision: z.string().optional(),
+    branchName: z.string().optional(),
+    revisionId: z.string().optional(),
     versionMajor: z.number().min(0).optional(),
     versionMinor: z.number().min(0).optional(),
     versionPatch: z.number().min(0).optional(),
@@ -112,8 +113,8 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
       retry_until: action.retry_until ? new Date(action.retry_until).toISOString().slice(0, 16) : "",
       source_environment: action.payload?.source_environment || "",
       package_id: action.payload?.package_id || "",
-      branch: action.payload?.branch || "",
-      revision: action.payload?.revision || "",
+      branchName: action.payload?.branchName ?? action.payload?.branch ?? "",
+      revisionId: action.payload?.revisionId ?? action.payload?.revision ?? "",
       versionMajor: parsedVersion.major ?? 1,
       versionMinor: parsedVersion.minor ?? 0,
       versionPatch: parsedVersion.patch ?? 0,
@@ -131,8 +132,9 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
       // If this is a deploy action, load branches and revisions immediately with action values
       if (action.action_type === "deploy" && action.credential_id && action.app_id) {
         loadBranches(action.credential_id, action.app_id);
-        if (action.payload?.branch) {
-          loadRevisions(action.credential_id, action.app_id, action.payload.branch);
+        const branch = action.payload?.branchName ?? action.payload?.branch;
+        if (branch) {
+          loadRevisions(action.credential_id, action.app_id, branch);
         }
       }
       
@@ -173,7 +175,7 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
   const selectedCredentialId = form.watch("credential_id");
   const selectedAppId = form.watch("app_id");
   const selectedActionType = form.watch("action_type");
-  const selectedBranch = form.watch("branch");
+  const selectedBranchName = form.watch("branchName");
 
   useEffect(() => {
     if (open && selectedCredentialId && selectedAppId && (selectedActionType === "deploy")) {
@@ -182,10 +184,10 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
   }, [open, selectedCredentialId, selectedAppId, selectedActionType]);
 
   useEffect(() => {
-    if (open && selectedCredentialId && selectedAppId && selectedBranch && (selectedActionType === "deploy")) {
-      loadRevisions(selectedCredentialId, selectedAppId, selectedBranch);
+    if (open && selectedCredentialId && selectedAppId && selectedBranchName && (selectedActionType === "deploy")) {
+      loadRevisions(selectedCredentialId, selectedAppId, selectedBranchName);
     }
-  }, [open, selectedCredentialId, selectedAppId, selectedBranch, selectedActionType]);
+  }, [open, selectedCredentialId, selectedAppId, selectedBranchName, selectedActionType]);
 
   useEffect(() => {
     if (open && selectedCredentialId && selectedAppId && (selectedActionType === "transport")) {
@@ -225,7 +227,7 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
   const loadRevisions = async (credentialId?: string, appId?: string, branchName?: string) => {
     const credId = credentialId || selectedCredentialId;
     const appIdToUse = appId || selectedAppId;
-    const branch = branchName || selectedBranch;
+    const branch = branchName || selectedBranchName;
     
     if (!credId || !appIdToUse || !branch) return;
     
@@ -294,11 +296,11 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
       if (values.package_id && values.action_type === "transport") {
         payload.package_id = values.package_id;
       }
-      if (values.branch && values.action_type === "deploy") {
-        payload.branch = values.branch;
+      if (values.branchName && values.action_type === "deploy") {
+        payload.branchName = values.branchName;
       }
-      if (values.revision && values.action_type === "deploy") {
-        payload.revision = values.revision;
+      if (values.revisionId && values.action_type === "deploy") {
+        payload.revisionId = values.revisionId;
       }
       if (values.action_type === "deploy" && (values.versionMajor !== undefined || values.versionMinor !== undefined || values.versionPatch !== undefined)) {
         const major = values.versionMajor || 0;
@@ -414,7 +416,7 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
                     </FormControl>
                     <SelectContent>
                       {filteredApps.map((app) => (
-                        <SelectItem key={app.id} value={app.app_id || ''}>
+                        <SelectItem key={app.id} value={app.project_id || app.app_id || ''}>
                           {app.app_name}
                         </SelectItem>
                       ))}
@@ -550,7 +552,7 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
               <>
                 <FormField
                   control={form.control}
-                  name="branch"
+                  name="branchName"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Branch {loadingBranches && <Loader2 className="inline h-3 w-3 animate-spin ml-1" />}</FormLabel>
@@ -562,8 +564,8 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
                         </FormControl>
                         <SelectContent>
                           {branches.map((branch) => (
-                            <SelectItem key={branch.Name} value={branch.Name}>
-                              {branch.DisplayName}
+                            <SelectItem key={branch} value={branch}>
+                              {branch}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -575,11 +577,11 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
 
                 <FormField
                   control={form.control}
-                  name="revision"
+                  name="revisionId"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Revision {loadingRevisions && <Loader2 className="inline h-3 w-3 animate-spin ml-1" />}</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value} disabled={loadingRevisions || !selectedBranch}>
+                      <Select onValueChange={field.onChange} value={field.value} disabled={loadingRevisions || !selectedBranchName}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Select revision" />
@@ -587,8 +589,8 @@ export const EditCloudActionDialog: React.FC<EditCloudActionDialogProps> = ({ ac
                         </FormControl>
                         <SelectContent>
                           {revisions.map((revision) => (
-                            <SelectItem key={revision.CommitId} value={revision.CommitId}>
-                              {revision.CommitId.substring(0, 8)} - {revision.Message}
+                            <SelectItem key={revision.id} value={revision.id}>
+                              {revision.id.substring(0, 8)} - {revision.message}
                             </SelectItem>
                           ))}
                         </SelectContent>
