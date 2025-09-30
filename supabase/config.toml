@@ -17,3 +17,12 @@ verify_jwt = false
 
 [functions.send-email-mandrill]
 verify_jwt = false
+
+[functions.monitor-environment-logs]
+verify_jwt = false
+
+[functions.download-mendix-logs]
+verify_jwt = false
+
+[functions.process-log-monitoring]
+verify_jwt = false
