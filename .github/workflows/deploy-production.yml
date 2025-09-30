@@ -40,6 +40,14 @@ jobs:
         with:
           version: latest
       
+      - name: Replace Dev Project URLs with Production URLs
+        run: |
+          # Replace dev project reference with production in all migration files
+          find supabase/migrations -type f -name "*.sql" -exec sed -i 's/hfmeoajwhaiobjngpyhe/${{ secrets.SUPABASE_PROD_PROJECT_ID }}/g' {} +
+          
+          echo "=== Checking for replaced URLs ==="
+          grep -r "supabase.co" supabase/migrations/ || echo "No Supabase URLs found in migrations"
+      
       - name: Link to Production Project
         run: supabase link --project-ref ${{ secrets.SUPABASE_PROD_PROJECT_ID }}
         env:
