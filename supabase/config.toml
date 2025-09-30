@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.keep-alive-heartbeat]
 verify_jwt = false
+
+[functions.refresh-mendix-environment-status]
+verify_jwt = false
