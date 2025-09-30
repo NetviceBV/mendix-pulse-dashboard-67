@@ -30,10 +30,9 @@ jobs:
           # Restore the excluded files from origin/main (before merge)
           git checkout origin/main -- src/integrations/supabase/client.ts
           git checkout origin/main -- src/config/supabase.ts
-          it checkout origin/main -- supabase/config.toml
           
           # Complete the merge
-          git commit -m "Auto-merge dev to main for production deployment (excluding src/integrations/supabase/client.ts, src/config/supabase.ts, supabase/config.toml)"
+          git commit -m "Auto-merge dev to main for production deployment (excluding src/integrations/supabase/client.ts, src/config/supabase.ts)"
           git push origin main
       
       - name: Setup Supabase CLI
@@ -41,27 +40,13 @@ jobs:
         with:
           version: latest
       
-      - name: Replace Dev Project URLs and Keys with Production
+      - name: Replace Dev Project URLs with Production URLs
         run: |
-          # Replace dev project ID in config.toml
-          if [ -f "supabase/config.toml" ]; then
-            sed -i 's/hfmeoajwhaiobjngpyhe/${{ secrets.SUPABASE_PROD_PROJECT_ID }}/g' supabase/config.toml
-            echo "Updated config.toml with production project ID"
-          fi
-          
           # Replace dev project reference with production in all migration files
           find supabase/migrations -type f -name "*.sql" -exec sed -i 's/hfmeoajwhaiobjngpyhe/${{ secrets.SUPABASE_PROD_PROJECT_ID }}/g' {} +
           
-          # Replace dev anon key with production anon key
-          find supabase/migrations -type f -name "*.sql" -exec sed -i 's|eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhmbWVvYWp3aGFpb2JqbmdweWhlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0ODAzMDMsImV4cCI6MjA3MzA1NjMwM30.iNcFBg4pLt5BW2sFuANtgZ75a12q4KQt-iqYfXD_Vc8|${{ secrets.SUPABASE_PROD_ANON_KEY }}|g' {} +
-          
-          echo "=== Replacements completed ==="
-          echo "Project ID: hfmeoajwhaiobjngpyhe → ${{ secrets.SUPABASE_PROD_PROJECT_ID }}"
-          echo "Anon Key: [DEV_KEY] → [PROD_KEY]"
-          echo ""
-          echo "=== Checking for Supabase URLs ==="
+          echo "=== Checking for replaced URLs ==="
           grep -r "supabase.co" supabase/migrations/ || echo "No Supabase URLs found in migrations"
-      
       
       - name: Link to Production Project
         run: supabase link --project-ref ${{ secrets.SUPABASE_PROD_PROJECT_ID }}
