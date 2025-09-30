@@ -30,9 +30,10 @@ jobs:
           # Restore the excluded files from origin/main (before merge)
           git checkout origin/main -- src/integrations/supabase/client.ts
           git checkout origin/main -- src/config/supabase.ts
+          it checkout origin/main -- supabase/config.toml
           
           # Complete the merge
-          git commit -m "Auto-merge dev to main for production deployment (excluding src/integrations/supabase/client.ts, src/config/supabase.ts)"
+          git commit -m "Auto-merge dev to main for production deployment (excluding src/integrations/supabase/client.ts, src/config/supabase.ts, supabase/config.toml)"
           git push origin main
       
       - name: Setup Supabase CLI
@@ -42,6 +43,12 @@ jobs:
       
       - name: Replace Dev Project URLs and Keys with Production
         run: |
+          # Replace dev project ID in config.toml
+          if [ -f "supabase/config.toml" ]; then
+            sed -i 's/hfmeoajwhaiobjngpyhe/${{ secrets.SUPABASE_PROD_PROJECT_ID }}/g' supabase/config.toml
+            echo "Updated config.toml with production project ID"
+          fi
+          
           # Replace dev project reference with production in all migration files
           find supabase/migrations -type f -name "*.sql" -exec sed -i 's/hfmeoajwhaiobjngpyhe/${{ secrets.SUPABASE_PROD_PROJECT_ID }}/g' {} +
           
