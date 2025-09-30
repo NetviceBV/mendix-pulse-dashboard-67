@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.refresh-mendix-environment-status]
 verify_jwt = false
+
+[functions.send-email-mandrill]
+verify_jwt = false
