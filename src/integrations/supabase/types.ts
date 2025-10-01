@@ -457,6 +457,136 @@ export type Database = {
         }
         Relationships: []
       }
+      owasp_check_results: {
+        Row: {
+          app_id: string
+          checked_at: string
+          created_at: string
+          details: string | null
+          environment_name: string
+          execution_time_ms: number | null
+          id: string
+          owasp_step_id: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          app_id: string
+          checked_at?: string
+          created_at?: string
+          details?: string | null
+          environment_name: string
+          execution_time_ms?: number | null
+          id?: string
+          owasp_step_id: string
+          status: string
+          user_id: string
+        }
+        Update: {
+          app_id?: string
+          checked_at?: string
+          created_at?: string
+          details?: string | null
+          environment_name?: string
+          execution_time_ms?: number | null
+          id?: string
+          owasp_step_id?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "owasp_check_results_owasp_step_id_fkey"
+            columns: ["owasp_step_id"]
+            isOneToOne: false
+            referencedRelation: "owasp_steps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      owasp_items: {
+        Row: {
+          created_at: string
+          description: string | null
+          expiration_months: number
+          id: string
+          is_active: boolean
+          owasp_id: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          expiration_months?: number
+          id?: string
+          is_active?: boolean
+          owasp_id: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          expiration_months?: number
+          id?: string
+          is_active?: boolean
+          owasp_id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      owasp_steps: {
+        Row: {
+          created_at: string
+          edge_function_name: string
+          id: string
+          is_active: boolean
+          owasp_item_id: string
+          step_description: string | null
+          step_name: string
+          step_order: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          edge_function_name: string
+          id?: string
+          is_active?: boolean
+          owasp_item_id: string
+          step_description?: string | null
+          step_name: string
+          step_order?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          edge_function_name?: string
+          id?: string
+          is_active?: boolean
+          owasp_item_id?: string
+          step_description?: string | null
+          step_name?: string
+          step_order?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "owasp_steps_owasp_item_id_fkey"
+            columns: ["owasp_item_id"]
+            isOneToOne: false
+            referencedRelation: "owasp_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -681,6 +811,10 @@ export type Database = {
           target_level: string
           target_user_id: string
         }
+        Returns: undefined
+      }
+      initialize_default_owasp_items: {
+        Args: { target_user_id: string }
         Returns: undefined
       }
       normalize_environment_name: {

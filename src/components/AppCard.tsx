@@ -115,131 +115,12 @@ const AppCard = ({
   const [microflowsData, setMicroflowsData] = useState<MicroflowsResponse | null>(null);
   const [microflowsLoading, setMicroflowsLoading] = useState(false);
   
-  // OWASP Top 10 state with diverse mockup data
-  const [owaspItems, setOwaspItems] = useState<OWASPItem[]>([
-    { 
-      id: 'A01', 
-      title: 'Broken Access Control', 
-      fullTitle: 'Broken Access Control', 
-      status: 'pass', 
-      checkDate: subMonths(new Date(), 2), // Checked 2 months ago
-      details: '', 
-      requiresManualCheck: true, 
-      description: 'Failures related to access control that allow users to act outside their intended permissions.', 
-      owaspUrl: 'https://owasp.org/Top10/A01_2021-Broken_Access_Control/',
-      expirationMonths: 6
-    },
-    { 
-      id: 'A02', 
-      title: 'Cryptographic Failures', 
-      fullTitle: 'Cryptographic Failures', 
-      status: 'pass', 
-      checkDate: subMonths(new Date(), 8), // Checked 8 months ago - EXPIRED
-      details: '', 
-      requiresManualCheck: true, 
-      description: 'Failures related to cryptography which often lead to exposure of sensitive data.', 
-      owaspUrl: 'https://owasp.org/Top10/A02_2021-Cryptographic_Failures/',
-      expirationMonths: 6
-    },
-    { 
-      id: 'A03', 
-      title: 'Injection', 
-      fullTitle: 'Injection', 
-      status: 'fail', 
-      checkDate: subMonths(new Date(), 1), // Recently failed
-      details: 'SQL injection vulnerability detected in user search functionality. Unsanitized input parameters allow direct database queries. Immediate remediation required.', 
-      requiresManualCheck: false, 
-      description: 'Application vulnerabilities to injection attacks such as SQL, NoSQL, OS command injection.', 
-      owaspUrl: 'https://owasp.org/Top10/A03_2021-Injection/',
-      expirationMonths: 3
-    },
-    { 
-      id: 'A04', 
-      title: 'Insecure Design', 
-      fullTitle: 'Insecure Design', 
-      status: 'warning', 
-      checkDate: subMonths(new Date(), 1),
-      details: 'Rate limiting not implemented on authentication endpoints. While no active attacks detected, this creates vulnerability to brute force attempts.', 
-      requiresManualCheck: true, 
-      description: 'Risks related to design and architectural flaws.', 
-      owaspUrl: 'https://owasp.org/Top10/A04_2021-Insecure_Design/',
-      expirationMonths: 6
-    },
-    { 
-      id: 'A05', 
-      title: 'Security Misconfiguration', 
-      fullTitle: 'Security Misconfiguration', 
-      status: 'fail', 
-      checkDate: subMonths(new Date(), 10), // Failed AND expired
-      details: 'Debug mode enabled in production environment. Stack traces exposed to end users. Default admin credentials still in use on staging environment.', 
-      requiresManualCheck: false, 
-      description: 'Missing appropriate security hardening or improperly configured permissions.', 
-      owaspUrl: 'https://owasp.org/Top10/A05_2021-Security_Misconfiguration/',
-      expirationMonths: 3
-    },
-    { 
-      id: 'A06', 
-      title: 'Vulnerable Components', 
-      fullTitle: 'Vulnerable and Outdated Components', 
-      status: 'warning', 
-      checkDate: subMonths(new Date(), 7), // Warning AND expired
-      details: '3 dependencies with known medium-severity CVEs detected. Update to latest versions recommended within 30 days.', 
-      requiresManualCheck: false, 
-      description: 'Using components with known vulnerabilities.', 
-      owaspUrl: 'https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/',
-      expirationMonths: 3
-    },
-    { 
-      id: 'A07', 
-      title: 'Auth & Identity Failures', 
-      fullTitle: 'Identification and Authentication Failures', 
-      status: 'pass', 
-      checkDate: subMonths(new Date(), 1), // Recently passed
-      details: '', 
-      requiresManualCheck: true, 
-      description: 'Failures in confirming user identity, authentication, and session management.', 
-      owaspUrl: 'https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/',
-      expirationMonths: 6
-    },
-    { 
-      id: 'A08', 
-      title: 'Data Integrity Failures', 
-      fullTitle: 'Software and Data Integrity Failures', 
-      status: 'unknown', 
-      checkDate: null, // Never checked
-      details: '', 
-      requiresManualCheck: true, 
-      description: 'Code and infrastructure that does not protect against integrity violations.', 
-      owaspUrl: 'https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/',
-      expirationMonths: 6
-    },
-    { 
-      id: 'A09', 
-      title: 'Security Logging Failures', 
-      fullTitle: 'Security Logging and Monitoring Failures', 
-      status: 'warning', 
-      checkDate: subMonths(new Date(), 2), // Recent warning, still valid
-      details: 'Security event logging incomplete. Failed login attempts not logged. Log retention period set to only 7 days (recommended: 90 days).', 
-      requiresManualCheck: true, 
-      description: 'Insufficient logging and monitoring, coupled with missing or ineffective integration with incident response.', 
-      owaspUrl: 'https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/',
-      expirationMonths: 6
-    },
-    { 
-      id: 'A10', 
-      title: 'Server-Side Request Forgery', 
-      fullTitle: 'Server-Side Request Forgery (SSRF)', 
-      status: 'unknown', 
-      checkDate: null, // Never checked
-      details: '', 
-      requiresManualCheck: false, 
-      description: 'SSRF flaws occur when a web application fetches a remote resource without validating the user-supplied URL.', 
-      owaspUrl: 'https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/',
-      expirationMonths: 3
-    },
-  ]);
+  // OWASP Top 10 state
+  const [owaspItems, setOwaspItems] = useState<OWASPItem[]>([]);
+  const [owaspLoading, setOwaspLoading] = useState(true);
   const [selectedOwaspItem, setSelectedOwaspItem] = useState<OWASPItem | null>(null);
   const [isOwaspDialogOpen, setIsOwaspDialogOpen] = useState(false);
+  const [runningOwaspChecks, setRunningOwaspChecks] = useState(false);
   
   const {
     loading,
@@ -343,6 +224,142 @@ const AppCard = ({
     };
     fetchEnvironmentErrorCounts();
     fetchVulnerabilityCount();
+  }, [app.app_id, app.environments]);
+
+  // Load OWASP data from database
+  useEffect(() => {
+    const loadOwaspData = async () => {
+      if (!app.app_id || !app.environments || app.environments.length === 0) return;
+      
+      try {
+        setOwaspLoading(true);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // Get OWASP items with their steps
+        const { data: items, error: itemsError } = await supabase
+          .from('owasp_items')
+          .select(`
+            id,
+            owasp_id,
+            title,
+            description,
+            expiration_months,
+            is_active
+          `)
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .order('owasp_id');
+
+        if (itemsError) throw itemsError;
+
+        if (!items || items.length === 0) {
+          setOwaspItems([]);
+          return;
+        }
+
+        // Get steps for all items
+        const itemIds = items.map(item => item.id);
+        const { data: steps, error: stepsError } = await supabase
+          .from('owasp_steps')
+          .select('*')
+          .in('owasp_item_id', itemIds)
+          .eq('is_active', true)
+          .order('step_order');
+
+        if (stepsError) throw stepsError;
+
+        // Get latest check results for each step for ALL environments
+        const stepIds = steps?.map(step => step.id) || [];
+        const { data: results, error: resultsError } = await supabase
+          .from('owasp_check_results')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('app_id', app.app_id)
+          .in('owasp_step_id', stepIds)
+          .order('checked_at', { ascending: false });
+
+        if (resultsError) throw resultsError;
+
+        // Group results by step and environment
+        const resultsByStepAndEnv: Record<string, Record<string, any>> = {};
+        results?.forEach(result => {
+          if (!resultsByStepAndEnv[result.owasp_step_id]) {
+            resultsByStepAndEnv[result.owasp_step_id] = {};
+          }
+          if (!resultsByStepAndEnv[result.owasp_step_id][result.environment_name]) {
+            resultsByStepAndEnv[result.owasp_step_id][result.environment_name] = result;
+          }
+        });
+
+        // Build OWASP items with aggregated status
+        const owaspData: OWASPItem[] = items.map(item => {
+          const itemSteps = steps?.filter(s => s.owasp_item_id === item.id) || [];
+          
+          // Calculate overall status from all environments and steps
+          let overallStatus: 'pass' | 'fail' | 'warning' | 'unknown' = 'unknown';
+          let latestCheckDate: Date | null = null;
+          const stepDetails: any[] = [];
+
+          itemSteps.forEach(step => {
+            const stepResultsForAllEnvs = Object.values(resultsByStepAndEnv[step.id] || {});
+            
+            stepResultsForAllEnvs.forEach(result => {
+              const resultDate = new Date(result.checked_at);
+              if (!latestCheckDate || resultDate > latestCheckDate) {
+                latestCheckDate = resultDate;
+              }
+
+              stepDetails.push({
+                step_name: step.step_name,
+                environment: result.environment_name,
+                status: result.status,
+                details: result.details,
+                checked_at: result.checked_at,
+              });
+
+              // Aggregate status: fail if any fail, warning if any warning, pass if all pass
+              if (result.status === 'fail' && overallStatus !== 'fail') {
+                overallStatus = 'fail';
+              } else if (result.status === 'warning' && overallStatus !== 'fail') {
+                overallStatus = 'warning';
+              } else if (result.status === 'pass' && overallStatus === 'unknown') {
+                overallStatus = 'pass';
+              }
+            });
+          });
+
+          // If no results at all, status is unknown
+          if (stepDetails.length === 0) {
+            overallStatus = 'unknown';
+          }
+
+          return {
+            id: item.owasp_id,
+            title: item.title,
+            fullTitle: item.title,
+            status: overallStatus,
+            checkDate: latestCheckDate,
+            details: stepDetails.length > 0 
+              ? `${stepDetails.filter(s => s.status === 'fail').length} failures, ${stepDetails.filter(s => s.status === 'warning').length} warnings across all environments`
+              : '',
+            requiresManualCheck: false,
+            description: item.description || '',
+            owaspUrl: `https://owasp.org/Top10/${item.owasp_id}_2021/`,
+            expirationMonths: item.expiration_months,
+            steps: stepDetails,
+          };
+        });
+
+        setOwaspItems(owaspData);
+      } catch (error) {
+        console.error('Error loading OWASP data:', error);
+      } finally {
+        setOwaspLoading(false);
+      }
+    };
+
+    loadOwaspData();
   }, [app.app_id, app.environments]);
 
   // Real-time subscription for environment error counts
@@ -515,6 +532,57 @@ const AppCard = ({
     }
   };
 
+  const handleRunOwaspChecks = async () => {
+    if (!app.app_id || !app.environments || runningOwaspChecks) return;
+
+    try {
+      setRunningOwaspChecks(true);
+      toast({
+        title: "Running OWASP Checks",
+        description: "Security checks are being executed for all environments...",
+      });
+
+      // Run checks for each environment
+      for (const env of app.environments) {
+        const { error } = await supabase.functions.invoke('run-owasp-checks', {
+          body: {
+            app_id: app.app_id,
+            environment_name: env.environment_name,
+            credential_id: app.credential_id,
+          },
+        });
+
+        if (error) {
+          console.error(`Error running OWASP checks for ${env.environment_name}:`, error);
+        }
+      }
+
+      toast({
+        title: "OWASP Checks Complete",
+        description: "Security checks have been completed. Refreshing results...",
+      });
+
+      // Reload OWASP data
+      const loadOwaspEvent = new Event('reload-owasp');
+      window.dispatchEvent(loadOwaspEvent);
+      
+      // Force reload by changing app_id temporarily
+      setOwaspItems([]);
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+    } catch (error) {
+      console.error('Error running OWASP checks:', error);
+      toast({
+        title: "Error",
+        description: "Failed to run OWASP checks. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setRunningOwaspChecks(false);
+    }
+  };
+
   const getOwaspStatusIcon = (item: OWASPItem) => {
     const effectiveStatus = getOwaspEffectiveStatus(item);
     switch (effectiveStatus) {
@@ -586,7 +654,35 @@ const AppCard = ({
               <Shield className="h-4 w-4" />
               OWASP Top 10 Security Checks
             </h4>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleRunOwaspChecks}
+              disabled={runningOwaspChecks || owaspLoading}
+              className="h-7"
+            >
+              {runningOwaspChecks ? (
+                <>
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  Running...
+                </>
+              ) : (
+                <>
+                  <Play className="h-3 w-3 mr-1" />
+                  Run Checks
+                </>
+              )}
+            </Button>
           </div>
+          {owaspLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : owaspItems.length === 0 ? (
+            <div className="text-center py-6 text-sm text-muted-foreground">
+              No OWASP checks configured. Configure them in Settings.
+            </div>
+          ) : (
           <div className="grid grid-cols-2 gap-2">
             {owaspItems.map((item) => {
               const effectiveStatus = getOwaspEffectiveStatus(item);
@@ -625,6 +721,7 @@ const AppCard = ({
               );
             })}
           </div>
+          )}
         </div>
 
         {app.environments && app.environments.length > 0 && <div className="space-y-2">

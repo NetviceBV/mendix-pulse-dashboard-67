@@ -15,6 +15,13 @@ export interface OWASPItem {
   description: string;
   owaspUrl: string;
   expirationMonths: number;
+  steps?: Array<{
+    step_name: string;
+    environment: string;
+    status: string;
+    details: string;
+    checked_at: string;
+  }>;
 }
 
 interface OWASPDetailsDialogProps {
@@ -112,6 +119,45 @@ export function OWASPDetailsDialog({ open, onOpenChange, owaspItem }: OWASPDetai
             <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
               <h4 className="font-semibold text-yellow-600 mb-2">Warning Details</h4>
               <p className="text-sm text-muted-foreground">{owaspItem.details}</p>
+            </div>
+          )}
+
+          {owaspItem.steps && owaspItem.steps.length > 0 && (
+            <div>
+              <h4 className="font-semibold mb-3">Step Results by Environment</h4>
+              <div className="space-y-2">
+                {owaspItem.steps.map((step, index) => {
+                  const stepStatusConfig = statusConfig[step.status as keyof typeof statusConfig] || statusConfig.unknown;
+                  const StepIcon = stepStatusConfig.icon;
+                  
+                  return (
+                    <div key={index} className="border rounded-lg p-3">
+                      <div className="flex items-start gap-2">
+                        <div className={`p-1.5 rounded ${stepStatusConfig.bgColor} mt-0.5`}>
+                          <StepIcon className={`h-4 w-4 ${stepStatusConfig.color}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium text-sm">{step.step_name}</span>
+                            <Badge variant="outline" className="text-xs">
+                              {step.environment}
+                            </Badge>
+                          </div>
+                          {step.details && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {step.details}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
+                            <Calendar className="h-3 w-3" />
+                            <span>{format(new Date(step.checked_at), 'MMM d, yyyy HH:mm')}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
