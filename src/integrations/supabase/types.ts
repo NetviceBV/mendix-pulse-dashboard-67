@@ -113,6 +113,48 @@ export type Database = {
         }
         Relationships: []
       }
+      edge_functions: {
+        Row: {
+          category: string
+          created_at: string
+          description: string | null
+          display_name: string
+          expected_parameters: Json | null
+          function_name: string
+          id: string
+          is_active: boolean
+          is_owasp_compatible: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          display_name: string
+          expected_parameters?: Json | null
+          function_name: string
+          id?: string
+          is_active?: boolean
+          is_owasp_compatible?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          display_name?: string
+          expected_parameters?: Json | null
+          function_name?: string
+          id?: string
+          is_active?: boolean
+          is_owasp_compatible?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       email_templates: {
         Row: {
           created_at: string
@@ -814,6 +856,10 @@ export type Database = {
         Returns: undefined
       }
       initialize_default_owasp_items: {
+        Args: { target_user_id: string }
+        Returns: undefined
+      }
+      initialize_edge_functions: {
         Args: { target_user_id: string }
         Returns: undefined
       }
