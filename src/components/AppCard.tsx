@@ -14,6 +14,7 @@ import { useMendixOperations } from "@/hooks/useMendixOperations";
 import { MicroflowsDialog, type MicroflowsResponse } from "./MicroflowsDialog";
 import { toast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { OWASPDetailsDialog, OWASPItem } from "./OWASPDetailsDialog";
 export interface MendixEnvironment {
   id: string;
   environment_id: string | null;
@@ -113,6 +114,23 @@ const AppCard = ({
   const [microflowsDialogOpen, setMicroflowsDialogOpen] = useState(false);
   const [microflowsData, setMicroflowsData] = useState<MicroflowsResponse | null>(null);
   const [microflowsLoading, setMicroflowsLoading] = useState(false);
+  
+  // OWASP Top 10 state
+  const [owaspItems, setOwaspItems] = useState<OWASPItem[]>([
+    { id: 'A01', title: 'Broken Access Control', fullTitle: 'Broken Access Control', status: 'unknown', checkDate: null, details: '', requiresManualCheck: true, description: 'Failures related to access control that allow users to act outside their intended permissions.', owaspUrl: 'https://owasp.org/Top10/A01_2021-Broken_Access_Control/' },
+    { id: 'A02', title: 'Cryptographic Failures', fullTitle: 'Cryptographic Failures', status: 'unknown', checkDate: null, details: '', requiresManualCheck: true, description: 'Failures related to cryptography which often lead to exposure of sensitive data.', owaspUrl: 'https://owasp.org/Top10/A02_2021-Cryptographic_Failures/' },
+    { id: 'A03', title: 'Injection', fullTitle: 'Injection', status: 'unknown', checkDate: null, details: '', requiresManualCheck: false, description: 'Application vulnerabilities to injection attacks such as SQL, NoSQL, OS command injection.', owaspUrl: 'https://owasp.org/Top10/A03_2021-Injection/' },
+    { id: 'A04', title: 'Insecure Design', fullTitle: 'Insecure Design', status: 'unknown', checkDate: null, details: '', requiresManualCheck: true, description: 'Risks related to design and architectural flaws.', owaspUrl: 'https://owasp.org/Top10/A04_2021-Insecure_Design/' },
+    { id: 'A05', title: 'Security Misconfiguration', fullTitle: 'Security Misconfiguration', status: 'unknown', checkDate: null, details: '', requiresManualCheck: false, description: 'Missing appropriate security hardening or improperly configured permissions.', owaspUrl: 'https://owasp.org/Top10/A05_2021-Security_Misconfiguration/' },
+    { id: 'A06', title: 'Vulnerable Components', fullTitle: 'Vulnerable and Outdated Components', status: 'unknown', checkDate: null, details: '', requiresManualCheck: false, description: 'Using components with known vulnerabilities.', owaspUrl: 'https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/' },
+    { id: 'A07', title: 'Auth & Identity Failures', fullTitle: 'Identification and Authentication Failures', status: 'unknown', checkDate: null, details: '', requiresManualCheck: true, description: 'Failures in confirming user identity, authentication, and session management.', owaspUrl: 'https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/' },
+    { id: 'A08', title: 'Data Integrity Failures', fullTitle: 'Software and Data Integrity Failures', status: 'unknown', checkDate: null, details: '', requiresManualCheck: true, description: 'Code and infrastructure that does not protect against integrity violations.', owaspUrl: 'https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/' },
+    { id: 'A09', title: 'Security Logging Failures', fullTitle: 'Security Logging and Monitoring Failures', status: 'unknown', checkDate: null, details: '', requiresManualCheck: true, description: 'Insufficient logging and monitoring, coupled with missing or ineffective integration with incident response.', owaspUrl: 'https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/' },
+    { id: 'A10', title: 'Server-Side Request Forgery', fullTitle: 'Server-Side Request Forgery (SSRF)', status: 'unknown', checkDate: null, details: '', requiresManualCheck: false, description: 'SSRF flaws occur when a web application fetches a remote resource without validating the user-supplied URL.', owaspUrl: 'https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/' },
+  ]);
+  const [selectedOwaspItem, setSelectedOwaspItem] = useState<OWASPItem | null>(null);
+  const [isOwaspDialogOpen, setIsOwaspDialogOpen] = useState(false);
+  
   const {
     loading,
     startEnvironment,
@@ -368,6 +386,26 @@ const AppCard = ({
       });
     }
   };
+
+  const handleOwaspItemClick = (item: OWASPItem) => {
+    if (item.status === 'fail' || item.status === 'warning') {
+      setSelectedOwaspItem(item);
+      setIsOwaspDialogOpen(true);
+    }
+  };
+
+  const getOwaspStatusIcon = (status: OWASPItem['status']) => {
+    switch (status) {
+      case 'pass':
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'fail':
+        return <XCircle className="h-4 w-4 text-red-500" />;
+      case 'warning':
+        return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+      default:
+        return <div className="h-4 w-4 rounded-full bg-muted" />;
+    }
+  };
   return <Card className={cn("border-border hover:shadow-glow transition-all duration-300 cursor-pointer group",
   // Solid colored backgrounds based on status
   app.status === "healthy" && "bg-gradient-card", app.status === "warning" && "bg-error/15 border-error/30 shadow-lg shadow-error/20", app.status === "error" && "bg-error/25 border-error/50 shadow-xl shadow-error/40", app.status === "offline" && "bg-muted/50 border-muted-foreground/20",
@@ -419,19 +457,48 @@ const AppCard = ({
       </CardHeader>
 
       <CardContent className="pt-0">
-        {/* Vulnerability Summary Tile */}
-        <div className="mb-4 p-3 rounded-lg border cursor-pointer hover:bg-muted/30 transition-colors" onClick={handleVulnerabilityTileClick}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Shield className={cn("w-4 h-4", vulnerabilityCount > 0 ? "text-destructive" : "text-green-600")} />
-              <span className="text-sm font-medium">Vulnerabilities</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant={vulnerabilityCount > 0 ? "destructive" : "secondary"} className="text-xs">
-                {vulnerabilityCount} Vulnerable
-              </Badge>
-              <ExternalLink className="w-3 h-3 text-muted-foreground" />
-            </div>
+        {/* OWASP Top 10 Grid */}
+        <div className="mb-4 p-4 bg-muted/50 rounded-lg border">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-medium flex items-center gap-2">
+              <Shield className="h-4 w-4" />
+              OWASP Top 10 Security Checks
+            </h4>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {owaspItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => handleOwaspItemClick(item)}
+                disabled={item.status !== 'fail' && item.status !== 'warning'}
+                className={cn(
+                  "flex items-start gap-2 p-2 rounded-md border text-left transition-colors",
+                  (item.status === 'fail' || item.status === 'warning') && "hover:bg-accent cursor-pointer",
+                  item.status !== 'fail' && item.status !== 'warning' && "cursor-default",
+                  item.status === 'pass' && "bg-green-500/5 border-green-500/20",
+                  item.status === 'fail' && "bg-red-500/5 border-red-500/20",
+                  item.status === 'warning' && "bg-yellow-500/5 border-yellow-500/20",
+                  item.status === 'unknown' && "bg-background"
+                )}
+              >
+                <div className="mt-0.5">
+                  {getOwaspStatusIcon(item.status)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium text-foreground truncate">
+                    {item.id}
+                  </div>
+                  <div className="text-xs text-muted-foreground truncate">
+                    {item.title}
+                  </div>
+                  {item.checkDate && (
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      {format(item.checkDate, 'MMM d')}
+                    </div>
+                  )}
+                </div>
+              </button>
+            ))}
           </div>
         </div>
 
@@ -682,6 +749,13 @@ const AppCard = ({
       setSelectedEnvironmentForScan(null);
       setShowVulnerabilityResults(false);
     }} appId={selectedEnvironmentForScan.appId} environmentName={selectedEnvironmentForScan.name} appName={app.app_name} showResultsOnOpen={showVulnerabilityResults} />}
+
+      {/* OWASP Details Dialog */}
+      <OWASPDetailsDialog
+        open={isOwaspDialogOpen}
+        onOpenChange={setIsOwaspDialogOpen}
+        owaspItem={selectedOwaspItem}
+      />
     </Card>;
 };
 export default AppCard;
