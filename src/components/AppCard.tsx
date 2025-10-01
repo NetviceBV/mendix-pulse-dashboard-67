@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { format } from "date-fns";
+import { format, differenceInMonths, subMonths } from "date-fns";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -115,18 +115,128 @@ const AppCard = ({
   const [microflowsData, setMicroflowsData] = useState<MicroflowsResponse | null>(null);
   const [microflowsLoading, setMicroflowsLoading] = useState(false);
   
-  // OWASP Top 10 state
+  // OWASP Top 10 state with diverse mockup data
   const [owaspItems, setOwaspItems] = useState<OWASPItem[]>([
-    { id: 'A01', title: 'Broken Access Control', fullTitle: 'Broken Access Control', status: 'unknown', checkDate: null, details: '', requiresManualCheck: true, description: 'Failures related to access control that allow users to act outside their intended permissions.', owaspUrl: 'https://owasp.org/Top10/A01_2021-Broken_Access_Control/' },
-    { id: 'A02', title: 'Cryptographic Failures', fullTitle: 'Cryptographic Failures', status: 'unknown', checkDate: null, details: '', requiresManualCheck: true, description: 'Failures related to cryptography which often lead to exposure of sensitive data.', owaspUrl: 'https://owasp.org/Top10/A02_2021-Cryptographic_Failures/' },
-    { id: 'A03', title: 'Injection', fullTitle: 'Injection', status: 'unknown', checkDate: null, details: '', requiresManualCheck: false, description: 'Application vulnerabilities to injection attacks such as SQL, NoSQL, OS command injection.', owaspUrl: 'https://owasp.org/Top10/A03_2021-Injection/' },
-    { id: 'A04', title: 'Insecure Design', fullTitle: 'Insecure Design', status: 'unknown', checkDate: null, details: '', requiresManualCheck: true, description: 'Risks related to design and architectural flaws.', owaspUrl: 'https://owasp.org/Top10/A04_2021-Insecure_Design/' },
-    { id: 'A05', title: 'Security Misconfiguration', fullTitle: 'Security Misconfiguration', status: 'unknown', checkDate: null, details: '', requiresManualCheck: false, description: 'Missing appropriate security hardening or improperly configured permissions.', owaspUrl: 'https://owasp.org/Top10/A05_2021-Security_Misconfiguration/' },
-    { id: 'A06', title: 'Vulnerable Components', fullTitle: 'Vulnerable and Outdated Components', status: 'unknown', checkDate: null, details: '', requiresManualCheck: false, description: 'Using components with known vulnerabilities.', owaspUrl: 'https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/' },
-    { id: 'A07', title: 'Auth & Identity Failures', fullTitle: 'Identification and Authentication Failures', status: 'unknown', checkDate: null, details: '', requiresManualCheck: true, description: 'Failures in confirming user identity, authentication, and session management.', owaspUrl: 'https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/' },
-    { id: 'A08', title: 'Data Integrity Failures', fullTitle: 'Software and Data Integrity Failures', status: 'unknown', checkDate: null, details: '', requiresManualCheck: true, description: 'Code and infrastructure that does not protect against integrity violations.', owaspUrl: 'https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/' },
-    { id: 'A09', title: 'Security Logging Failures', fullTitle: 'Security Logging and Monitoring Failures', status: 'unknown', checkDate: null, details: '', requiresManualCheck: true, description: 'Insufficient logging and monitoring, coupled with missing or ineffective integration with incident response.', owaspUrl: 'https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/' },
-    { id: 'A10', title: 'Server-Side Request Forgery', fullTitle: 'Server-Side Request Forgery (SSRF)', status: 'unknown', checkDate: null, details: '', requiresManualCheck: false, description: 'SSRF flaws occur when a web application fetches a remote resource without validating the user-supplied URL.', owaspUrl: 'https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/' },
+    { 
+      id: 'A01', 
+      title: 'Broken Access Control', 
+      fullTitle: 'Broken Access Control', 
+      status: 'pass', 
+      checkDate: subMonths(new Date(), 2), // Checked 2 months ago
+      details: '', 
+      requiresManualCheck: true, 
+      description: 'Failures related to access control that allow users to act outside their intended permissions.', 
+      owaspUrl: 'https://owasp.org/Top10/A01_2021-Broken_Access_Control/',
+      expirationMonths: 6
+    },
+    { 
+      id: 'A02', 
+      title: 'Cryptographic Failures', 
+      fullTitle: 'Cryptographic Failures', 
+      status: 'pass', 
+      checkDate: subMonths(new Date(), 8), // Checked 8 months ago - EXPIRED
+      details: '', 
+      requiresManualCheck: true, 
+      description: 'Failures related to cryptography which often lead to exposure of sensitive data.', 
+      owaspUrl: 'https://owasp.org/Top10/A02_2021-Cryptographic_Failures/',
+      expirationMonths: 6
+    },
+    { 
+      id: 'A03', 
+      title: 'Injection', 
+      fullTitle: 'Injection', 
+      status: 'fail', 
+      checkDate: subMonths(new Date(), 1), // Recently failed
+      details: 'SQL injection vulnerability detected in user search functionality. Unsanitized input parameters allow direct database queries. Immediate remediation required.', 
+      requiresManualCheck: false, 
+      description: 'Application vulnerabilities to injection attacks such as SQL, NoSQL, OS command injection.', 
+      owaspUrl: 'https://owasp.org/Top10/A03_2021-Injection/',
+      expirationMonths: 3
+    },
+    { 
+      id: 'A04', 
+      title: 'Insecure Design', 
+      fullTitle: 'Insecure Design', 
+      status: 'warning', 
+      checkDate: subMonths(new Date(), 1),
+      details: 'Rate limiting not implemented on authentication endpoints. While no active attacks detected, this creates vulnerability to brute force attempts.', 
+      requiresManualCheck: true, 
+      description: 'Risks related to design and architectural flaws.', 
+      owaspUrl: 'https://owasp.org/Top10/A04_2021-Insecure_Design/',
+      expirationMonths: 6
+    },
+    { 
+      id: 'A05', 
+      title: 'Security Misconfiguration', 
+      fullTitle: 'Security Misconfiguration', 
+      status: 'fail', 
+      checkDate: subMonths(new Date(), 10), // Failed AND expired
+      details: 'Debug mode enabled in production environment. Stack traces exposed to end users. Default admin credentials still in use on staging environment.', 
+      requiresManualCheck: false, 
+      description: 'Missing appropriate security hardening or improperly configured permissions.', 
+      owaspUrl: 'https://owasp.org/Top10/A05_2021-Security_Misconfiguration/',
+      expirationMonths: 3
+    },
+    { 
+      id: 'A06', 
+      title: 'Vulnerable Components', 
+      fullTitle: 'Vulnerable and Outdated Components', 
+      status: 'warning', 
+      checkDate: subMonths(new Date(), 7), // Warning AND expired
+      details: '3 dependencies with known medium-severity CVEs detected. Update to latest versions recommended within 30 days.', 
+      requiresManualCheck: false, 
+      description: 'Using components with known vulnerabilities.', 
+      owaspUrl: 'https://owasp.org/Top10/A06_2021-Vulnerable_and_Outdated_Components/',
+      expirationMonths: 3
+    },
+    { 
+      id: 'A07', 
+      title: 'Auth & Identity Failures', 
+      fullTitle: 'Identification and Authentication Failures', 
+      status: 'pass', 
+      checkDate: subMonths(new Date(), 1), // Recently passed
+      details: '', 
+      requiresManualCheck: true, 
+      description: 'Failures in confirming user identity, authentication, and session management.', 
+      owaspUrl: 'https://owasp.org/Top10/A07_2021-Identification_and_Authentication_Failures/',
+      expirationMonths: 6
+    },
+    { 
+      id: 'A08', 
+      title: 'Data Integrity Failures', 
+      fullTitle: 'Software and Data Integrity Failures', 
+      status: 'unknown', 
+      checkDate: null, // Never checked
+      details: '', 
+      requiresManualCheck: true, 
+      description: 'Code and infrastructure that does not protect against integrity violations.', 
+      owaspUrl: 'https://owasp.org/Top10/A08_2021-Software_and_Data_Integrity_Failures/',
+      expirationMonths: 6
+    },
+    { 
+      id: 'A09', 
+      title: 'Security Logging Failures', 
+      fullTitle: 'Security Logging and Monitoring Failures', 
+      status: 'warning', 
+      checkDate: subMonths(new Date(), 2), // Recent warning, still valid
+      details: 'Security event logging incomplete. Failed login attempts not logged. Log retention period set to only 7 days (recommended: 90 days).', 
+      requiresManualCheck: true, 
+      description: 'Insufficient logging and monitoring, coupled with missing or ineffective integration with incident response.', 
+      owaspUrl: 'https://owasp.org/Top10/A09_2021-Security_Logging_and_Monitoring_Failures/',
+      expirationMonths: 6
+    },
+    { 
+      id: 'A10', 
+      title: 'Server-Side Request Forgery', 
+      fullTitle: 'Server-Side Request Forgery (SSRF)', 
+      status: 'unknown', 
+      checkDate: null, // Never checked
+      details: '', 
+      requiresManualCheck: false, 
+      description: 'SSRF flaws occur when a web application fetches a remote resource without validating the user-supplied URL.', 
+      owaspUrl: 'https://owasp.org/Top10/A10_2021-Server-Side_Request_Forgery_%28SSRF%29/',
+      expirationMonths: 3
+    },
   ]);
   const [selectedOwaspItem, setSelectedOwaspItem] = useState<OWASPItem | null>(null);
   const [isOwaspDialogOpen, setIsOwaspDialogOpen] = useState(false);
@@ -387,15 +497,27 @@ const AppCard = ({
     }
   };
 
+  const getOwaspEffectiveStatus = (item: OWASPItem): 'pass' | 'fail' | 'warning' | 'unknown' => {
+    if (item.status === 'unknown') return 'unknown';
+    
+    const isExpired = item.checkDate 
+      ? differenceInMonths(new Date(), item.checkDate) >= item.expirationMonths
+      : true;
+    
+    return isExpired ? 'fail' : item.status;
+  };
+
   const handleOwaspItemClick = (item: OWASPItem) => {
-    if (item.status === 'fail' || item.status === 'warning') {
+    const effectiveStatus = getOwaspEffectiveStatus(item);
+    if (effectiveStatus === 'fail' || effectiveStatus === 'warning') {
       setSelectedOwaspItem(item);
       setIsOwaspDialogOpen(true);
     }
   };
 
-  const getOwaspStatusIcon = (status: OWASPItem['status']) => {
-    switch (status) {
+  const getOwaspStatusIcon = (item: OWASPItem) => {
+    const effectiveStatus = getOwaspEffectiveStatus(item);
+    switch (effectiveStatus) {
       case 'pass':
         return <CheckCircle className="h-4 w-4 text-green-500" />;
       case 'fail':
@@ -466,23 +588,25 @@ const AppCard = ({
             </h4>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            {owaspItems.map((item) => (
+            {owaspItems.map((item) => {
+              const effectiveStatus = getOwaspEffectiveStatus(item);
+              return (
               <button
                 key={item.id}
                 onClick={() => handleOwaspItemClick(item)}
-                disabled={item.status !== 'fail' && item.status !== 'warning'}
+                disabled={effectiveStatus !== 'fail' && effectiveStatus !== 'warning'}
                 className={cn(
                   "flex items-start gap-2 p-2 rounded-md border text-left transition-colors",
-                  (item.status === 'fail' || item.status === 'warning') && "hover:bg-accent cursor-pointer",
-                  item.status !== 'fail' && item.status !== 'warning' && "cursor-default",
-                  item.status === 'pass' && "bg-green-500/5 border-green-500/20",
-                  item.status === 'fail' && "bg-red-500/5 border-red-500/20",
-                  item.status === 'warning' && "bg-yellow-500/5 border-yellow-500/20",
-                  item.status === 'unknown' && "bg-background"
+                  (effectiveStatus === 'fail' || effectiveStatus === 'warning') && "hover:bg-accent cursor-pointer",
+                  effectiveStatus !== 'fail' && effectiveStatus !== 'warning' && "cursor-default",
+                  effectiveStatus === 'pass' && "bg-green-500/5 border-green-500/20",
+                  effectiveStatus === 'fail' && "bg-red-500/5 border-red-500/20",
+                  effectiveStatus === 'warning' && "bg-yellow-500/5 border-yellow-500/20",
+                  effectiveStatus === 'unknown' && "bg-background"
                 )}
               >
                 <div className="mt-0.5">
-                  {getOwaspStatusIcon(item.status)}
+                  {getOwaspStatusIcon(item)}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-medium text-foreground truncate">
@@ -498,7 +622,8 @@ const AppCard = ({
                   )}
                 </div>
               </button>
-            ))}
+              );
+            })}
           </div>
         </div>
 
