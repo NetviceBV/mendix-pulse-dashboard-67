@@ -527,7 +527,8 @@ const AppCard = ({
 
   const handleOwaspItemClick = (item: OWASPItem) => {
     const effectiveStatus = getOwaspEffectiveStatus(item);
-    if (effectiveStatus === 'fail' || effectiveStatus === 'warning') {
+    // Only open dialog if item has steps and isn't unknown status
+    if (effectiveStatus !== 'unknown' && item.steps && item.steps.length > 0) {
       setSelectedOwaspItem(item);
       setIsOwaspDialogOpen(true);
     }
