@@ -121,6 +121,7 @@ const AppCard = ({
   const [selectedOwaspItem, setSelectedOwaspItem] = useState<OWASPItem | null>(null);
   const [isOwaspDialogOpen, setIsOwaspDialogOpen] = useState(false);
   const [runningOwaspChecks, setRunningOwaspChecks] = useState(false);
+  const [owaspReloadTrigger, setOwaspReloadTrigger] = useState(0);
   
   const {
     loading,
@@ -361,7 +362,7 @@ const AppCard = ({
     };
 
     loadOwaspData();
-  }, [app.app_id, app.environments]);
+  }, [app.app_id, app.environments, owaspReloadTrigger]);
 
   // Real-time subscription for environment error counts
   useEffect(() => {
@@ -585,15 +586,8 @@ const AppCard = ({
         description: "Security checks have been completed. Refreshing results...",
       });
 
-      // Reload OWASP data
-      const loadOwaspEvent = new Event('reload-owasp');
-      window.dispatchEvent(loadOwaspEvent);
-      
-      // Force reload by changing app_id temporarily
-      setOwaspItems([]);
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
+      // Trigger OWASP data reload without page refresh
+      setOwaspReloadTrigger(prev => prev + 1);
     } catch (error) {
       console.error('Error running OWASP checks:', error);
       toast({
