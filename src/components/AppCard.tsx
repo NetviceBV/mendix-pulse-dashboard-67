@@ -546,7 +546,7 @@ const AppCard = ({
       for (const env of app.environments) {
         const { error } = await supabase.functions.invoke('run-owasp-checks', {
           body: {
-            app_id: app.app_id,
+            project_id: app.project_id,
             environment_name: env.environment_name,
             credential_id: app.credential_id,
           },

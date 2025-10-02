@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.keep-alive-heartbeat]
 verify_jwt = false
+
+[functions.owasp-check-endpoint-restdoc]
+verify_jwt = false

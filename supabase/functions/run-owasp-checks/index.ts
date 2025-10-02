@@ -37,13 +37,13 @@ Deno.serve(async (req) => {
       throw new Error('Invalid user token');
     }
 
-    const { app_id, environment_name, credential_id } = await req.json();
+    const { project_id, environment_name, credential_id } = await req.json();
 
-    if (!app_id || !environment_name) {
-      throw new Error('app_id and environment_name are required');
+    if (!project_id || !environment_name) {
+      throw new Error('project_id and environment_name are required');
     }
 
-    console.log(`Starting OWASP checks for app: ${app_id}, environment: ${environment_name}`);
+    console.log(`Starting OWASP checks for project: ${project_id}, environment: ${environment_name}`);
 
     // Get active OWASP items and their steps
     const { data: owaspItems, error: itemsError } = await supabase
@@ -98,7 +98,7 @@ Deno.serve(async (req) => {
             step.edge_function_name,
             {
               body: {
-                app_id,
+                project_id,
                 environment_name,
                 credential_id,
                 user_id: user.id,
@@ -144,7 +144,7 @@ Deno.serve(async (req) => {
           .from('owasp_check_results')
           .insert({
             user_id: user.id,
-            app_id,
+            app_id: project_id,
             environment_name,
             owasp_step_id: step.id,
             status: stepResult.status,
