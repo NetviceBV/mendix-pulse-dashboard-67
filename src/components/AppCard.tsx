@@ -712,11 +712,11 @@ const AppCard = ({
               <button
                 key={item.id}
                 onClick={() => handleOwaspItemClick(item)}
-                disabled={effectiveStatus !== 'fail' && effectiveStatus !== 'warning'}
+                disabled={effectiveStatus === 'unknown' || !item.steps || item.steps.length === 0}
                 className={cn(
                   "flex items-start gap-2 p-2 rounded-md border text-left transition-colors",
-                  (effectiveStatus === 'fail' || effectiveStatus === 'warning') && "hover:bg-accent cursor-pointer",
-                  effectiveStatus !== 'fail' && effectiveStatus !== 'warning' && "cursor-default",
+                  effectiveStatus !== 'unknown' && item.steps && item.steps.length > 0 && "hover:bg-accent cursor-pointer",
+                  (effectiveStatus === 'unknown' || !item.steps || item.steps.length === 0) && "cursor-default",
                   effectiveStatus === 'pass' && "bg-green-500/5 border-green-500/20",
                   effectiveStatus === 'fail' && "bg-red-500/5 border-red-500/20",
                   effectiveStatus === 'warning' && "bg-yellow-500/5 border-yellow-500/20",

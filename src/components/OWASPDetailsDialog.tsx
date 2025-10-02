@@ -122,6 +122,18 @@ export function OWASPDetailsDialog({ open, onOpenChange, owaspItem }: OWASPDetai
             </div>
           )}
 
+          {!isExpired && owaspItem.status === 'pass' && (
+            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
+              <h4 className="font-semibold text-green-600 mb-2 flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4" />
+                Security Check Passed
+              </h4>
+              <p className="text-sm text-muted-foreground">
+                All automated checks for this OWASP item have passed successfully. Review the step details below for complete information.
+              </p>
+            </div>
+          )}
+
           {owaspItem.steps && owaspItem.steps.length > 0 && (
             <div>
               <h4 className="font-semibold mb-3">Step Results by Environment</h4>
