@@ -270,12 +270,13 @@ const AppCard = ({
         if (stepsError) throw stepsError;
 
         // Get latest check results for each step for ALL environments
+        // Use project_id instead of app_id as that's what's stored in owasp_check_results
         const stepIds = steps?.map(step => step.id) || [];
         const { data: results, error: resultsError } = await supabase
           .from('owasp_check_results')
           .select('*')
           .eq('user_id', user.id)
-          .eq('app_id', app.app_id)
+          .eq('app_id', app.project_id)
           .in('owasp_step_id', stepIds)
           .order('checked_at', { ascending: false });
 
@@ -537,24 +538,45 @@ const AppCard = ({
 
     try {
       setRunningOwaspChecks(true);
+      
+      // Find Production environment
+      const productionEnv = app.environments?.find(
+        env => env.environment_name.toLowerCase() === 'production'
+      );
+
+      if (!productionEnv) {
+        toast({
+          title: "No Production Environment",
+          description: "OWASP checks can only be run on Production environments.",
+          variant: "destructive",
+        });
+        setRunningOwaspChecks(false);
+        return;
+      }
+
       toast({
         title: "Running OWASP Checks",
-        description: "Security checks are being executed for all environments...",
+        description: "Security checks are being executed for Production environment...",
       });
 
-      // Run checks for each environment
-      for (const env of app.environments) {
-        const { error } = await supabase.functions.invoke('run-owasp-checks', {
-          body: {
-            project_id: app.project_id,
-            environment_name: env.environment_name,
-            credential_id: app.credential_id,
-          },
-        });
+      // Run checks only for Production environment
+      const { error } = await supabase.functions.invoke('run-owasp-checks', {
+        body: {
+          project_id: app.project_id,
+          environment_name: productionEnv.environment_name,
+          credential_id: app.credential_id,
+        },
+      });
 
-        if (error) {
-          console.error(`Error running OWASP checks for ${env.environment_name}:`, error);
-        }
+      if (error) {
+        console.error(`Error running OWASP checks for Production:`, error);
+        toast({
+          title: "Error",
+          description: "Failed to run OWASP checks. Please try again.",
+          variant: "destructive",
+        });
+        setRunningOwaspChecks(false);
+        return;
       }
 
       toast({

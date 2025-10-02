@@ -43,6 +43,20 @@ Deno.serve(async (req) => {
       throw new Error('project_id and environment_name are required');
     }
 
+    // Validate that we're only processing Production environments
+    if (environment_name.toLowerCase() !== 'production') {
+      return new Response(
+        JSON.stringify({
+          error: 'OWASP checks can only be run on Production environments',
+          environment_received: environment_name
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
+    }
+
     console.log(`Starting OWASP checks for project: ${project_id}, environment: ${environment_name}`);
 
     // Get active OWASP items and their steps
