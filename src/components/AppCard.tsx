@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { format } from "date-fns";
+import { format, differenceInMonths, subMonths } from "date-fns";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import { useMendixOperations } from "@/hooks/useMendixOperations";
 import { MicroflowsDialog, type MicroflowsResponse } from "./MicroflowsDialog";
 import { toast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { OWASPDetailsDialog, OWASPItem } from "./OWASPDetailsDialog";
 export interface MendixEnvironment {
   id: string;
   environment_id: string | null;
@@ -113,6 +114,15 @@ const AppCard = ({
   const [microflowsDialogOpen, setMicroflowsDialogOpen] = useState(false);
   const [microflowsData, setMicroflowsData] = useState<MicroflowsResponse | null>(null);
   const [microflowsLoading, setMicroflowsLoading] = useState(false);
+  
+  // OWASP Top 10 state
+  const [owaspItems, setOwaspItems] = useState<OWASPItem[]>([]);
+  const [owaspLoading, setOwaspLoading] = useState(true);
+  const [selectedOwaspItem, setSelectedOwaspItem] = useState<OWASPItem | null>(null);
+  const [isOwaspDialogOpen, setIsOwaspDialogOpen] = useState(false);
+  const [runningOwaspChecks, setRunningOwaspChecks] = useState(false);
+  const [owaspReloadTrigger, setOwaspReloadTrigger] = useState(0);
+  
   const {
     loading,
     startEnvironment,
@@ -216,6 +226,143 @@ const AppCard = ({
     fetchEnvironmentErrorCounts();
     fetchVulnerabilityCount();
   }, [app.app_id, app.environments]);
+
+  // Load OWASP data from database
+  useEffect(() => {
+    const loadOwaspData = async () => {
+      if (!app.app_id || !app.environments || app.environments.length === 0) return;
+      
+      try {
+        setOwaspLoading(true);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // Get OWASP items with their steps
+        const { data: items, error: itemsError } = await supabase
+          .from('owasp_items')
+          .select(`
+            id,
+            owasp_id,
+            title,
+            description,
+            expiration_months,
+            is_active
+          `)
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .order('owasp_id');
+
+        if (itemsError) throw itemsError;
+
+        if (!items || items.length === 0) {
+          setOwaspItems([]);
+          return;
+        }
+
+        // Get steps for all items
+        const itemIds = items.map(item => item.id);
+        const { data: steps, error: stepsError } = await supabase
+          .from('owasp_steps')
+          .select('*')
+          .in('owasp_item_id', itemIds)
+          .eq('is_active', true)
+          .order('step_order');
+
+        if (stepsError) throw stepsError;
+
+        // Get latest check results for each step for ALL environments
+        // Use project_id instead of app_id as that's what's stored in owasp_check_results
+        const stepIds = steps?.map(step => step.id) || [];
+        const { data: results, error: resultsError } = await supabase
+          .from('owasp_check_results')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('app_id', app.project_id)
+          .in('owasp_step_id', stepIds)
+          .order('checked_at', { ascending: false });
+
+        if (resultsError) throw resultsError;
+
+        // Group results by step and environment
+        const resultsByStepAndEnv: Record<string, Record<string, any>> = {};
+        results?.forEach(result => {
+          if (!resultsByStepAndEnv[result.owasp_step_id]) {
+            resultsByStepAndEnv[result.owasp_step_id] = {};
+          }
+          if (!resultsByStepAndEnv[result.owasp_step_id][result.environment_name]) {
+            resultsByStepAndEnv[result.owasp_step_id][result.environment_name] = result;
+          }
+        });
+
+        // Build OWASP items with aggregated status
+        const owaspData: OWASPItem[] = items.map(item => {
+          const itemSteps = steps?.filter(s => s.owasp_item_id === item.id) || [];
+          
+          // Calculate overall status from all environments and steps
+          let overallStatus: 'pass' | 'fail' | 'warning' | 'unknown' = 'unknown';
+          let latestCheckDate: Date | null = null;
+          const stepDetails: any[] = [];
+
+          itemSteps.forEach(step => {
+            const stepResultsForAllEnvs = Object.values(resultsByStepAndEnv[step.id] || {});
+            
+            stepResultsForAllEnvs.forEach(result => {
+              const resultDate = new Date(result.checked_at);
+              if (!latestCheckDate || resultDate > latestCheckDate) {
+                latestCheckDate = resultDate;
+              }
+
+              stepDetails.push({
+                step_name: step.step_name,
+                environment: result.environment_name,
+                status: result.status,
+                details: result.details,
+                checked_at: result.checked_at,
+              });
+
+              // Aggregate status: fail if any fail, warning if any warning, pass if all pass
+              if (result.status === 'fail' && overallStatus !== 'fail') {
+                overallStatus = 'fail';
+              } else if (result.status === 'warning' && overallStatus !== 'fail') {
+                overallStatus = 'warning';
+              } else if (result.status === 'pass' && overallStatus === 'unknown') {
+                overallStatus = 'pass';
+              }
+            });
+          });
+
+          // If no results at all, status is unknown
+          if (stepDetails.length === 0) {
+            overallStatus = 'unknown';
+          }
+
+          return {
+            id: item.owasp_id,
+            title: item.title,
+            fullTitle: item.title,
+            status: overallStatus,
+            checkDate: latestCheckDate,
+            details: stepDetails.length > 0 
+              ? `${stepDetails.filter(s => s.status === 'fail').length} failures, ${stepDetails.filter(s => s.status === 'warning').length} warnings across all environments`
+              : '',
+            requiresManualCheck: false,
+            description: item.description || '',
+            owaspUrl: `https://owasp.org/Top10/${item.owasp_id}_2021/`,
+            expirationMonths: item.expiration_months,
+            steps: stepDetails,
+          };
+        });
+
+        setOwaspItems(owaspData);
+      } catch (error) {
+        console.error('Error loading OWASP data:', error);
+      } finally {
+        setOwaspLoading(false);
+      }
+    };
+
+    loadOwaspData();
+  }, [app.app_id, app.environments, owaspReloadTrigger]);
 
   // Real-time subscription for environment error counts
   useEffect(() => {
@@ -368,6 +515,104 @@ const AppCard = ({
       });
     }
   };
+
+  const getOwaspEffectiveStatus = (item: OWASPItem): 'pass' | 'fail' | 'warning' | 'unknown' => {
+    if (item.status === 'unknown') return 'unknown';
+    
+    const isExpired = item.checkDate 
+      ? differenceInMonths(new Date(), item.checkDate) >= item.expirationMonths
+      : true;
+    
+    return isExpired ? 'fail' : item.status;
+  };
+
+  const handleOwaspItemClick = (item: OWASPItem) => {
+    const effectiveStatus = getOwaspEffectiveStatus(item);
+    // Only open dialog if item has steps and isn't unknown status
+    if (effectiveStatus !== 'unknown' && item.steps && item.steps.length > 0) {
+      setSelectedOwaspItem(item);
+      setIsOwaspDialogOpen(true);
+    }
+  };
+
+  const handleRunOwaspChecks = async () => {
+    if (!app.app_id || !app.environments || runningOwaspChecks) return;
+
+    try {
+      setRunningOwaspChecks(true);
+      
+      // Find Production environment
+      const productionEnv = app.environments?.find(
+        env => env.environment_name.toLowerCase() === 'production'
+      );
+
+      if (!productionEnv) {
+        toast({
+          title: "No Production Environment",
+          description: "OWASP checks can only be run on Production environments.",
+          variant: "destructive",
+        });
+        setRunningOwaspChecks(false);
+        return;
+      }
+
+      toast({
+        title: "Running OWASP Checks",
+        description: "Security checks are being executed for Production environment...",
+      });
+
+      // Run checks only for Production environment
+      const { error } = await supabase.functions.invoke('run-owasp-checks', {
+        body: {
+          project_id: app.project_id,
+          environment_name: productionEnv.environment_name,
+          credential_id: app.credential_id,
+        },
+      });
+
+      if (error) {
+        console.error(`Error running OWASP checks for Production:`, error);
+        toast({
+          title: "Error",
+          description: "Failed to run OWASP checks. Please try again.",
+          variant: "destructive",
+        });
+        setRunningOwaspChecks(false);
+        return;
+      }
+
+      toast({
+        title: "OWASP Checks Complete",
+        description: "Security checks have been completed. Refreshing results...",
+      });
+
+      // Trigger OWASP data reload without page refresh
+      setOwaspReloadTrigger(prev => prev + 1);
+    } catch (error) {
+      console.error('Error running OWASP checks:', error);
+      toast({
+        title: "Error",
+        description: "Failed to run OWASP checks. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setRunningOwaspChecks(false);
+    }
+  };
+
+  const getOwaspStatusIcon = (item: OWASPItem) => {
+    const effectiveStatus = getOwaspEffectiveStatus(item);
+    switch (effectiveStatus) {
+      case 'pass':
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'fail':
+        return <XCircle className="h-4 w-4 text-red-500" />;
+      case 'warning':
+        return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+      default:
+        return <div className="h-4 w-4 rounded-full bg-muted" />;
+    }
+  };
   return <Card className={cn("border-border hover:shadow-glow transition-all duration-300 cursor-pointer group",
   // Solid colored backgrounds based on status
   app.status === "healthy" && "bg-gradient-card", app.status === "warning" && "bg-error/15 border-error/30 shadow-lg shadow-error/20", app.status === "error" && "bg-error/25 border-error/50 shadow-xl shadow-error/40", app.status === "offline" && "bg-muted/50 border-muted-foreground/20",
@@ -419,20 +664,81 @@ const AppCard = ({
       </CardHeader>
 
       <CardContent className="pt-0">
-        {/* Vulnerability Summary Tile */}
-        <div className="mb-4 p-3 rounded-lg border cursor-pointer hover:bg-muted/30 transition-colors" onClick={handleVulnerabilityTileClick}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Shield className={cn("w-4 h-4", vulnerabilityCount > 0 ? "text-destructive" : "text-green-600")} />
-              <span className="text-sm font-medium">Vulnerabilities</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge variant={vulnerabilityCount > 0 ? "destructive" : "secondary"} className="text-xs">
-                {vulnerabilityCount} Vulnerable
-              </Badge>
-              <ExternalLink className="w-3 h-3 text-muted-foreground" />
-            </div>
+        {/* OWASP Top 10 Grid */}
+        <div className="mb-4 p-4 bg-muted/50 rounded-lg border">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-medium flex items-center gap-2">
+              <Shield className="h-4 w-4" />
+              OWASP Top 10 Checks
+            </h4>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleRunOwaspChecks}
+              disabled={runningOwaspChecks || owaspLoading}
+              className="h-7"
+            >
+              {runningOwaspChecks ? (
+                <>
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  Running...
+                </>
+              ) : (
+                <>
+                  <Play className="h-3 w-3 mr-1" />
+                  Run Checks
+                </>
+              )}
+            </Button>
           </div>
+          {owaspLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : owaspItems.length === 0 ? (
+            <div className="text-center py-6 text-sm text-muted-foreground">
+              No OWASP checks configured. Configure them in Settings.
+            </div>
+          ) : (
+          <div className="grid grid-cols-2 gap-2">
+            {owaspItems.map((item) => {
+              const effectiveStatus = getOwaspEffectiveStatus(item);
+              return (
+              <button
+                key={item.id}
+                onClick={() => handleOwaspItemClick(item)}
+                disabled={effectiveStatus === 'unknown' || !item.steps || item.steps.length === 0}
+                className={cn(
+                  "flex items-start gap-2 p-2 rounded-md border text-left transition-colors",
+                  effectiveStatus !== 'unknown' && item.steps && item.steps.length > 0 && "hover:bg-accent cursor-pointer",
+                  (effectiveStatus === 'unknown' || !item.steps || item.steps.length === 0) && "cursor-default",
+                  effectiveStatus === 'pass' && "bg-green-500/5 border-green-500/20",
+                  effectiveStatus === 'fail' && "bg-red-500/5 border-red-500/20",
+                  effectiveStatus === 'warning' && "bg-yellow-500/5 border-yellow-500/20",
+                  effectiveStatus === 'unknown' && "bg-background"
+                )}
+              >
+                <div className="mt-0.5">
+                  {getOwaspStatusIcon(item)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium text-foreground truncate">
+                    {item.id}
+                  </div>
+                  <div className="text-xs text-muted-foreground truncate">
+                    {item.title}
+                  </div>
+                  {item.checkDate && (
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      {format(item.checkDate, 'MMM d')}
+                    </div>
+                  )}
+                </div>
+              </button>
+              );
+            })}
+          </div>
+          )}
         </div>
 
         {app.environments && app.environments.length > 0 && <div className="space-y-2">
@@ -682,6 +988,13 @@ const AppCard = ({
       setSelectedEnvironmentForScan(null);
       setShowVulnerabilityResults(false);
     }} appId={selectedEnvironmentForScan.appId} environmentName={selectedEnvironmentForScan.name} appName={app.app_name} showResultsOnOpen={showVulnerabilityResults} />}
+
+      {/* OWASP Details Dialog */}
+      <OWASPDetailsDialog
+        open={isOwaspDialogOpen}
+        onOpenChange={setIsOwaspDialogOpen}
+        owaspItem={selectedOwaspItem}
+      />
     </Card>;
 };
 export default AppCard;

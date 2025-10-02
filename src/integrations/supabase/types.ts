@@ -113,6 +113,48 @@ export type Database = {
         }
         Relationships: []
       }
+      edge_functions: {
+        Row: {
+          category: string
+          created_at: string
+          description: string | null
+          display_name: string
+          expected_parameters: Json | null
+          function_name: string
+          id: string
+          is_active: boolean
+          is_owasp_compatible: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          display_name: string
+          expected_parameters?: Json | null
+          function_name: string
+          id?: string
+          is_active?: boolean
+          is_owasp_compatible?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          display_name?: string
+          expected_parameters?: Json | null
+          function_name?: string
+          id?: string
+          is_active?: boolean
+          is_owasp_compatible?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       email_templates: {
         Row: {
           created_at: string
@@ -457,6 +499,194 @@ export type Database = {
         }
         Relationships: []
       }
+      owasp_check_results: {
+        Row: {
+          app_id: string
+          checked_at: string
+          created_at: string
+          details: string | null
+          environment_name: string
+          execution_time_ms: number | null
+          id: string
+          owasp_step_id: string
+          run_id: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          app_id: string
+          checked_at?: string
+          created_at?: string
+          details?: string | null
+          environment_name: string
+          execution_time_ms?: number | null
+          id?: string
+          owasp_step_id: string
+          run_id?: string | null
+          status: string
+          user_id: string
+        }
+        Update: {
+          app_id?: string
+          checked_at?: string
+          created_at?: string
+          details?: string | null
+          environment_name?: string
+          execution_time_ms?: number | null
+          id?: string
+          owasp_step_id?: string
+          run_id?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "owasp_check_results_owasp_step_id_fkey"
+            columns: ["owasp_step_id"]
+            isOneToOne: false
+            referencedRelation: "owasp_steps"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "owasp_check_results_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "owasp_check_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      owasp_check_runs: {
+        Row: {
+          app_id: string
+          created_at: string
+          environment_name: string
+          failed_checks: number
+          id: string
+          overall_status: string
+          passed_checks: number
+          run_completed_at: string | null
+          run_started_at: string
+          total_checks: number
+          updated_at: string
+          user_id: string
+          warning_checks: number
+        }
+        Insert: {
+          app_id: string
+          created_at?: string
+          environment_name: string
+          failed_checks?: number
+          id?: string
+          overall_status?: string
+          passed_checks?: number
+          run_completed_at?: string | null
+          run_started_at?: string
+          total_checks?: number
+          updated_at?: string
+          user_id: string
+          warning_checks?: number
+        }
+        Update: {
+          app_id?: string
+          created_at?: string
+          environment_name?: string
+          failed_checks?: number
+          id?: string
+          overall_status?: string
+          passed_checks?: number
+          run_completed_at?: string | null
+          run_started_at?: string
+          total_checks?: number
+          updated_at?: string
+          user_id?: string
+          warning_checks?: number
+        }
+        Relationships: []
+      }
+      owasp_items: {
+        Row: {
+          created_at: string
+          description: string | null
+          expiration_months: number
+          id: string
+          is_active: boolean
+          owasp_id: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          expiration_months?: number
+          id?: string
+          is_active?: boolean
+          owasp_id: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          expiration_months?: number
+          id?: string
+          is_active?: boolean
+          owasp_id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      owasp_steps: {
+        Row: {
+          created_at: string
+          edge_function_name: string
+          id: string
+          is_active: boolean
+          owasp_item_id: string
+          step_description: string | null
+          step_name: string
+          step_order: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          edge_function_name: string
+          id?: string
+          is_active?: boolean
+          owasp_item_id: string
+          step_description?: string | null
+          step_name: string
+          step_order?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          edge_function_name?: string
+          id?: string
+          is_active?: boolean
+          owasp_item_id?: string
+          step_description?: string | null
+          step_name?: string
+          step_order?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "owasp_steps_owasp_item_id_fkey"
+            columns: ["owasp_item_id"]
+            isOneToOne: false
+            referencedRelation: "owasp_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -681,6 +911,14 @@ export type Database = {
           target_level: string
           target_user_id: string
         }
+        Returns: undefined
+      }
+      initialize_default_owasp_items: {
+        Args: { target_user_id: string }
+        Returns: undefined
+      }
+      initialize_edge_functions: {
+        Args: { target_user_id: string }
         Returns: undefined
       }
       normalize_environment_name: {

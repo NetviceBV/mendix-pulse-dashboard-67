@@ -6,6 +6,8 @@ import { WebhookManagement } from "@/components/WebhookManagement";
 import LogMonitoringSettings from "@/components/LogMonitoringSettings";
 import EmailManagement from "@/components/EmailManagement";
 import { EmailTemplates } from "@/components/EmailTemplates";
+import { OWASPSettings } from "@/components/OWASPSettings";
+import { OWASPRunsHistory } from "@/components/OWASPRunsHistory";
 import { ArrowLeft, Settings as SettingsIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -96,12 +98,14 @@ const Settings = () => {
       <div className="container mx-auto px-4 py-6">
         <div className="max-w-4xl mx-auto">
             <Tabs defaultValue="credentials" className="w-full">
-              <TabsList className="grid w-full grid-cols-5">
+              <TabsList className="grid w-full grid-cols-7">
                 <TabsTrigger value="credentials">Mendix Credentials</TabsTrigger>
                 <TabsTrigger value="webhooks">Webhook Settings</TabsTrigger>
                 <TabsTrigger value="emails">Email Management</TabsTrigger>
                 <TabsTrigger value="templates">Email Templates</TabsTrigger>
                 <TabsTrigger value="monitoring">Log Monitoring</TabsTrigger>
+                <TabsTrigger value="owasp">OWASP Security</TabsTrigger>
+                <TabsTrigger value="owasp-history">OWASP History</TabsTrigger>
               </TabsList>
             
             <TabsContent value="credentials" className="mt-6">
@@ -125,6 +129,14 @@ const Settings = () => {
             
             <TabsContent value="monitoring" className="mt-6">
               <LogMonitoringSettings />
+            </TabsContent>
+            
+            <TabsContent value="owasp" className="mt-6">
+              <OWASPSettings />
+            </TabsContent>
+            
+            <TabsContent value="owasp-history" className="mt-6">
+              <OWASPRunsHistory />
             </TabsContent>
           </Tabs>
         </div>
