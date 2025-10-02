@@ -59,6 +59,26 @@ Deno.serve(async (req) => {
 
     console.log(`Starting OWASP checks for project: ${project_id}, environment: ${environment_name}`);
 
+    // Create a new run record
+    const { data: runRecord, error: runError } = await supabase
+      .from('owasp_check_runs')
+      .insert({
+        user_id: user.id,
+        app_id: project_id,
+        environment_name,
+        run_started_at: new Date().toISOString(),
+        overall_status: 'running',
+      })
+      .select()
+      .single();
+
+    if (runError || !runRecord) {
+      console.error('Error creating run record:', runError);
+      throw new Error('Failed to create OWASP check run record');
+    }
+
+    console.log(`Created run record with ID: ${runRecord.id}`);
+
     // Get active OWASP items and their steps
     const { data: owaspItems, error: itemsError } = await supabase
       .from('owasp_items')
@@ -87,6 +107,9 @@ Deno.serve(async (req) => {
     console.log(`Found ${owaspItems?.length || 0} active OWASP items`);
 
     const allResults: StepResult[] = [];
+    let passCount = 0;
+    let failCount = 0;
+    let warningCount = 0;
 
     // Process each OWASP item and its steps
     for (const item of owaspItems || []) {
@@ -153,7 +176,12 @@ Deno.serve(async (req) => {
 
         allResults.push(stepResult);
 
-        // Store result in database
+        // Count results by status
+        if (stepResult.status === 'pass') passCount++;
+        else if (stepResult.status === 'fail') failCount++;
+        else if (stepResult.status === 'warning') warningCount++;
+
+        // Store result in database with run_id
         const { error: insertError } = await supabase
           .from('owasp_check_results')
           .insert({
@@ -161,6 +189,7 @@ Deno.serve(async (req) => {
             app_id: project_id,
             environment_name,
             owasp_step_id: step.id,
+            run_id: runRecord.id,
             status: stepResult.status,
             details: stepResult.details,
             execution_time_ms: stepResult.execution_time_ms,
@@ -175,10 +204,37 @@ Deno.serve(async (req) => {
 
     console.log(`Completed OWASP checks. Total steps executed: ${allResults.length}`);
 
+    // Determine overall status
+    let overallStatus: 'pass' | 'fail' | 'warning' = 'pass';
+    if (failCount > 0) overallStatus = 'fail';
+    else if (warningCount > 0) overallStatus = 'warning';
+
+    // Update run record with completion data
+    const { error: updateError } = await supabase
+      .from('owasp_check_runs')
+      .update({
+        run_completed_at: new Date().toISOString(),
+        overall_status: overallStatus,
+        total_checks: allResults.length,
+        passed_checks: passCount,
+        failed_checks: failCount,
+        warning_checks: warningCount,
+      })
+      .eq('id', runRecord.id);
+
+    if (updateError) {
+      console.error('Error updating run record:', updateError);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
+        run_id: runRecord.id,
         total_steps: allResults.length,
+        passed: passCount,
+        failed: failCount,
+        warnings: warningCount,
+        overall_status: overallStatus,
         results: allResults,
       }),
       {

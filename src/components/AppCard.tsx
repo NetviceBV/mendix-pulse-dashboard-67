@@ -675,7 +675,7 @@ const AppCard = ({
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-sm font-medium flex items-center gap-2">
               <Shield className="h-4 w-4" />
-              OWASP Top 10 Security Checks
+              OWASP Top 10 Checks
             </h4>
             <Button
               size="sm"

@@ -509,6 +509,7 @@ export type Database = {
           execution_time_ms: number | null
           id: string
           owasp_step_id: string
+          run_id: string | null
           status: string
           user_id: string
         }
@@ -521,6 +522,7 @@ export type Database = {
           execution_time_ms?: number | null
           id?: string
           owasp_step_id: string
+          run_id?: string | null
           status: string
           user_id: string
         }
@@ -533,6 +535,7 @@ export type Database = {
           execution_time_ms?: number | null
           id?: string
           owasp_step_id?: string
+          run_id?: string | null
           status?: string
           user_id?: string
         }
@@ -544,7 +547,62 @@ export type Database = {
             referencedRelation: "owasp_steps"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "owasp_check_results_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "owasp_check_runs"
+            referencedColumns: ["id"]
+          },
         ]
+      }
+      owasp_check_runs: {
+        Row: {
+          app_id: string
+          created_at: string
+          environment_name: string
+          failed_checks: number
+          id: string
+          overall_status: string
+          passed_checks: number
+          run_completed_at: string | null
+          run_started_at: string
+          total_checks: number
+          updated_at: string
+          user_id: string
+          warning_checks: number
+        }
+        Insert: {
+          app_id: string
+          created_at?: string
+          environment_name: string
+          failed_checks?: number
+          id?: string
+          overall_status?: string
+          passed_checks?: number
+          run_completed_at?: string | null
+          run_started_at?: string
+          total_checks?: number
+          updated_at?: string
+          user_id: string
+          warning_checks?: number
+        }
+        Update: {
+          app_id?: string
+          created_at?: string
+          environment_name?: string
+          failed_checks?: number
+          id?: string
+          overall_status?: string
+          passed_checks?: number
+          run_completed_at?: string | null
+          run_started_at?: string
+          total_checks?: number
+          updated_at?: string
+          user_id?: string
+          warning_checks?: number
+        }
+        Relationships: []
       }
       owasp_items: {
         Row: {
