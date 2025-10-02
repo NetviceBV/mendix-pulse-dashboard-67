@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Edit2, Save, X } from "lucide-react";
+import { Plus, Trash2, Edit2, Save, X, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 
@@ -45,6 +45,7 @@ export const OWASPSettings = () => {
   const [steps, setSteps] = useState<Record<string, OWASPStep[]>>({});
   const [edgeFunctions, setEdgeFunctions] = useState<EdgeFunction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncingFunctions, setSyncingFunctions] = useState(false);
   const [editingItem, setEditingItem] = useState<string | null>(null);
   const [editingStep, setEditingStep] = useState<string | null>(null);
   const [editedData, setEditedData] = useState<Partial<OWASPItem>>({});
@@ -243,6 +244,35 @@ export const OWASPSettings = () => {
     }
   };
 
+  const handleSyncEdgeFunctions = async () => {
+    try {
+      setSyncingFunctions(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase.rpc("initialize_edge_functions", {
+        target_user_id: user.id,
+      });
+
+      if (error) throw error;
+
+      // Reload edge functions after sync
+      const { data: functions } = await supabase
+        .from("edge_functions")
+        .select("*")
+        .eq("is_active", true)
+        .order("category, display_name");
+
+      setEdgeFunctions(functions || []);
+      toast.success("Edge functions synced successfully");
+    } catch (error) {
+      console.error("Error syncing edge functions:", error);
+      toast.error("Failed to sync edge functions");
+    } finally {
+      setSyncingFunctions(false);
+    }
+  };
+
   const owaspCompatibleFunctions = edgeFunctions.filter(
     (func) => func.is_owasp_compatible
   );
@@ -269,11 +299,21 @@ export const OWASPSettings = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">OWASP Security Configuration</h2>
-        <p className="text-muted-foreground">
-          Configure OWASP Top 10 security checks and their validation steps
-        </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">OWASP Security Configuration</h2>
+          <p className="text-muted-foreground">
+            Configure OWASP Top 10 security checks and their validation steps
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={handleSyncEdgeFunctions}
+          disabled={syncingFunctions}
+        >
+          <RefreshCw className={`w-4 h-4 mr-2 ${syncingFunctions ? 'animate-spin' : ''}`} />
+          Sync Edge Functions
+        </Button>
       </div>
 
       <div className="space-y-4">
