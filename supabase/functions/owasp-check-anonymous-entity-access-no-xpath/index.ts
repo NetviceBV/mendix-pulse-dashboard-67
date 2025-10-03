@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
     const { data: app, error: appError } = await supabase
       .from('mendix_apps')
       .select('project_id, version')
-      .eq('app_id', project_id)
+      .eq('project_id', project_id)
       .eq('user_id', user_id)
       .single();
 
