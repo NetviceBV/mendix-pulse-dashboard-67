@@ -18,6 +18,7 @@ interface OWASPRun {
   passed_checks: number;
   failed_checks: number;
   warning_checks: number;
+  app_name?: string;
 }
 
 interface CheckResult {
@@ -50,14 +51,34 @@ export function OWASPRunsHistory() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { data, error } = await supabase
+      // Fetch runs
+      const { data: runsData, error: runsError } = await supabase
         .from('owasp_check_runs')
         .select('*')
         .eq('user_id', user.id)
         .order('run_started_at', { ascending: false });
 
-      if (error) throw error;
-      setRuns(data || []);
+      if (runsError) throw runsError;
+
+      // Fetch app names for each run
+      const appIds = [...new Set(runsData?.map(r => r.app_id) || [])];
+      const { data: appsData, error: appsError } = await supabase
+        .from('mendix_apps')
+        .select('project_id, app_name')
+        .in('project_id', appIds);
+
+      if (appsError) throw appsError;
+
+      // Create a map of app_id to app_name
+      const appNameMap = new Map(appsData?.map(app => [app.project_id, app.app_name]) || []);
+
+      // Merge the data
+      const runsWithAppName = (runsData || []).map(run => ({
+        ...run,
+        app_name: appNameMap.get(run.app_id) || 'Unknown App'
+      }));
+
+      setRuns(runsWithAppName);
     } catch (error) {
       console.error('Error fetching OWASP runs:', error);
     } finally {
@@ -179,7 +200,7 @@ export function OWASPRunsHistory() {
                         </div>
                         <div className="text-left flex-1">
                           <div className="font-medium text-sm">
-                            {run.environment_name} Environment
+                            {run.app_name}
                           </div>
                           <div className="text-xs text-muted-foreground flex items-center gap-2">
                             <Calendar className="w-3 h-3" />
@@ -194,10 +215,6 @@ export function OWASPRunsHistory() {
                           <div className="text-center">
                             <div className="font-semibold text-destructive">{run.failed_checks}</div>
                             <div className="text-muted-foreground">Failed</div>
-                          </div>
-                          <div className="text-center">
-                            <div className="font-semibold text-warning">{run.warning_checks}</div>
-                            <div className="text-muted-foreground">Warnings</div>
                           </div>
                         </div>
                       </div>
