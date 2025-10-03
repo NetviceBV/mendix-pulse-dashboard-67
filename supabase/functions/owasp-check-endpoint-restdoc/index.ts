@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 interface StepResult {
-  status: 'pass' | 'fail' | 'warning' | 'error';
+  status: 'pass' | 'fail' | 'error';
   details: string;
 }
 
@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
       console.log('No running production environment found');
       return new Response(
         JSON.stringify({
-          status: 'warning',
+          status: 'fail',
           details: 'No running production environment found for this application',
         }),
         {
@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
       console.log('Production environment has no URL');
       return new Response(
         JSON.stringify({
-          status: 'warning',
+          status: 'fail',
           details: 'Production environment URL is not available',
         }),
         {
