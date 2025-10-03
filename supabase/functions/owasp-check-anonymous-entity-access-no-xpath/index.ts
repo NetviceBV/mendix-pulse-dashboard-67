@@ -101,8 +101,8 @@ Deno.serve(async (req) => {
     console.log(`[OWASP A01] Using branch: ${branchName} for project: ${projectId}`);
 
     // Import Mendix SDK
-    const { MendixPlatformClient, setPlatformConfig } = await import("npm:mendixplatformsdk@5.2.0");
-    const { domainmodels } = await import("npm:mendixmodelsdk@5.2.0");
+    const { MendixPlatformClient, setPlatformConfig } = await import("npm:mendixplatformsdk@5.0.0");
+    const { domainmodels } = await import("npm:mendixmodelsdk@4.102.0");
 
     // Configure SDK
     setPlatformConfig({ mendixToken: credentials.pat });
