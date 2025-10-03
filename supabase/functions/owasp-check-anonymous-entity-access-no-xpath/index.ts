@@ -96,12 +96,24 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Determine branch name based on version format
-    const branchName = /^[a-f0-9]{40}$/i.test(app.version || '') ? 'main' : 'trunk';
-    console.log(`[OWASP A01] Using branch: ${branchName} for project: ${projectId}`);
+    // Determine branch based on Mendix version
+    // MX10: version ends with git hash (hexadecimal) -> use "main"
+    // MX9: version is semantic or ends with numeric -> use "trunk"
+    function detectMendixBranch(version: string): string {
+      if (!version) return "main"; // fallback to main
+      
+      // Check if version ends with a git hash (hexadecimal pattern)
+      const gitHashPattern = /[a-f0-9]{6,}$/i;
+      const isMX10 = gitHashPattern.test(version);
+      
+      return isMX10 ? "main" : "trunk";
+    }
+    
+    const branchName = detectMendixBranch(app.version);
+    console.log(`[OWASP A01] Using branch: ${branchName} for project: ${projectId}, version: ${app.version}`);
 
     // Import Mendix SDK
-    const { MendixPlatformClient, setPlatformConfig } = await import("npm:mendixplatformsdk@5.0.0");
+    const { MendixPlatformClient, setPlatformConfig } = await import("npm:mendixplatformsdk@5.2.0");
     const { domainmodels } = await import("npm:mendixmodelsdk@4.102.0");
 
     // Configure SDK
