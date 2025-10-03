@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.owasp-check-endpoint-restdoc]
 verify_jwt = false
+
+[functions.owasp-check-anonymous-entity-access-no-xpath]
+verify_jwt = false
