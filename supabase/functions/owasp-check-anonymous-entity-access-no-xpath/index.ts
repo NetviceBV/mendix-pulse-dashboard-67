@@ -96,22 +96,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Determine branch based on Mendix version
-    // MX10: version ends with git hash (hexadecimal) -> use "main"
-    // MX9: version is semantic or ends with numeric -> use "trunk"
-    function detectMendixBranch(version: string): string {
-      if (!version) return "main"; // fallback to main
-      
-      // Check if version ends with a git hash (hexadecimal pattern)
-      const gitHashPattern = /[a-f0-9]{6,}$/i;
-      const isMX10 = gitHashPattern.test(version);
-      
-      return isMX10 ? "main" : "trunk";
-    }
-    
-    const branchName = detectMendixBranch(app.version);
-    console.log(`[OWASP A01] Using branch: ${branchName} for project: ${projectId}, version: ${app.version}`);
-
     // Import Mendix SDK
     const { MendixPlatformClient, setPlatformConfig } = await import("npm:mendixplatformsdk@5.2.0");
     const { domainmodels } = await import("npm:mendixmodelsdk@4.102.0");
@@ -120,12 +104,45 @@ Deno.serve(async (req) => {
     setPlatformConfig({ mendixToken: credentials.pat });
     const client = new MendixPlatformClient();
 
-    console.log('[OWASP A01] Analyzing entities for anonymous access without XPath...');
-
-    // Get the app and create working copy
+    console.log(`[OWASP A01] Getting app and repository info for project: ${projectId}`);
     const mendixApp = client.getApp(projectId);
-    const workingCopy = await mendixApp.createTemporaryWorkingCopy(branchName);
-    console.log(`[OWASP A01] Working copy created: ${workingCopy.workingCopyId}`);
+    
+    // Get repository info to determine the correct branch name (mirror Railway app)
+    const repository = mendixApp.getRepository();
+    const repositoryInfo = await repository.getInfo();
+    const repoType = repositoryInfo?.type; // 'git' or 'svn'
+    
+    // Use 'trunk' for SVN, 'main' for Git (same as Railway app)
+    const primaryBranch = repoType === 'svn' ? 'trunk' : 'main';
+    console.log(`[OWASP A01] Repository type: ${repoType}, Primary branch: ${primaryBranch}`);
+    
+    // Fallbacks we'll try if the first attempt fails
+    const fallbackBranches = repoType === 'svn'
+      ? ['trunk'] // SVN typically only uses trunk
+      : ['main', 'master']; // common Git defaults
+    
+    // Try creating a working copy with primary + fallbacks
+    let workingCopy: any;
+    let lastErr: any;
+    
+    for (const candidate of [primaryBranch, ...fallbackBranches.filter(b => b !== primaryBranch)]) {
+      try {
+        console.log(`[OWASP A01] Attempting working copy on branch: ${candidate}`);
+        workingCopy = await mendixApp.createTemporaryWorkingCopy(candidate);
+        console.log(`[OWASP A01] Working copy created on branch: ${candidate}, id: ${workingCopy.workingCopyId}`);
+        break;
+      } catch (e: any) {
+        lastErr = e;
+        console.warn(`[OWASP A01] Failed to create working copy on ${candidate}:`, e?.errorMessage || e?.message || e);
+      }
+    }
+    
+    if (!workingCopy) {
+      throw new Error(
+        `Could not create working copy for project ${projectId} — tried branches: ${[primaryBranch, ...fallbackBranches].join(', ')}. ` +
+        `Last error: ${lastErr?.errorMessage || lastErr?.message || String(lastErr)}`
+      );
+    }
 
     const model = await workingCopy.openModel();
     console.log('[OWASP A01] Model opened successfully');
