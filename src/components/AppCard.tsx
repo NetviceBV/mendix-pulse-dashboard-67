@@ -299,9 +299,11 @@ const AppCard = ({
           const itemSteps = steps?.filter(s => s.owasp_item_id === item.id) || [];
           
           // Calculate overall status from all environments and steps
-          let overallStatus: 'pass' | 'fail' | 'warning' | 'unknown' = 'unknown';
           let latestCheckDate: Date | null = null;
           const stepDetails: any[] = [];
+          let totalChecks = 0;
+          let passedChecks = 0;
+          let failedChecks = 0;
 
           itemSteps.forEach(step => {
             const stepResultsForAllEnvs = Object.values(resultsByStepAndEnv[step.id] || {});
@@ -320,20 +322,30 @@ const AppCard = ({
                 checked_at: result.checked_at,
               });
 
-              // Aggregate status: fail if any fail, warning if any warning, pass if all pass
-              if (result.status === 'fail' && overallStatus !== 'fail') {
-                overallStatus = 'fail';
-              } else if (result.status === 'warning' && overallStatus !== 'fail') {
-                overallStatus = 'warning';
-              } else if (result.status === 'pass' && overallStatus === 'unknown') {
-                overallStatus = 'pass';
+              // Count checks by status
+              totalChecks++;
+              if (result.status === 'pass') {
+                passedChecks++;
+              } else if (result.status === 'fail') {
+                failedChecks++;
               }
             });
           });
 
-          // If no results at all, status is unknown
-          if (stepDetails.length === 0) {
+          // Determine overall status based on new logic:
+          // Green (pass): ALL checks pass
+          // Yellow (warning): SOME checks fail (mixed results)
+          // Red (fail): ALL checks fail
+          let overallStatus: 'pass' | 'fail' | 'warning' | 'unknown' = 'unknown';
+          
+          if (totalChecks === 0) {
             overallStatus = 'unknown';
+          } else if (passedChecks === totalChecks) {
+            overallStatus = 'pass'; // All pass → Green
+          } else if (failedChecks === totalChecks) {
+            overallStatus = 'fail'; // All fail → Red
+          } else {
+            overallStatus = 'warning'; // Mixed results → Yellow
           }
 
           return {
