@@ -23,25 +23,25 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Parse request body
-    const { credentialId, appId, project_id, environment_name, user_id } = await req.json();
+    const { credential_id, project_id, environment_name, user_id } = await req.json();
 
-    if (!credentialId || !appId || !project_id || !environment_name || !user_id) {
+    if (!credential_id || !project_id || !environment_name || !user_id) {
       return new Response(
         JSON.stringify({
           status: 'error',
-          details: 'Missing required parameters: credentialId, appId, project_id, environment_name, user_id',
+          details: 'Missing required parameters: credential_id, project_id, environment_name, user_id',
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log(`[OWASP A01] Starting anonymous entity access check for app: ${appId}`);
+    console.log(`[OWASP A01] Starting anonymous entity access check for project: ${project_id}`);
 
     // Fetch Mendix credentials
     const { data: credentials, error: credError } = await supabase
       .from('mendix_credentials')
       .select('*')
-      .eq('id', credentialId)
+      .eq('id', credential_id)
       .eq('user_id', user_id)
       .single();
 
@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
     const { data: app, error: appError } = await supabase
       .from('mendix_apps')
       .select('project_id, version')
-      .eq('app_id', appId)
+      .eq('app_id', project_id)
       .eq('user_id', user_id)
       .single();
 
