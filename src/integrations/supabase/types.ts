@@ -499,6 +499,75 @@ export type Database = {
         }
         Relationships: []
       }
+      owasp_async_jobs: {
+        Row: {
+          attempts: number
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          job_type: string
+          max_attempts: number
+          payload: Json
+          result: Json | null
+          run_id: string | null
+          started_at: string | null
+          status: string
+          step_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          job_type: string
+          max_attempts?: number
+          payload?: Json
+          result?: Json | null
+          run_id?: string | null
+          started_at?: string | null
+          status?: string
+          step_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          job_type?: string
+          max_attempts?: number
+          payload?: Json
+          result?: Json | null
+          run_id?: string | null
+          started_at?: string | null
+          status?: string
+          step_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "owasp_async_jobs_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "owasp_check_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "owasp_async_jobs_step_id_fkey"
+            columns: ["step_id"]
+            isOneToOne: false
+            referencedRelation: "owasp_steps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       owasp_check_results: {
         Row: {
           app_id: string
@@ -508,6 +577,7 @@ export type Database = {
           environment_name: string
           execution_time_ms: number | null
           id: string
+          job_id: string | null
           owasp_step_id: string
           run_id: string | null
           status: string
@@ -521,6 +591,7 @@ export type Database = {
           environment_name: string
           execution_time_ms?: number | null
           id?: string
+          job_id?: string | null
           owasp_step_id: string
           run_id?: string | null
           status: string
@@ -534,12 +605,20 @@ export type Database = {
           environment_name?: string
           execution_time_ms?: number | null
           id?: string
+          job_id?: string | null
           owasp_step_id?: string
           run_id?: string | null
           status?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "owasp_check_results_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "owasp_async_jobs"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "owasp_check_results_owasp_step_id_fkey"
             columns: ["owasp_step_id"]

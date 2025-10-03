@@ -322,28 +322,37 @@ const AppCard = ({
                 checked_at: result.checked_at,
               });
 
-              // Count checks by status
+              // Count checks by status (don't count pending in pass/fail tallies)
               totalChecks++;
               if (result.status === 'pass') {
                 passedChecks++;
               } else if (result.status === 'fail') {
                 failedChecks++;
+              } else if (result.status === 'pending') {
+                // Don't count pending in pass/fail, but track separately
               }
             });
           });
 
           // Determine overall status based on new logic:
-          // Green (pass): ALL checks pass
+          // Pending: ANY checks are pending
+          // Green (pass): ALL non-pending checks pass
           // Yellow (warning): SOME checks fail (mixed results)
           // Red (fail): ALL checks fail
-          let overallStatus: 'pass' | 'fail' | 'warning' | 'unknown' = 'unknown';
+          let overallStatus: 'pass' | 'fail' | 'warning' | 'unknown' | 'pending' = 'unknown';
           
-          if (totalChecks === 0) {
+          // Check if any steps are pending
+          const hasPending = stepDetails.some(s => s.status === 'pending');
+          const nonPendingCount = totalChecks - stepDetails.filter(s => s.status === 'pending').length;
+          
+          if (hasPending) {
+            overallStatus = 'pending'; // Any pending → show as pending
+          } else if (totalChecks === 0 || nonPendingCount === 0) {
             overallStatus = 'unknown';
-          } else if (passedChecks === totalChecks) {
-            overallStatus = 'pass'; // All pass → Green
-          } else if (failedChecks === totalChecks) {
-            overallStatus = 'fail'; // All fail → Red
+          } else if (passedChecks === nonPendingCount) {
+            overallStatus = 'pass'; // All non-pending pass → Green
+          } else if (failedChecks === nonPendingCount) {
+            overallStatus = 'fail'; // All non-pending fail → Red
           } else {
             overallStatus = 'warning'; // Mixed results → Yellow
           }
@@ -375,6 +384,26 @@ const AppCard = ({
 
     loadOwaspData();
   }, [app.app_id, app.environments, owaspReloadTrigger]);
+
+  // Polling effect for pending checks
+  useEffect(() => {
+    const hasPendingChecks = owaspItems.some(item => 
+      item.steps && item.steps.some((s: any) => s.status === 'pending')
+    );
+
+    if (!hasPendingChecks) return;
+
+    console.log('[OWASP] Detected pending checks, starting polling...');
+    const interval = setInterval(() => {
+      console.log('[OWASP] Polling for pending check updates...');
+      setOwaspReloadTrigger(prev => prev + 1);
+    }, 30000); // Poll every 30 seconds
+
+    return () => {
+      console.log('[OWASP] Stopping polling for pending checks');
+      clearInterval(interval);
+    };
+  }, [owaspItems]);
 
   // Real-time subscription for environment error counts
   useEffect(() => {
@@ -528,7 +557,12 @@ const AppCard = ({
     }
   };
 
-  const getOwaspEffectiveStatus = (item: OWASPItem): 'pass' | 'fail' | 'warning' | 'unknown' => {
+  const getOwaspEffectiveStatus = (item: OWASPItem): 'pass' | 'fail' | 'warning' | 'unknown' | 'pending' => {
+    // Check if any steps are pending
+    if (item.steps && item.steps.some((s: any) => s.status === 'pending')) {
+      return 'pending';
+    }
+    
     if (item.status === 'unknown') return 'unknown';
     
     const isExpired = item.checkDate 
@@ -621,6 +655,8 @@ const AppCard = ({
         return <XCircle className="h-4 w-4 text-red-500" />;
       case 'warning':
         return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+      case 'pending':
+        return <Loader2 className="h-4 w-4 text-blue-500 animate-spin" />;
       default:
         return <div className="h-4 w-4 rounded-full bg-muted" />;
     }
@@ -727,6 +763,7 @@ const AppCard = ({
                   effectiveStatus === 'pass' && "bg-green-500/5 border-green-500/20",
                   effectiveStatus === 'fail' && "bg-red-500/5 border-red-500/20",
                   effectiveStatus === 'warning' && "bg-yellow-500/5 border-yellow-500/20",
+                  effectiveStatus === 'pending' && "bg-blue-500/5 border-blue-500/20",
                   effectiveStatus === 'unknown' && "bg-background"
                 )}
               >
