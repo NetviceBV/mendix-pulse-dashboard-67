@@ -55,6 +55,29 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Check if there's already a queued or processing job for this run_id + step_id
+    if (run_id && step_id) {
+      const { data: existingJob } = await supabase
+        .from('owasp_async_jobs')
+        .select('id, status')
+        .eq('run_id', run_id)
+        .eq('step_id', step_id)
+        .in('status', ['queued', 'processing'])
+        .maybeSingle();
+
+      if (existingJob) {
+        console.log(`[OWASP A01] Job already exists: ${existingJob.id} (status: ${existingJob.status})`);
+        return new Response(
+          JSON.stringify({
+            status: 'pending',
+            details: 'Security check already queued for processing.',
+            job_id: existingJob.id,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     // Create async job for background processing
     const { data: job, error: jobError } = await supabase
       .from('owasp_async_jobs')

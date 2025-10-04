@@ -18,14 +18,14 @@ Deno.serve(async (req) => {
 
     console.log('[OWASP Async Worker] Starting job processing...');
 
-    // Get queued jobs, ordered by creation time (FIFO)
+    // Get ONE queued job (process one at a time to avoid CPU timeout)
     const { data: jobs, error: jobsError } = await supabase
       .from('owasp_async_jobs')
       .select('*')
       .eq('status', 'queued')
       .lt('attempts', 3) // Only process jobs that haven't exceeded max attempts
       .order('created_at', { ascending: true })
-      .limit(5); // Process up to 5 jobs per run to stay within time limits
+      .limit(1); // Process ONE job per invocation to stay within CPU limits
 
     if (jobsError) {
       console.error('[OWASP Async Worker] Error fetching jobs:', jobsError);
@@ -333,12 +333,28 @@ async function executeAnonymousEntityCheck(payload: any, supabase: any): Promise
     console.log(`[Anonymous Check] Found ${domainModels.length} domain models`);
 
     const entitiesWithAnonymousAccessNoXPath: Array<{ module: string; name: string; qualifiedName: string }> = [];
+    const MAX_VIOLATIONS_TO_COLLECT = 3; // Early-exit after finding this many violations
+    const startTime = Date.now();
+    const SOFT_TIME_BUDGET_MS = 7000; // 7 seconds soft limit
 
     for (const domainModel of domainModels) {
       await domainModel.load();
       const moduleName = domainModel.containerAsModule ? domainModel.containerAsModule.name : 'Unknown';
 
       for (const entity of domainModel.entities) {
+        // Early-exit if we've found enough violations
+        if (entitiesWithAnonymousAccessNoXPath.length >= MAX_VIOLATIONS_TO_COLLECT) {
+          console.log(`[Anonymous Check] Early-exit: found ${MAX_VIOLATIONS_TO_COLLECT} violations, stopping scan`);
+          break;
+        }
+
+        // Time budget check
+        const elapsed = Date.now() - startTime;
+        if (elapsed > SOFT_TIME_BUDGET_MS) {
+          console.log(`[Anonymous Check] Time budget exceeded (${elapsed}ms), stopping scan`);
+          break;
+        }
+
         if (!(entity instanceof domainmodels.Entity)) continue;
         if (!entity) continue;
 
@@ -377,6 +393,11 @@ async function executeAnonymousEntityCheck(payload: any, supabase: any): Promise
           }
         }
       }
+      
+      // Check after each domain model if we should stop
+      if (entitiesWithAnonymousAccessNoXPath.length >= MAX_VIOLATIONS_TO_COLLECT) {
+        break;
+      }
     }
 
     const totalVulnerable = entitiesWithAnonymousAccessNoXPath.length;
@@ -392,9 +413,11 @@ async function executeAnonymousEntityCheck(payload: any, supabase: any): Promise
       .map(e => `${e.module}.${e.name}`)
       .join(', ');
 
+    const foundMoreNote = totalVulnerable >= MAX_VIOLATIONS_TO_COLLECT ? ' (early-exit: more may exist)' : '';
+
     return {
       status: 'fail',
-      details: `✗ SECURITY ISSUE: Found ${totalVulnerable} persistable entit${totalVulnerable === 1 ? 'y' : 'ies'} with anonymous access and no XPath constraints. Vulnerable entities: ${entityList}`,
+      details: `✗ SECURITY ISSUE: Found ${totalVulnerable} persistable entit${totalVulnerable === 1 ? 'y' : 'ies'} with anonymous access and no XPath constraints${foundMoreNote}. Examples: ${entityList}`,
     };
 
   } catch (error) {
