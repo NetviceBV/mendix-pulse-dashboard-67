@@ -8,9 +8,10 @@ const corsHeaders = {
 interface StepResult {
   step_id: string;
   step_name: string;
-  status: 'pass' | 'fail' | 'warning' | 'error';
+  status: 'pass' | 'fail' | 'warning' | 'error' | 'pending';
   details: string;
   execution_time_ms: number;
+  job_id?: string;
 }
 
 Deno.serve(async (req) => {
@@ -139,6 +140,8 @@ Deno.serve(async (req) => {
                 environment_name,
                 credential_id,
                 user_id: user.id,
+                run_id: runRecord.id,
+                step_id: step.id,
               },
             }
           );
@@ -161,6 +164,7 @@ Deno.serve(async (req) => {
               status: functionResult.status || 'error',
               details: functionResult.details || 'No details provided',
               execution_time_ms: executionTime,
+              job_id: functionResult.job_id, // Store job_id for async jobs
             };
           }
         } catch (error) {
@@ -176,25 +180,32 @@ Deno.serve(async (req) => {
 
         allResults.push(stepResult);
 
-        // Count results by status
+        // Count results by status (don't count pending in final tallies)
         if (stepResult.status === 'pass') passCount++;
         else if (stepResult.status === 'fail') failCount++;
         else if (stepResult.status === 'warning') warningCount++;
 
         // Store result in database with run_id
+        const insertData: any = {
+          user_id: user.id,
+          app_id: project_id,
+          environment_name,
+          owasp_step_id: step.id,
+          run_id: runRecord.id,
+          status: stepResult.status,
+          details: stepResult.details,
+          execution_time_ms: stepResult.execution_time_ms,
+          checked_at: new Date().toISOString(),
+        };
+
+        // Store job_id for async jobs
+        if (stepResult.job_id) {
+          insertData.job_id = stepResult.job_id;
+        }
+
         const { error: insertError } = await supabase
           .from('owasp_check_results')
-          .insert({
-            user_id: user.id,
-            app_id: project_id,
-            environment_name,
-            owasp_step_id: step.id,
-            run_id: runRecord.id,
-            status: stepResult.status,
-            details: stepResult.details,
-            execution_time_ms: stepResult.execution_time_ms,
-            checked_at: new Date().toISOString(),
-          });
+          .insert(insertData);
 
         if (insertError) {
           console.error('Error storing check result:', insertError);
@@ -204,10 +215,18 @@ Deno.serve(async (req) => {
 
     console.log(`Completed OWASP checks. Total steps executed: ${allResults.length}`);
 
+    // Check if any results are pending
+    const hasPendingResults = allResults.some(r => r.status === 'pending');
+
     // Determine overall status
-    let overallStatus: 'pass' | 'fail' | 'warning' = 'pass';
-    if (failCount > 0) overallStatus = 'fail';
-    else if (warningCount > 0) overallStatus = 'warning';
+    let overallStatus: 'pass' | 'fail' | 'warning' | 'running' = 'pass';
+    if (hasPendingResults) {
+      overallStatus = 'running'; // Keep as running if there are pending async jobs
+    } else if (failCount > 0) {
+      overallStatus = 'fail';
+    } else if (warningCount > 0) {
+      overallStatus = 'warning';
+    }
 
     // Update run record with completion data
     const { error: updateError } = await supabase

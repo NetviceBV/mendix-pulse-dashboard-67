@@ -8,7 +8,7 @@ export interface OWASPItem {
   id: string;
   title: string;
   fullTitle: string;
-  status: 'pass' | 'fail' | 'warning' | 'unknown';
+  status: 'pass' | 'fail' | 'warning' | 'unknown' | 'pending';
   checkDate: Date | null;
   details: string;
   requiresManualCheck: boolean;
@@ -34,6 +34,7 @@ const statusConfig = {
   pass: { icon: CheckCircle2, color: "text-green-500", bgColor: "bg-green-500/10", label: "Pass" },
   fail: { icon: XCircle, color: "text-red-500", bgColor: "bg-red-500/10", label: "Failed" },
   warning: { icon: AlertTriangle, color: "text-yellow-500", bgColor: "bg-yellow-500/10", label: "Warning" },
+  pending: { icon: Clock, color: "text-blue-500", bgColor: "bg-blue-500/10", label: "Analysis in Progress" },
   unknown: { icon: AlertTriangle, color: "text-muted-foreground", bgColor: "bg-muted", label: "Not Checked" },
 };
 

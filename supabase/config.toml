@@ -32,3 +32,9 @@ verify_jwt = false
 
 [functions.owasp-check-anonymous-entity-access-no-xpath]
 verify_jwt = false
+
+[functions.process-owasp-async-jobs]
+verify_jwt = false
+
+[functions.cleanup-stale-owasp-jobs]
+verify_jwt = false
