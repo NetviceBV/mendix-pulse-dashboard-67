@@ -302,7 +302,6 @@ Deno.serve(async (req) => {
         if (insertError) {
           console.error('Error storing check result:', insertError);
         }
-      }
     }
 
     console.log(`Completed OWASP checks. Total steps executed: ${allResults.length}`);
