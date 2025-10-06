@@ -316,6 +316,7 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
   let totalEntities = 0;
   let currentJobId = job.id;
   let shutdownHandled = false;
+  let maxHeapUsedMB = 0; // Track peak memory usage
   
   try {
     const { credential_id, project_id, environment_name, user_id, batch_number, total_batches, domain_model_start, domain_model_end, checks_to_run } = job.payload;
@@ -378,7 +379,13 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
           })
           .eq('id', job.id);
         
-        console.log(`[Batch ${batch_number + 1}/${total_batches}] ❤️ Heartbeat: ${processedEntities}/${totalEntities} entities (${progress}%), ${elapsed}s elapsed, Memory: ${heapMB}/${heapTotalMB} MB`);
+        // Track max heap usage
+        const currentHeapMB = parseFloat(heapMB);
+        if (currentHeapMB > maxHeapUsedMB) {
+          maxHeapUsedMB = currentHeapMB;
+        }
+        
+        console.log(`[Batch ${batch_number + 1}/${total_batches}] ❤️ Heartbeat: ${processedEntities}/${totalEntities} entities (${progress}%), ${elapsed}s elapsed, Memory: ${heapMB}/${heapTotalMB} MB (peak: ${maxHeapUsedMB.toFixed(1)}MB)`);
         
         // Warning if memory exceeds 200 MB
         if (memUsage.heapUsed > 200 * 1024 * 1024) {
@@ -475,14 +482,15 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
       console.warn(`[Batch ${batch_number + 1}/${total_batches}] ⚠️ Model opening took ${(modelOpenTime / 1000).toFixed(1)}s - this is the most CPU-intensive operation`);
     }
 
-    // Initialize results storage for each check
+    // Initialize results storage for each check (memory-light: counts + capped samples)
     const checkResults: any = {};
     checks_to_run.forEach((check: any) => {
       checkResults[check.check_type] = {
         step_id: check.step_id,
         owasp_id: check.owasp_id,
         step_name: check.step_name,
-        vulnerable_entities: []
+        total_vulnerabilities: 0,
+        sample_entities: [] // Capped at 50 to prevent unbounded memory growth
       };
     });
 
@@ -525,7 +533,13 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
         
         guestContext = { guestModuleRoles };
       }
+      
+      // CRITICAL: Release projectSecurity reference to free memory
+      // We've extracted guestContext which is all we need
+      // projectSecurity = null; // Can't reassign const, but it will be GC'd after this scope
     }
+    
+    logMemoryUsage('After extracting guest context');
 
     // Get all domain models and slice to the batch range
     const allDomainModels = model.allDomainModels();
@@ -543,7 +557,14 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
       const memUsage = Deno.memoryUsage();
       const heapMB = (memUsage.heapUsed / 1024 / 1024).toFixed(1);
       const heapTotalMB = (memUsage.heapTotal / 1024 / 1024).toFixed(1);
-      console.log(`[Memory] ${label}: ${heapMB}/${heapTotalMB} MB heap used`);
+      
+      // Track max heap usage
+      const currentHeapMB = parseFloat(heapMB);
+      if (currentHeapMB > maxHeapUsedMB) {
+        maxHeapUsedMB = currentHeapMB;
+      }
+      
+      console.log(`[Memory] ${label}: ${heapMB}/${heapTotalMB} MB heap used (peak: ${maxHeapUsedMB.toFixed(1)}MB)`);
     }
 
     // Helper function to check if an entity is persistable
@@ -630,7 +651,13 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
             );
             
             if (vulnerabilityFound) {
-              checkResults[check.check_type].vulnerable_entities.push(vulnerabilityFound);
+              const result = checkResults[check.check_type];
+              result.total_vulnerabilities++;
+              
+              // Only keep first 50 samples to prevent unbounded memory growth
+              if (result.sample_entities.length < 50) {
+                result.sample_entities.push(vulnerabilityFound);
+              }
             }
           }
           
@@ -650,8 +677,12 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
         }
       }
       
-      // CRITICAL: Unload this domain model from memory
+      // CRITICAL: Unload this domain model from memory and free local references
       await domainModel.unload();
+      
+      // Explicitly null large local arrays to help GC
+      // (moduleEntities is already out of scope, but be explicit about intent)
+      
       forceMemoryCleanup();
       
       logMemoryUsage(`After unloading module ${moduleIndex + 1}/${domainModels.length}: ${moduleName}`);
@@ -664,7 +695,7 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
 
     console.log(`[Batch ${batch_number + 1}/${total_batches}] Working copy will be automatically cleaned up by Mendix Platform`);
 
-    // Enhanced final summary
+    // Enhanced final summary with memory tracking
     const totalTime = Math.floor((Date.now() - startTime) / 1000);
     const avgTimePerEntity = totalEntities > 0 ? (totalTime / totalEntities).toFixed(2) : 'N/A';
     
@@ -673,11 +704,13 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
     console.log(`[Batch ${batch_number + 1}/${total_batches}] Entities processed: ${processedEntities}/${totalEntities}`);
     console.log(`[Batch ${batch_number + 1}/${total_batches}] Average time per entity: ${avgTimePerEntity}s`);
     console.log(`[Batch ${batch_number + 1}/${total_batches}] Checks run: ${checks_to_run.length}`);
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] Peak memory usage: ${maxHeapUsedMB.toFixed(1)} MB`);
 
-    // Log results summary
+    // Log results summary (using counts, not array lengths)
     for (const [checkType, result] of Object.entries(checkResults)) {
-      const vulnCount = (result as any).vulnerable_entities.length;
-      console.log(`[Batch ${batch_number + 1}/${total_batches}] ${checkType}: ${vulnCount} vulnerabilities found`);
+      const vulnCount = (result as any).total_vulnerabilities;
+      const sampleCount = (result as any).sample_entities.length;
+      console.log(`[Batch ${batch_number + 1}/${total_batches}] ${checkType}: ${vulnCount} vulnerabilities found (${sampleCount} samples stored)`);
     }
 
     return {
@@ -791,7 +824,7 @@ async function updateRunStatus(supabase: any, runId: string): Promise<void> {
 
     console.log(`[OWASP Async Worker] Aggregating ${completedJobs.length} batch jobs`);
 
-    // Aggregate results by check_type
+    // Aggregate results by check_type (using counts + samples)
     const aggregatedResults: any = {};
     
     for (const job of completedJobs) {
@@ -805,34 +838,55 @@ async function updateRunStatus(supabase: any, runId: string): Promise<void> {
             step_id: typedResult.step_id,
             owasp_id: typedResult.owasp_id,
             step_name: typedResult.step_name,
-            vulnerable_entities: []
+            total_vulnerabilities: 0,
+            sample_entities: []
           };
         }
         
-        // Merge vulnerable entities
-        aggregatedResults[checkType].vulnerable_entities.push(
-          ...typedResult.vulnerable_entities
-        );
+        // Aggregate counts and merge sample entities (up to 10 total for details)
+        if (typedResult.total_vulnerabilities !== undefined) {
+          // New format: use counts
+          aggregatedResults[checkType].total_vulnerabilities += typedResult.total_vulnerabilities;
+          
+          // Merge samples (cap at 10 for details string)
+          if (aggregatedResults[checkType].sample_entities.length < 10 && typedResult.sample_entities) {
+            const remaining = 10 - aggregatedResults[checkType].sample_entities.length;
+            aggregatedResults[checkType].sample_entities.push(
+              ...typedResult.sample_entities.slice(0, remaining)
+            );
+          }
+        } else if (typedResult.vulnerable_entities) {
+          // Fallback for old format: count array length
+          aggregatedResults[checkType].total_vulnerabilities += typedResult.vulnerable_entities.length;
+          
+          // Merge samples (cap at 10 for details string)
+          if (aggregatedResults[checkType].sample_entities.length < 10) {
+            const remaining = 10 - aggregatedResults[checkType].sample_entities.length;
+            aggregatedResults[checkType].sample_entities.push(
+              ...typedResult.vulnerable_entities.slice(0, remaining)
+            );
+          }
+        }
       }
     }
 
-    // Create/update owasp_check_results for each check type
+    // Create/update owasp_check_results for each check type (using counts)
     let passCount = 0;
     let failCount = 0;
     
     for (const [checkType, result] of Object.entries(aggregatedResults)) {
       const typedResult = result as any;
-      const hasVulnerabilities = typedResult.vulnerable_entities.length > 0;
+      const totalVulnerable = typedResult.total_vulnerabilities || 0;
+      const hasVulnerabilities = totalVulnerable > 0;
       
       const status = hasVulnerabilities ? 'fail' : 'pass';
-      const totalVulnerable = typedResult.vulnerable_entities.length;
-      const entityList = typedResult.vulnerable_entities
+      const entityList = typedResult.sample_entities
         .slice(0, 10)
         .map((v: any) => `${v.module}.${v.name}`)
         .join(', ');
       
       const details = hasVulnerabilities
-        ? `✗ SECURITY ISSUE: Found ${totalVulnerable} persistable entit${totalVulnerable === 1 ? 'y' : 'ies'} with anonymous access and no XPath constraints. Entities: ${entityList}${totalVulnerable > 10 ? '...' : ''}`
+        ? `✗ SECURITY ISSUE: Found ${totalVulnerable} persistable entit${totalVulnerable === 1 ? 'y' : 'ies'} with anonymous access and no XPath constraints. Sample entities: ${entityList}${totalVulnerable > 10 ? ` (and ${totalVulnerable - 10} more)` : ''}`
         : `✓ All entities have proper XPath constraints (checked ${completedJobs.length} batches)`;
       
       // Update or create check result
