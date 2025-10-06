@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
         id,
         owasp_id,
         title,
-    owasp_steps!inner(
+        owasp_steps!inner(
           id,
           step_name,
           step_description,
