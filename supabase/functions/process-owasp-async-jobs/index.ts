@@ -233,9 +233,7 @@ async function discoverAndQueueBatches(job: any, supabase: any): Promise<{ statu
     const domainModels = model.allDomainModels();
     const totalDomainModels = domainModels.length;
     console.log(`[Discovery] Found ${totalDomainModels} domain models`);
-
-    // Clean up model immediately after counting
-    await workingCopy.delete();
+    console.log('[Discovery] Working copy will be automatically cleaned up by Mendix Platform');
 
     // Calculate batches (5 domain models per batch)
     const MODELS_PER_BATCH = 5;
@@ -291,6 +289,23 @@ async function discoverAndQueueBatches(job: any, supabase: any): Promise<{ statu
 
   } catch (error) {
     console.error('[Discovery] Error during discovery:', error);
+    
+    // Mark the run as failed when discovery fails
+    if (job.run_id) {
+      try {
+        await supabase
+          .from('owasp_check_runs')
+          .update({
+            run_completed_at: new Date().toISOString(),
+            overall_status: 'fail',
+          })
+          .eq('id', job.run_id);
+        console.log(`[Discovery] Marked run ${job.run_id} as failed due to discovery error`);
+      } catch (updateError) {
+        console.error('[Discovery] Failed to update run status:', updateError);
+      }
+    }
+    
     return {
       status: 'error',
       details: `Failed to discover domain models: ${getErrorMessage(error)}`,
@@ -499,8 +514,7 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
       }
     }
 
-    // Clean up
-    await workingCopy.delete();
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] Working copy will be automatically cleaned up by Mendix Platform`);
 
     // Log results summary
     for (const [checkType, result] of Object.entries(checkResults)) {
