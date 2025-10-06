@@ -315,11 +315,37 @@ async function discoverAndQueueBatches(job: any, supabase: any): Promise<{ statu
 
 // Execute multiple checks on a batch of domain models
 async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status: string; details: string; check_results?: any }> {
+  const BATCH_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+  const HEARTBEAT_INTERVAL_MS = 30 * 1000; // 30 seconds
+  
+  const startTime = Date.now();
+  let heartbeatInterval: number | null = null;
+  let processedEntities = 0;
+  let totalEntities = 0;
+  
   try {
     const { credential_id, project_id, environment_name, user_id, batch_number, total_batches, domain_model_start, domain_model_end, checks_to_run } = job.payload;
 
     console.log(`[Batch ${batch_number + 1}/${total_batches}] Starting for project: ${project_id}, models ${domain_model_start}-${domain_model_end - 1}`);
     console.log(`[Batch ${batch_number + 1}/${total_batches}] Running ${checks_to_run.length} checks`);
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] Timeout set to ${BATCH_TIMEOUT_MS / 1000 / 60} minutes`);
+    
+    // Start heartbeat mechanism to update job timestamp
+    heartbeatInterval = setInterval(async () => {
+      try {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        await supabase
+          .from('owasp_async_jobs')
+          .update({ 
+            updated_at: new Date().toISOString(),
+            progress: `Processing: ${processedEntities}/${totalEntities} entities (${elapsed}s elapsed)`
+          })
+          .eq('id', job.id);
+        console.log(`[Batch ${batch_number + 1}/${total_batches}] Heartbeat: ${processedEntities}/${totalEntities} entities, ${elapsed}s elapsed`);
+      } catch (error) {
+        console.error(`[Batch ${batch_number + 1}/${total_batches}] Heartbeat error:`, error);
+      }
+    }, HEARTBEAT_INTERVAL_MS);
 
     // Fetch Mendix credentials
     const { data: credentials, error: credError } = await supabase
@@ -477,42 +503,78 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
       }
     }
 
+    // Count total entities for progress tracking
+    for (const domainModel of domainModels) {
+      await domainModel.load();
+      totalEntities += domainModel.entities.filter((e: any) => e instanceof domainmodels.Entity).length;
+    }
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] Total entities to process: ${totalEntities}`);
+
     // Process each domain model
     for (const domainModel of domainModels) {
       await domainModel.load();
       const moduleName = domainModel.containerAsModule ? domainModel.containerAsModule.name : 'Unknown';
 
       for (const entity of domainModel.entities) {
+        // Check timeout
+        if (Date.now() - startTime > BATCH_TIMEOUT_MS) {
+          if (heartbeatInterval) clearInterval(heartbeatInterval);
+          console.error(`[Batch ${batch_number + 1}/${total_batches}] TIMEOUT after ${BATCH_TIMEOUT_MS / 1000}s`);
+          return {
+            status: 'error',
+            details: `Batch ${batch_number + 1}/${total_batches} timed out after ${BATCH_TIMEOUT_MS / 1000 / 60} minutes. Processed ${processedEntities}/${totalEntities} entities.`,
+          };
+        }
+        
         if (!(entity instanceof domainmodels.Entity)) continue;
         if (!entity) continue;
 
-        await entity.load();
-        
-        const entityName = entity.name || 'UnknownEntity';
-        const entityQualifiedName = entity.qualifiedName || 'Unknown';
-
-        const persistable = await isPersistable(entity);
-        if (!persistable) continue;
-
-        // Run all checks on this entity
-        for (const check of checks_to_run) {
-          const vulnerabilityFound = await runCheckOnEntity(
-            check.check_type,
-            entity,
-            {
-              guestContext,
-              moduleName,
-              entityName,
-              entityQualifiedName
-            }
-          );
+        try {
+          await entity.load();
           
-          if (vulnerabilityFound) {
-            checkResults[check.check_type].vulnerable_entities.push(vulnerabilityFound);
+          const entityName = entity.name || 'UnknownEntity';
+          const entityQualifiedName = entity.qualifiedName || 'Unknown';
+
+          const persistable = await isPersistable(entity);
+          if (!persistable) {
+            processedEntities++;
+            continue;
           }
+
+          // Run all checks on this entity
+          for (const check of checks_to_run) {
+            const vulnerabilityFound = await runCheckOnEntity(
+              check.check_type,
+              entity,
+              {
+                guestContext,
+                moduleName,
+                entityName,
+                entityQualifiedName
+              }
+            );
+            
+            if (vulnerabilityFound) {
+              checkResults[check.check_type].vulnerable_entities.push(vulnerabilityFound);
+            }
+          }
+          
+          processedEntities++;
+          
+          // Log progress every 10 entities
+          if (processedEntities % 10 === 0) {
+            console.log(`[Batch ${batch_number + 1}/${total_batches}] Progress: ${processedEntities}/${totalEntities} entities`);
+          }
+        } catch (entityError) {
+          console.error(`[Batch ${batch_number + 1}/${total_batches}] Error processing entity in ${moduleName}:`, getErrorMessage(entityError));
+          processedEntities++;
+          // Continue with next entity instead of failing entire batch
         }
       }
     }
+    
+    // Clear heartbeat
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
 
     console.log(`[Batch ${batch_number + 1}/${total_batches}] Working copy will be automatically cleaned up by Mendix Platform`);
 
@@ -529,6 +591,9 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
     };
 
   } catch (error) {
+    // Clear heartbeat on error
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
+    
     console.error(`[Batch ${job.payload.batch_number + 1}/${job.payload.total_batches}] Error during analysis:`, error);
     return {
       status: 'error',

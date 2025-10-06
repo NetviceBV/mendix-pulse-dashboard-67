@@ -19,7 +19,8 @@ Deno.serve(async (req) => {
     console.log('[OWASP Cleanup] Starting cleanup of stale jobs...');
 
     const now = new Date();
-    const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60 * 1000);
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
     const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
     // Clean up failed jobs older than 1 week
@@ -48,12 +49,12 @@ Deno.serve(async (req) => {
       console.log(`[OWASP Cleanup] Deleted ${deletedCompletedCount || 0} completed jobs older than 1 week`);
     }
 
-    // Mark stuck processing jobs as failed (processing for more than 1 day)
+    // Mark stuck processing jobs as failed (no updates for 15 minutes)
     const { data: stuckJobs, error: stuckError } = await supabase
       .from('owasp_async_jobs')
-      .select('id')
+      .select('id, job_type, payload')
       .eq('status', 'processing')
-      .lt('started_at', oneDayAgo.toISOString());
+      .lt('updated_at', fifteenMinutesAgo.toISOString());
 
     if (stuckError) {
       console.error('[OWASP Cleanup] Error fetching stuck jobs:', stuckError);
@@ -62,7 +63,7 @@ Deno.serve(async (req) => {
         .from('owasp_async_jobs')
         .update({
           status: 'failed',
-          error_message: 'Job timed out - exceeded maximum processing time',
+          error_message: 'Job timed out - no updates for 15 minutes',
           completed_at: new Date().toISOString(),
         })
         .in('id', stuckJobs.map(j => j.id));
@@ -70,12 +71,17 @@ Deno.serve(async (req) => {
       if (updateError) {
         console.error('[OWASP Cleanup] Error updating stuck jobs:', updateError);
       } else {
-        console.log(`[OWASP Cleanup] Marked ${stuckJobs.length} stuck jobs as failed`);
+        console.log(`[OWASP Cleanup] Marked ${stuckJobs.length} stuck jobs as failed (no updates for 15+ minutes)`);
+        stuckJobs.forEach((job: any) => {
+          const batchInfo = job.job_type === 'multi-check-batch' 
+            ? ` (Batch ${job.payload?.batch_number + 1}/${job.payload?.total_batches})`
+            : '';
+          console.log(`[OWASP Cleanup] - Job ${job.id} (${job.job_type})${batchInfo}`);
+        });
       }
     }
 
     // Re-queue jobs that failed but haven't reached max attempts and are older than 1 hour
-    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
     const { data: retryableJobs, error: retryError } = await supabase
       .from('owasp_async_jobs')
       .select('id, attempts, max_attempts')
