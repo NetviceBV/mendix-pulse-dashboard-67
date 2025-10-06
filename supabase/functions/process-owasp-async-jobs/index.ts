@@ -65,8 +65,14 @@ Deno.serve(async (req) => {
         let error_message: string | null = null;
 
         if (job.job_type === 'anonymous-entity-check') {
-          // Execute the Mendix SDK analysis
-          result = await executeAnonymousEntityCheck(job.payload, supabase);
+          // Check if this is a discovery job or a batch processing job
+          if (job.payload.batch_mode === 'discovery') {
+            // Discovery job: count domain models and queue batch jobs
+            result = await discoverAndQueueBatches(job, supabase);
+          } else {
+            // Batch processing job: analyze assigned domain models
+            result = await executeAnonymousEntityCheck(job.payload, supabase);
+          }
           
           if (result.status === 'error') {
             error_message = result.details;
@@ -155,10 +161,158 @@ Deno.serve(async (req) => {
   }
 });
 
-// Execute the anonymous entity access check
+// Discovery job: count domain models and queue batch jobs
+async function discoverAndQueueBatches(job: any, supabase: any): Promise<{ status: string; details: string }> {
+  try {
+    const { credential_id, project_id, environment_name, user_id } = job.payload;
+    const { run_id, step_id } = job;
+
+    console.log(`[Discovery] Starting discovery for project: ${project_id}`);
+
+    // Fetch Mendix credentials
+    const { data: credentials, error: credError } = await supabase
+      .from('mendix_credentials')
+      .select('*')
+      .eq('id', credential_id)
+      .eq('user_id', user_id)
+      .single();
+
+    if (credError || !credentials || !credentials.pat) {
+      return {
+        status: 'error',
+        details: 'Failed to fetch credentials or PAT not available',
+      };
+    }
+
+    // Fetch app details
+    const { data: app, error: appError } = await supabase
+      .from('mendix_apps')
+      .select('project_id, version')
+      .eq('project_id', project_id)
+      .eq('user_id', user_id)
+      .single();
+
+    if (appError || !app || !app.project_id) {
+      return {
+        status: 'error',
+        details: 'Failed to fetch application details',
+      };
+    }
+
+    // Import Mendix SDK
+    const { MendixPlatformClient, setPlatformConfig } = await import("npm:mendixplatformsdk@5.2.0");
+
+    // Configure SDK
+    setPlatformConfig({ mendixToken: credentials.pat });
+    const client = new MendixPlatformClient();
+
+    console.log(`[Discovery] Getting app and repository info`);
+    const mendixApp = client.getApp(app.project_id);
+    
+    const repository = mendixApp.getRepository();
+    const repositoryInfo = await repository.getInfo();
+    const repoType = repositoryInfo?.type;
+    
+    const primaryBranch = repoType === 'svn' ? 'trunk' : 'main';
+    const fallbackBranches = repoType === 'svn' ? ['trunk'] : ['main', 'master'];
+    
+    let workingCopy: any;
+    let lastErr: any;
+    
+    for (const candidate of [primaryBranch, ...fallbackBranches.filter(b => b !== primaryBranch)]) {
+      try {
+        console.log(`[Discovery] Attempting working copy on branch: ${candidate}`);
+        workingCopy = await mendixApp.createTemporaryWorkingCopy(candidate);
+        console.log(`[Discovery] Working copy created on branch: ${candidate}`);
+        break;
+      } catch (e: any) {
+        lastErr = e;
+        console.warn(`[Discovery] Failed on ${candidate}:`, e?.errorMessage || e?.message);
+      }
+    }
+    
+    if (!workingCopy) {
+      return {
+        status: 'error',
+        details: `Could not create working copy. Last error: ${lastErr?.errorMessage || lastErr?.message || String(lastErr)}`,
+      };
+    }
+
+    const model = await workingCopy.openModel();
+    console.log('[Discovery] Model opened successfully');
+
+    // Count domain models
+    const domainModels = model.allDomainModels();
+    const totalDomainModels = domainModels.length;
+    console.log(`[Discovery] Found ${totalDomainModels} domain models`);
+
+    // Calculate batches (5 domain models per batch)
+    const MODELS_PER_BATCH = 5;
+    const totalBatches = Math.ceil(totalDomainModels / MODELS_PER_BATCH);
+    
+    console.log(`[Discovery] Creating ${totalBatches} batch jobs (${MODELS_PER_BATCH} models per batch)`);
+
+    // Create batch jobs
+    const batchJobs = [];
+    for (let i = 0; i < totalBatches; i++) {
+      const startIndex = i * MODELS_PER_BATCH;
+      const endIndex = Math.min(startIndex + MODELS_PER_BATCH, totalDomainModels);
+      
+      batchJobs.push({
+        user_id,
+        run_id,
+        step_id,
+        job_type: 'anonymous-entity-check',
+        payload: {
+          credential_id,
+          project_id,
+          environment_name,
+          user_id,
+          batch_mode: 'process',
+          batch_number: i,
+          total_batches: totalBatches,
+          domain_model_start: startIndex,
+          domain_model_end: endIndex,
+        },
+        status: 'queued',
+      });
+    }
+
+    // Insert all batch jobs
+    const { error: batchError } = await supabase
+      .from('owasp_async_jobs')
+      .insert(batchJobs);
+
+    if (batchError) {
+      console.error('[Discovery] Failed to create batch jobs:', batchError);
+      return {
+        status: 'error',
+        details: `Failed to create batch jobs: ${batchError.message}`,
+      };
+    }
+
+    console.log(`[Discovery] Successfully queued ${totalBatches} batch jobs`);
+
+    return {
+      status: 'pass',
+      details: `Discovery complete: ${totalDomainModels} domain models found, ${totalBatches} batch jobs created`,
+    };
+
+  } catch (error) {
+    console.error('[Discovery] Error during discovery:', error);
+    return {
+      status: 'error',
+      details: `Failed to discover domain models: ${getErrorMessage(error)}`,
+    };
+  }
+}
+
+// Execute the anonymous entity access check for a batch of domain models
 async function executeAnonymousEntityCheck(payload: any, supabase: any): Promise<{ status: string; details: string }> {
   try {
-    const { credential_id, project_id, environment_name, user_id } = payload;
+    const { credential_id, project_id, environment_name, user_id, batch_number, total_batches, domain_model_start, domain_model_end } = payload;
+
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] Starting for project: ${project_id}, models ${domain_model_start}-${domain_model_end - 1}`);
 
     console.log(`[Anonymous Check] Starting for project: ${project_id}`);
 
@@ -200,7 +354,7 @@ async function executeAnonymousEntityCheck(payload: any, supabase: any): Promise
     setPlatformConfig({ mendixToken: credentials.pat });
     const client = new MendixPlatformClient();
 
-    console.log(`[Anonymous Check] Getting app and repository info`);
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] Getting app and repository info`);
     const mendixApp = client.getApp(app.project_id);
     
     const repository = mendixApp.getRepository();
@@ -215,13 +369,13 @@ async function executeAnonymousEntityCheck(payload: any, supabase: any): Promise
     
     for (const candidate of [primaryBranch, ...fallbackBranches.filter(b => b !== primaryBranch)]) {
       try {
-        console.log(`[Anonymous Check] Attempting working copy on branch: ${candidate}`);
+        console.log(`[Batch ${batch_number + 1}/${total_batches}] Attempting working copy on branch: ${candidate}`);
         workingCopy = await mendixApp.createTemporaryWorkingCopy(candidate);
-        console.log(`[Anonymous Check] Working copy created on branch: ${candidate}`);
+        console.log(`[Batch ${batch_number + 1}/${total_batches}] Working copy created on branch: ${candidate}`);
         break;
       } catch (e: any) {
         lastErr = e;
-        console.warn(`[Anonymous Check] Failed on ${candidate}:`, e?.errorMessage || e?.message);
+        console.warn(`[Batch ${batch_number + 1}/${total_batches}] Failed on ${candidate}:`, e?.errorMessage || e?.message);
       }
     }
     
@@ -233,7 +387,7 @@ async function executeAnonymousEntityCheck(payload: any, supabase: any): Promise
     }
 
     const model = await workingCopy.openModel();
-    console.log('[Anonymous Check] Model opened successfully');
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] Model opened successfully`);
 
     // Helper function to check if an entity is persistable
     async function isPersistable(entity: any): Promise<boolean> {
@@ -263,7 +417,7 @@ async function executeAnonymousEntityCheck(payload: any, supabase: any): Promise
 
     // Get ProjectSecurity
     const allSecurityUnits = model.allProjectSecurities();
-    console.log(`[Anonymous Check] Found ${allSecurityUnits.length} project security units`);
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] Found ${allSecurityUnits.length} project security units`);
     
     if (allSecurityUnits.length === 0) {
       return {
@@ -291,7 +445,7 @@ async function executeAnonymousEntityCheck(payload: any, supabase: any): Promise
       };
     }
     
-    console.log(`[Anonymous Check] Guest/Anonymous role name: ${guestUserRoleName}`);
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] Guest/Anonymous role name: ${guestUserRoleName}`);
     
     // Find guest module roles
     const guestModuleRoles: Array<{ name: string; qualifiedName: string }> = [];
@@ -328,33 +482,18 @@ async function executeAnonymousEntityCheck(payload: any, supabase: any): Promise
       };
     }
 
-    // Get all domain models
-    const domainModels = model.allDomainModels();
-    console.log(`[Anonymous Check] Found ${domainModels.length} domain models`);
+    // Get all domain models and slice to the batch range
+    const allDomainModels = model.allDomainModels();
+    const domainModels = allDomainModels.slice(domain_model_start, domain_model_end);
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] Processing ${domainModels.length} domain models (${domain_model_start}-${domain_model_end - 1} of ${allDomainModels.length} total)`);
 
     const entitiesWithAnonymousAccessNoXPath: Array<{ module: string; name: string; qualifiedName: string }> = [];
-    const MAX_VIOLATIONS_TO_COLLECT = 3; // Early-exit after finding this many violations
-    const startTime = Date.now();
-    const SOFT_TIME_BUDGET_MS = 7000; // 7 seconds soft limit
 
     for (const domainModel of domainModels) {
       await domainModel.load();
       const moduleName = domainModel.containerAsModule ? domainModel.containerAsModule.name : 'Unknown';
 
       for (const entity of domainModel.entities) {
-        // Early-exit if we've found enough violations
-        if (entitiesWithAnonymousAccessNoXPath.length >= MAX_VIOLATIONS_TO_COLLECT) {
-          console.log(`[Anonymous Check] Early-exit: found ${MAX_VIOLATIONS_TO_COLLECT} violations, stopping scan`);
-          break;
-        }
-
-        // Time budget check
-        const elapsed = Date.now() - startTime;
-        if (elapsed > SOFT_TIME_BUDGET_MS) {
-          console.log(`[Anonymous Check] Time budget exceeded (${elapsed}ms), stopping scan`);
-          break;
-        }
-
         if (!(entity instanceof domainmodels.Entity)) continue;
         if (!entity) continue;
 
@@ -393,19 +532,18 @@ async function executeAnonymousEntityCheck(payload: any, supabase: any): Promise
           }
         }
       }
-      
-      // Check after each domain model if we should stop
-      if (entitiesWithAnonymousAccessNoXPath.length >= MAX_VIOLATIONS_TO_COLLECT) {
-        break;
-      }
     }
 
     const totalVulnerable = entitiesWithAnonymousAccessNoXPath.length;
 
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] Found ${totalVulnerable} vulnerable entities in this batch`);
+
+    // For batch jobs, we store partial results and return success
+    // The final aggregation happens in updateRunStatus when all batches complete
     if (totalVulnerable === 0) {
       return {
         status: 'pass',
-        details: '✓ Anonymous access is enabled but all entities have XPath constraints',
+        details: `Batch ${batch_number + 1}/${total_batches}: No vulnerable entities found`,
       };
     }
 
@@ -413,18 +551,16 @@ async function executeAnonymousEntityCheck(payload: any, supabase: any): Promise
       .map(e => `${e.module}.${e.name}`)
       .join(', ');
 
-    const foundMoreNote = totalVulnerable >= MAX_VIOLATIONS_TO_COLLECT ? ' (early-exit: more may exist)' : '';
-
     return {
       status: 'fail',
-      details: `✗ SECURITY ISSUE: Found ${totalVulnerable} persistable entit${totalVulnerable === 1 ? 'y' : 'ies'} with anonymous access and no XPath constraints${foundMoreNote}. Examples: ${entityList}`,
+      details: `Batch ${batch_number + 1}/${total_batches}: Found ${totalVulnerable} vulnerable entit${totalVulnerable === 1 ? 'y' : 'ies'}: ${entityList}`,
     };
 
   } catch (error) {
-    console.error('[Anonymous Check] Error during analysis:', error);
+    console.error(`[Batch ${payload.batch_number + 1}/${payload.total_batches}] Error during analysis:`, error);
     return {
       status: 'error',
-      details: `Failed to analyze project: ${getErrorMessage(error)}`,
+      details: `Batch ${payload.batch_number + 1}/${payload.total_batches} failed: ${getErrorMessage(error)}`,
     };
   }
 }
@@ -432,55 +568,113 @@ async function executeAnonymousEntityCheck(payload: any, supabase: any): Promise
 // Update the run's overall status based on all check results
 async function updateRunStatus(supabase: any, runId: string): Promise<void> {
   try {
-    // Get all results for this run
-    const { data: results, error } = await supabase
-      .from('owasp_check_results')
-      .select('status')
-      .eq('run_id', runId);
-
-    if (error || !results) return;
-
-    // Check if there are any pending jobs
+    // Check if there are any pending jobs for this run
     const { data: pendingJobs } = await supabase
       .from('owasp_async_jobs')
-      .select('id')
+      .select('id, payload')
       .eq('run_id', runId)
       .in('status', ['queued', 'processing'])
       .limit(1);
 
     // If there are still pending jobs, don't update the run status yet
-    if (pendingJobs && pendingJobs.length > 0) return;
-
-    // Count statuses
-    let passCount = 0;
-    let failCount = 0;
-    let warningCount = 0;
-
-    for (const result of results) {
-      if (result.status === 'pass') passCount++;
-      else if (result.status === 'fail') failCount++;
-      else if (result.status === 'warning') warningCount++;
+    if (pendingJobs && pendingJobs.length > 0) {
+      console.log(`[OWASP Async Worker] Run ${runId} still has pending jobs, skipping status update`);
+      return;
     }
 
-    // Determine overall status
-    let overallStatus: 'pass' | 'fail' | 'warning' = 'pass';
-    if (failCount > 0) overallStatus = 'fail';
-    else if (warningCount > 0) overallStatus = 'warning';
+    console.log(`[OWASP Async Worker] All jobs complete for run ${runId}, aggregating results...`);
 
-    // Update run record
+    // Get all completed batch jobs for this run
+    const { data: completedJobs, error: jobsError } = await supabase
+      .from('owasp_async_jobs')
+      .select('result, payload')
+      .eq('run_id', runId)
+      .eq('job_type', 'anonymous-entity-check')
+      .eq('status', 'completed');
+
+    if (jobsError || !completedJobs) {
+      console.error('[OWASP Async Worker] Error fetching completed jobs:', jobsError);
+      return;
+    }
+
+    // Filter out discovery jobs and aggregate batch results
+    const batchJobs = completedJobs.filter(job => job.payload?.batch_mode === 'process');
+    
+    console.log(`[OWASP Async Worker] Aggregating ${batchJobs.length} batch jobs`);
+
+    let hasFailures = false;
+    let allVulnerableEntities: string[] = [];
+    let allPassedBatches = 0;
+    let allFailedBatches = 0;
+
+    for (const job of batchJobs) {
+      if (job.result?.status === 'fail') {
+        hasFailures = true;
+        allFailedBatches++;
+        // Extract entity names from batch details
+        const details = job.result.details || '';
+        const match = details.match(/Found \d+ vulnerable entit(?:y|ies): (.+)$/);
+        if (match) {
+          const entities = match[1].split(', ');
+          allVulnerableEntities.push(...entities);
+        }
+      } else if (job.result?.status === 'pass') {
+        allPassedBatches++;
+      }
+    }
+
+    // Get the owasp_check_results record to update
+    const { data: checkResults } = await supabase
+      .from('owasp_check_results')
+      .select('*')
+      .eq('run_id', runId)
+      .limit(1);
+
+    if (checkResults && checkResults.length > 0) {
+      const checkResult = checkResults[0];
+      
+      // Determine final status and details
+      let finalStatus: string;
+      let finalDetails: string;
+
+      if (hasFailures) {
+        finalStatus = 'fail';
+        const totalVulnerable = allVulnerableEntities.length;
+        const entityList = allVulnerableEntities.join(', ');
+        finalDetails = `✗ SECURITY ISSUE: Found ${totalVulnerable} persistable entit${totalVulnerable === 1 ? 'y' : 'ies'} with anonymous access and no XPath constraints across all batches. Entities: ${entityList}`;
+      } else {
+        finalStatus = 'pass';
+        finalDetails = `✓ Anonymous access is enabled but all entities have XPath constraints (checked ${batchJobs.length} batches)`;
+      }
+
+      // Update the check result with aggregated findings
+      await supabase
+        .from('owasp_check_results')
+        .update({
+          status: finalStatus,
+          details: finalDetails,
+        })
+        .eq('id', checkResult.id);
+
+      console.log(`[OWASP Async Worker] Updated check result with aggregated findings: ${finalStatus}`);
+    }
+
+    // Update run status
+    const overallStatus = hasFailures ? 'fail' : 'pass';
+    
     await supabase
       .from('owasp_check_runs')
       .update({
         run_completed_at: new Date().toISOString(),
         overall_status: overallStatus,
-        total_checks: results.length,
-        passed_checks: passCount,
-        failed_checks: failCount,
-        warning_checks: warningCount,
+        total_checks: 1,
+        passed_checks: hasFailures ? 0 : 1,
+        failed_checks: hasFailures ? 1 : 0,
+        warning_checks: 0,
       })
       .eq('id', runId);
 
-    console.log(`[OWASP Async Worker] Updated run ${runId} status to: ${overallStatus}`);
+    console.log(`[OWASP Async Worker] Updated run ${runId} status to: ${overallStatus} (${allPassedBatches} passed batches, ${allFailedBatches} failed batches)`);
   } catch (error) {
     console.error('[OWASP Async Worker] Error updating run status:', error);
   }

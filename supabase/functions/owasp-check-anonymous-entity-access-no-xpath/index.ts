@@ -78,7 +78,8 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Create async job for background processing
+    // Create async job for background processing (discovery mode)
+    // Discovery job will determine how many domain models exist and create batch jobs
     const { data: job, error: jobError } = await supabase
       .from('owasp_async_jobs')
       .insert({
@@ -91,6 +92,7 @@ Deno.serve(async (req) => {
           project_id,
           environment_name,
           user_id,
+          batch_mode: 'discovery', // This job will discover domain models and queue batches
         },
         status: 'queued',
       })
