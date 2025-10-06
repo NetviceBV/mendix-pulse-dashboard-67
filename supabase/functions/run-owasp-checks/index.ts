@@ -87,13 +87,14 @@ Deno.serve(async (req) => {
         id,
         owasp_id,
         title,
-        owasp_steps!inner(
+    owasp_steps!inner(
           id,
           step_name,
           step_description,
           edge_function_name,
           step_order,
-          is_active
+          is_active,
+          needs_domain_model
         )
       `)
       .eq('user_id', user.id)
@@ -112,12 +113,103 @@ Deno.serve(async (req) => {
     let failCount = 0;
     let warningCount = 0;
 
-    // Process each OWASP item and its steps
+    // Separate steps into those needing domain model and those that don't
+    const modelSteps: any[] = [];
+    const nonModelSteps: any[] = [];
+
     for (const item of owaspItems || []) {
       const steps = Array.isArray(item.owasp_steps) ? item.owasp_steps : [];
       
       for (const step of steps) {
         if (!step.is_active) continue;
+        
+        // Check if this step needs domain model access
+        if (step.needs_domain_model) {
+          modelSteps.push({
+            ...step,
+            owasp_id: item.owasp_id,
+          });
+        } else {
+          nonModelSteps.push(step);
+        }
+      }
+    }
+
+    console.log(`Model-dependent steps: ${modelSteps.length}, Non-model steps: ${nonModelSteps.length}`);
+
+    // If there are steps needing domain model, call orchestrator ONCE
+    if (modelSteps.length > 0) {
+      console.log('Invoking orchestrator for domain model checks...');
+      
+      const startTime = Date.now();
+      
+      const { data: orchestratorResult, error: orchestratorError } = await supabase.functions.invoke(
+        'owasp-discovery-orchestrator',
+        {
+          body: {
+            credential_id,
+            project_id,
+            environment_name,
+            user_id: user.id,
+            run_id: runRecord.id,
+            checks_to_run: modelSteps.map(s => ({
+              step_id: s.id,
+              check_type: `${s.owasp_id}-${s.step_name.toLowerCase().replace(/\s+/g, '-')}`,
+              step_name: s.step_name,
+              owasp_id: s.owasp_id
+            }))
+          }
+        }
+      );
+
+      const executionTime = Date.now() - startTime;
+
+      if (orchestratorError) {
+        console.error('Error invoking orchestrator:', orchestratorError);
+        
+        // Create error results for all model steps
+        for (const step of modelSteps) {
+          allResults.push({
+            step_id: step.id,
+            step_name: step.step_name,
+            status: 'error',
+            details: `Orchestrator error: ${orchestratorError.message}`,
+            execution_time_ms: executionTime,
+          });
+        }
+      } else {
+        // Create pending results for model-based checks (will be updated by batches)
+        for (const step of modelSteps) {
+          allResults.push({
+            step_id: step.id,
+            step_name: step.step_name,
+            status: 'pending',
+            details: orchestratorResult.details || 'Queued for batch processing',
+            execution_time_ms: executionTime,
+            job_id: orchestratorResult.job_id,
+          });
+          
+          // Store placeholder result in database
+          await supabase
+            .from('owasp_check_results')
+            .insert({
+              user_id: user.id,
+              app_id: project_id,
+              environment_name,
+              owasp_step_id: step.id,
+              run_id: runRecord.id,
+              status: 'pending',
+              details: orchestratorResult.details || 'Queued for batch processing',
+              execution_time_ms: executionTime,
+              checked_at: new Date().toISOString(),
+              job_id: orchestratorResult.job_id,
+            });
+        }
+      }
+    }
+
+    // Process non-model steps normally
+    for (const step of nonModelSteps) {
 
         const startTime = Date.now();
         let stepResult: StepResult = {

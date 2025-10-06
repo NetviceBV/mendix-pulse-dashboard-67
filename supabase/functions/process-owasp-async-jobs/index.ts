@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
     // Process each job
     for (const job of jobs) {
       try {
-        console.log(`[OWASP Async Worker] Processing job ${job.id} (attempt ${job.attempts + 1}/${job.max_attempts})`);
+        console.log(`[OWASP Async Worker] Processing job ${job.id} type: ${job.job_type} (attempt ${job.attempts + 1}/${job.max_attempts})`);
 
         // Mark job as processing
         await supabase
@@ -64,22 +64,19 @@ Deno.serve(async (req) => {
         let result: any;
         let error_message: string | null = null;
 
-        if (job.job_type === 'anonymous-entity-check') {
-          // Check if this is a discovery job or a batch processing job
-          if (job.payload.batch_mode === 'discovery') {
-            // Discovery job: count domain models and queue batch jobs
-            result = await discoverAndQueueBatches(job, supabase);
-          } else {
-            // Batch processing job: analyze assigned domain models
-            result = await executeAnonymousEntityCheck(job.payload, supabase);
-          }
-          
-          if (result.status === 'error') {
-            error_message = result.details;
-          }
+        if (job.job_type === 'discovery') {
+          // Discovery job: count domain models and queue multi-check batch jobs
+          result = await discoverAndQueueBatches(job, supabase);
+        } else if (job.job_type === 'multi-check-batch') {
+          // Multi-check batch job: run all checks on assigned domain models
+          result = await executeMultiCheckBatch(job, supabase);
         } else {
           error_message = `Unknown job type: ${job.job_type}`;
           result = { status: 'error', details: error_message };
+        }
+
+        if (result.status === 'error') {
+          error_message = result.details;
         }
 
         // Update job with result
@@ -98,18 +95,8 @@ Deno.serve(async (req) => {
           .update(updateData)
           .eq('id', job.id);
 
-        // Update the corresponding owasp_check_results
-        if (job.run_id && job.step_id) {
-          await supabase
-            .from('owasp_check_results')
-            .update({
-              status: result.status,
-              details: result.details,
-            })
-            .eq('run_id', job.run_id)
-            .eq('owasp_step_id', job.step_id);
-
-          // Update the run's overall status if all jobs are complete
+        // Update the run's overall status if all jobs are complete
+        if (job.run_id) {
           await updateRunStatus(supabase, job.run_id);
         }
 
@@ -161,13 +148,14 @@ Deno.serve(async (req) => {
   }
 });
 
-// Discovery job: count domain models and queue batch jobs
+// Discovery job: count domain models and queue multi-check batch jobs
 async function discoverAndQueueBatches(job: any, supabase: any): Promise<{ status: string; details: string }> {
   try {
-    const { credential_id, project_id, environment_name, user_id } = job.payload;
-    const { run_id, step_id } = job;
+    const { credential_id, project_id, environment_name, user_id, checks_to_run } = job.payload;
+    const { run_id } = job;
 
     console.log(`[Discovery] Starting discovery for project: ${project_id}`);
+    console.log(`[Discovery] Will queue batches for ${checks_to_run.length} checks`);
 
     // Fetch Mendix credentials
     const { data: credentials, error: credError } = await supabase
@@ -246,13 +234,16 @@ async function discoverAndQueueBatches(job: any, supabase: any): Promise<{ statu
     const totalDomainModels = domainModels.length;
     console.log(`[Discovery] Found ${totalDomainModels} domain models`);
 
+    // Clean up model immediately after counting
+    await workingCopy.delete();
+
     // Calculate batches (5 domain models per batch)
     const MODELS_PER_BATCH = 5;
     const totalBatches = Math.ceil(totalDomainModels / MODELS_PER_BATCH);
     
     console.log(`[Discovery] Creating ${totalBatches} batch jobs (${MODELS_PER_BATCH} models per batch)`);
 
-    // Create batch jobs
+    // Create batch jobs - each batch will run ALL checks on its assigned models
     const batchJobs = [];
     for (let i = 0; i < totalBatches; i++) {
       const startIndex = i * MODELS_PER_BATCH;
@@ -261,18 +252,18 @@ async function discoverAndQueueBatches(job: any, supabase: any): Promise<{ statu
       batchJobs.push({
         user_id,
         run_id,
-        step_id,
-        job_type: 'anonymous-entity-check',
+        step_id: null, // No single step, this is multi-check
+        job_type: 'multi-check-batch',
         payload: {
           credential_id,
           project_id,
           environment_name,
           user_id,
-          batch_mode: 'process',
           batch_number: i,
           total_batches: totalBatches,
           domain_model_start: startIndex,
           domain_model_end: endIndex,
+          checks_to_run, // Pass all checks to each batch
         },
         status: 'queued',
       });
@@ -294,8 +285,8 @@ async function discoverAndQueueBatches(job: any, supabase: any): Promise<{ statu
     console.log(`[Discovery] Successfully queued ${totalBatches} batch jobs`);
 
     return {
-      status: 'pass',
-      details: `Discovery complete: ${totalDomainModels} domain models found, ${totalBatches} batch jobs created`,
+      status: 'completed',
+      details: `Discovery complete: ${totalDomainModels} domain models found, ${totalBatches} batch jobs created for ${checks_to_run.length} checks`,
     };
 
   } catch (error) {
@@ -307,14 +298,13 @@ async function discoverAndQueueBatches(job: any, supabase: any): Promise<{ statu
   }
 }
 
-// Execute the anonymous entity access check for a batch of domain models
-async function executeAnonymousEntityCheck(payload: any, supabase: any): Promise<{ status: string; details: string }> {
+// Execute multiple checks on a batch of domain models
+async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status: string; details: string; check_results?: any }> {
   try {
-    const { credential_id, project_id, environment_name, user_id, batch_number, total_batches, domain_model_start, domain_model_end } = payload;
+    const { credential_id, project_id, environment_name, user_id, batch_number, total_batches, domain_model_start, domain_model_end, checks_to_run } = job.payload;
 
     console.log(`[Batch ${batch_number + 1}/${total_batches}] Starting for project: ${project_id}, models ${domain_model_start}-${domain_model_end - 1}`);
-
-    console.log(`[Anonymous Check] Starting for project: ${project_id}`);
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] Running ${checks_to_run.length} checks`);
 
     // Fetch Mendix credentials
     const { data: credentials, error: credError } = await supabase
@@ -389,6 +379,63 @@ async function executeAnonymousEntityCheck(payload: any, supabase: any): Promise
     const model = await workingCopy.openModel();
     console.log(`[Batch ${batch_number + 1}/${total_batches}] Model opened successfully`);
 
+    // Initialize results storage for each check
+    const checkResults: any = {};
+    checks_to_run.forEach((check: any) => {
+      checkResults[check.check_type] = {
+        step_id: check.step_id,
+        owasp_id: check.owasp_id,
+        step_name: check.step_name,
+        vulnerable_entities: []
+      };
+    });
+
+    // Get project security (needed for all checks)
+    const allSecurityUnits = model.allProjectSecurities();
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] Found ${allSecurityUnits.length} project security units`);
+    
+    let guestContext: any = null;
+    
+    if (allSecurityUnits.length > 0) {
+      const projectSecurity = allSecurityUnits[0];
+      await projectSecurity.load();
+      
+      if (projectSecurity.enableGuestAccess && projectSecurity.guestUserRoleName) {
+        const guestUserRoleName = projectSecurity.guestUserRoleName;
+        console.log(`[Batch ${batch_number + 1}/${total_batches}] Guest/Anonymous role: ${guestUserRoleName}`);
+        
+        // Find guest module roles
+        const guestModuleRoles: Array<{ name: string; qualifiedName: string }> = [];
+        const userRoles = projectSecurity.userRoles;
+        
+        let guestUserRole = null;
+        for (const userRole of userRoles) {
+          if (userRole && userRole.name === guestUserRoleName) {
+            guestUserRole = userRole;
+            break;
+          }
+        }
+        
+        if (guestUserRole) {
+          for (const moduleRole of guestUserRole.moduleRoles) {
+            if (moduleRole && moduleRole.name && moduleRole.qualifiedName) {
+              guestModuleRoles.push({
+                name: moduleRole.name,
+                qualifiedName: moduleRole.qualifiedName
+              });
+            }
+          }
+        }
+        
+        guestContext = { guestModuleRoles };
+      }
+    }
+
+    // Get all domain models and slice to the batch range
+    const allDomainModels = model.allDomainModels();
+    const domainModels = allDomainModels.slice(domain_model_start, domain_model_end);
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] Processing ${domainModels.length} domain models (${domain_model_start}-${domain_model_end - 1} of ${allDomainModels.length} total)`);
+
     // Helper function to check if an entity is persistable
     async function isPersistable(entity: any): Promise<boolean> {
       try {
@@ -415,80 +462,7 @@ async function executeAnonymousEntityCheck(payload: any, supabase: any): Promise
       }
     }
 
-    // Get ProjectSecurity
-    const allSecurityUnits = model.allProjectSecurities();
-    console.log(`[Batch ${batch_number + 1}/${total_batches}] Found ${allSecurityUnits.length} project security units`);
-    
-    if (allSecurityUnits.length === 0) {
-      return {
-        status: 'pass',
-        details: '✓ No project security configuration found',
-      };
-    }
-    
-    const projectSecurity = allSecurityUnits[0];
-    await projectSecurity.load();
-    
-    if (!projectSecurity.enableGuestAccess) {
-      return {
-        status: 'pass',
-        details: '✓ Anonymous/guest access is not enabled in this application',
-      };
-    }
-    
-    const guestUserRoleName = projectSecurity.guestUserRoleName;
-    
-    if (!guestUserRoleName) {
-      return {
-        status: 'pass',
-        details: '✓ Guest access is enabled but no guest user role is configured',
-      };
-    }
-    
-    console.log(`[Batch ${batch_number + 1}/${total_batches}] Guest/Anonymous role name: ${guestUserRoleName}`);
-    
-    // Find guest module roles
-    const guestModuleRoles: Array<{ name: string; qualifiedName: string }> = [];
-    const userRoles = projectSecurity.userRoles;
-    
-    let guestUserRole = null;
-    for (const userRole of userRoles) {
-      if (userRole && userRole.name === guestUserRoleName) {
-        guestUserRole = userRole;
-        break;
-      }
-    }
-    
-    if (!guestUserRole) {
-      return {
-        status: 'pass',
-        details: '✓ Guest user role exists but has no module roles mapped',
-      };
-    }
-    
-    for (const moduleRole of guestUserRole.moduleRoles) {
-      if (moduleRole && moduleRole.name && moduleRole.qualifiedName) {
-        guestModuleRoles.push({
-          name: moduleRole.name,
-          qualifiedName: moduleRole.qualifiedName
-        });
-      }
-    }
-    
-    if (guestModuleRoles.length === 0) {
-      return {
-        status: 'pass',
-        details: '✓ Guest user role exists but has no module roles mapped',
-      };
-    }
-
-    // Get all domain models and slice to the batch range
-    const allDomainModels = model.allDomainModels();
-    const domainModels = allDomainModels.slice(domain_model_start, domain_model_end);
-    console.log(`[Batch ${batch_number + 1}/${total_batches}] Processing ${domainModels.length} domain models (${domain_model_start}-${domain_model_end - 1} of ${allDomainModels.length} total)`);
-
-    const entitiesWithAnonymousAccessNoXPath: Array<{ module: string; name: string; qualifiedName: string }> = [];
-
+    // Process each domain model
     for (const domainModel of domainModels) {
       await domainModel.load();
       const moduleName = domainModel.containerAsModule ? domainModel.containerAsModule.name : 'Unknown';
@@ -503,66 +477,109 @@ async function executeAnonymousEntityCheck(payload: any, supabase: any): Promise
         const entityQualifiedName = entity.qualifiedName || 'Unknown';
 
         const persistable = await isPersistable(entity);
-        
         if (!persistable) continue;
 
-        const accessRules = entity.accessRules || [];
-        
-        const anonymousAccessRules = accessRules.filter((rule: any) => {
-          if (!rule || !rule.moduleRoles) return false;
-          return rule.moduleRoles.some((moduleRole: any) => {
-            if (!moduleRole) return false;
-            return guestModuleRoles.some(guestModuleRole => 
-              moduleRole.qualifiedName === guestModuleRole.qualifiedName
-            );
-          });
-        });
-
-        if (anonymousAccessRules.length > 0) {
-          const hasRuleWithoutXPath = anonymousAccessRules.some((rule: any) => 
-            !rule.xPathConstraint || rule.xPathConstraint.trim() === ''
+        // Run all checks on this entity
+        for (const check of checks_to_run) {
+          const vulnerabilityFound = await runCheckOnEntity(
+            check.check_type,
+            entity,
+            {
+              guestContext,
+              moduleName,
+              entityName,
+              entityQualifiedName
+            }
           );
           
-          if (hasRuleWithoutXPath) {
-            entitiesWithAnonymousAccessNoXPath.push({
-              module: moduleName,
-              name: entityName,
-              qualifiedName: entityQualifiedName
-            });
+          if (vulnerabilityFound) {
+            checkResults[check.check_type].vulnerable_entities.push(vulnerabilityFound);
           }
         }
       }
     }
 
-    const totalVulnerable = entitiesWithAnonymousAccessNoXPath.length;
+    // Clean up
+    await workingCopy.delete();
 
-    console.log(`[Batch ${batch_number + 1}/${total_batches}] Found ${totalVulnerable} vulnerable entities in this batch`);
-
-    // For batch jobs, we store partial results and return success
-    // The final aggregation happens in updateRunStatus when all batches complete
-    if (totalVulnerable === 0) {
-      return {
-        status: 'pass',
-        details: `Batch ${batch_number + 1}/${total_batches}: No vulnerable entities found`,
-      };
+    // Log results summary
+    for (const [checkType, result] of Object.entries(checkResults)) {
+      const vulnCount = (result as any).vulnerable_entities.length;
+      console.log(`[Batch ${batch_number + 1}/${total_batches}] ${checkType}: ${vulnCount} vulnerabilities found`);
     }
 
-    const entityList = entitiesWithAnonymousAccessNoXPath
-      .map(e => `${e.module}.${e.name}`)
-      .join(', ');
-
     return {
-      status: 'fail',
-      details: `Batch ${batch_number + 1}/${total_batches}: Found ${totalVulnerable} vulnerable entit${totalVulnerable === 1 ? 'y' : 'ies'}: ${entityList}`,
+      status: 'completed',
+      details: `Batch ${batch_number + 1}/${total_batches} completed`,
+      check_results: checkResults
     };
 
   } catch (error) {
-    console.error(`[Batch ${payload.batch_number + 1}/${payload.total_batches}] Error during analysis:`, error);
+    console.error(`[Batch ${job.payload.batch_number + 1}/${job.payload.total_batches}] Error during analysis:`, error);
     return {
       status: 'error',
-      details: `Batch ${payload.batch_number + 1}/${payload.total_batches} failed: ${getErrorMessage(error)}`,
+      details: `Batch ${job.payload.batch_number + 1}/${job.payload.total_batches} failed: ${getErrorMessage(error)}`,
     };
   }
+}
+
+// Check function registry - add new checks here
+async function runCheckOnEntity(
+  checkType: string, 
+  entity: any, 
+  context: any
+): Promise<any> {
+  switch (checkType) {
+    case 'A01-anonymous-entity':
+      return checkAnonymousEntityAccess(entity, context);
+    
+    // Future checks can be added here:
+    // case 'A03-sql-injection':
+    //   return checkSQLInjectionRisk(entity, context);
+    // case 'A04-complex-access-rules':
+    //   return checkAccessRuleComplexity(entity, context);
+    
+    default:
+      console.warn(`Unknown check type: ${checkType}`);
+      return null;
+  }
+}
+
+// Check implementation: Anonymous entity access without XPath
+function checkAnonymousEntityAccess(entity: any, context: any): any {
+  const { guestContext, moduleName, entityName, entityQualifiedName } = context;
+  
+  if (!guestContext || !guestContext.guestModuleRoles || guestContext.guestModuleRoles.length === 0) {
+    return null; // No guest access configured
+  }
+  
+  const accessRules = entity.accessRules || [];
+  
+  const anonymousAccessRules = accessRules.filter((rule: any) => {
+    if (!rule || !rule.moduleRoles) return false;
+    return rule.moduleRoles.some((moduleRole: any) => {
+      if (!moduleRole) return false;
+      return guestContext.guestModuleRoles.some((guestModuleRole: any) => 
+        moduleRole.qualifiedName === guestModuleRole.qualifiedName
+      );
+    });
+  });
+
+  if (anonymousAccessRules.length > 0) {
+    const hasRuleWithoutXPath = anonymousAccessRules.some((rule: any) => 
+      !rule.xPathConstraint || rule.xPathConstraint.trim() === ''
+    );
+    
+    if (hasRuleWithoutXPath) {
+      return {
+        module: moduleName,
+        name: entityName,
+        qualifiedName: entityQualifiedName
+      };
+    }
+  }
+  
+  return null;
 }
 
 // Update the run's overall status based on all check results
@@ -571,7 +588,7 @@ async function updateRunStatus(supabase: any, runId: string): Promise<void> {
     // Check if there are any pending jobs for this run
     const { data: pendingJobs } = await supabase
       .from('owasp_async_jobs')
-      .select('id, payload')
+      .select('id')
       .eq('run_id', runId)
       .in('status', ['queued', 'processing'])
       .limit(1);
@@ -589,7 +606,7 @@ async function updateRunStatus(supabase: any, runId: string): Promise<void> {
       .from('owasp_async_jobs')
       .select('result, payload')
       .eq('run_id', runId)
-      .eq('job_type', 'anonymous-entity-check')
+      .eq('job_type', 'multi-check-batch')
       .eq('status', 'completed');
 
     if (jobsError || !completedJobs) {
@@ -597,84 +614,91 @@ async function updateRunStatus(supabase: any, runId: string): Promise<void> {
       return;
     }
 
-    // Filter out discovery jobs and aggregate batch results
-    const batchJobs = completedJobs.filter(job => job.payload?.batch_mode === 'process');
+    console.log(`[OWASP Async Worker] Aggregating ${completedJobs.length} batch jobs`);
+
+    // Aggregate results by check_type
+    const aggregatedResults: any = {};
     
-    console.log(`[OWASP Async Worker] Aggregating ${batchJobs.length} batch jobs`);
-
-    let hasFailures = false;
-    let allVulnerableEntities: string[] = [];
-    let allPassedBatches = 0;
-    let allFailedBatches = 0;
-
-    for (const job of batchJobs) {
-      if (job.result?.status === 'fail') {
-        hasFailures = true;
-        allFailedBatches++;
-        // Extract entity names from batch details
-        const details = job.result.details || '';
-        const match = details.match(/Found \d+ vulnerable entit(?:y|ies): (.+)$/);
-        if (match) {
-          const entities = match[1].split(', ');
-          allVulnerableEntities.push(...entities);
+    for (const job of completedJobs) {
+      const checkResults = job.result?.check_results || {};
+      
+      for (const [checkType, result] of Object.entries(checkResults)) {
+        const typedResult = result as any;
+        
+        if (!aggregatedResults[checkType]) {
+          aggregatedResults[checkType] = {
+            step_id: typedResult.step_id,
+            owasp_id: typedResult.owasp_id,
+            step_name: typedResult.step_name,
+            vulnerable_entities: []
+          };
         }
-      } else if (job.result?.status === 'pass') {
-        allPassedBatches++;
+        
+        // Merge vulnerable entities
+        aggregatedResults[checkType].vulnerable_entities.push(
+          ...typedResult.vulnerable_entities
+        );
       }
     }
 
-    // Get the owasp_check_results record to update
-    const { data: checkResults } = await supabase
-      .from('owasp_check_results')
-      .select('*')
-      .eq('run_id', runId)
-      .limit(1);
-
-    if (checkResults && checkResults.length > 0) {
-      const checkResult = checkResults[0];
+    // Create/update owasp_check_results for each check type
+    let passCount = 0;
+    let failCount = 0;
+    
+    for (const [checkType, result] of Object.entries(aggregatedResults)) {
+      const typedResult = result as any;
+      const hasVulnerabilities = typedResult.vulnerable_entities.length > 0;
       
-      // Determine final status and details
-      let finalStatus: string;
-      let finalDetails: string;
-
-      if (hasFailures) {
-        finalStatus = 'fail';
-        const totalVulnerable = allVulnerableEntities.length;
-        const entityList = allVulnerableEntities.join(', ');
-        finalDetails = `✗ SECURITY ISSUE: Found ${totalVulnerable} persistable entit${totalVulnerable === 1 ? 'y' : 'ies'} with anonymous access and no XPath constraints across all batches. Entities: ${entityList}`;
-      } else {
-        finalStatus = 'pass';
-        finalDetails = `✓ Anonymous access is enabled but all entities have XPath constraints (checked ${batchJobs.length} batches)`;
-      }
-
-      // Update the check result with aggregated findings
-      await supabase
+      const status = hasVulnerabilities ? 'fail' : 'pass';
+      const totalVulnerable = typedResult.vulnerable_entities.length;
+      const entityList = typedResult.vulnerable_entities
+        .slice(0, 10)
+        .map((v: any) => `${v.module}.${v.name}`)
+        .join(', ');
+      
+      const details = hasVulnerabilities
+        ? `✗ SECURITY ISSUE: Found ${totalVulnerable} persistable entit${totalVulnerable === 1 ? 'y' : 'ies'} with anonymous access and no XPath constraints. Entities: ${entityList}${totalVulnerable > 10 ? '...' : ''}`
+        : `✓ All entities have proper XPath constraints (checked ${completedJobs.length} batches)`;
+      
+      // Update or create check result
+      const { error: upsertError } = await supabase
         .from('owasp_check_results')
-        .update({
-          status: finalStatus,
-          details: finalDetails,
-        })
-        .eq('id', checkResult.id);
-
-      console.log(`[OWASP Async Worker] Updated check result with aggregated findings: ${finalStatus}`);
+        .upsert({
+          run_id: runId,
+          owasp_step_id: typedResult.step_id,
+          status,
+          details,
+          checked_at: new Date().toISOString(),
+        }, {
+          onConflict: 'run_id,owasp_step_id'
+        });
+      
+      if (upsertError) {
+        console.error(`[OWASP Async Worker] Error upserting check result for ${checkType}:`, upsertError);
+      }
+      
+      if (status === 'pass') passCount++;
+      else if (status === 'fail') failCount++;
+      
+      console.log(`[OWASP Async Worker] ${checkType}: ${status} (${totalVulnerable} vulnerabilities)`);
     }
 
     // Update run status
-    const overallStatus = hasFailures ? 'fail' : 'pass';
+    const overallStatus = failCount > 0 ? 'fail' : 'pass';
     
     await supabase
       .from('owasp_check_runs')
       .update({
         run_completed_at: new Date().toISOString(),
         overall_status: overallStatus,
-        total_checks: 1,
-        passed_checks: hasFailures ? 0 : 1,
-        failed_checks: hasFailures ? 1 : 0,
+        total_checks: Object.keys(aggregatedResults).length,
+        passed_checks: passCount,
+        failed_checks: failCount,
         warning_checks: 0,
       })
       .eq('id', runId);
 
-    console.log(`[OWASP Async Worker] Updated run ${runId} status to: ${overallStatus} (${allPassedBatches} passed batches, ${allFailedBatches} failed batches)`);
+    console.log(`[OWASP Async Worker] Updated run ${runId} status to: ${overallStatus} (${passCount} passed, ${failCount} failed)`);
   } catch (error) {
     console.error('[OWASP Async Worker] Error updating run status:', error);
   }

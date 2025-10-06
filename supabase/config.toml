@@ -1,5 +1,8 @@
 project_id = "hfmeoajwhaiobjngpyhe"
 
+[functions.owasp-discovery-orchestrator]
+verify_jwt = false
+
 [functions.run-cloud-actions-v2]
 verify_jwt = false
 

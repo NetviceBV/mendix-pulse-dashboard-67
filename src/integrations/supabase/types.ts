@@ -725,6 +725,7 @@ export type Database = {
           edge_function_name: string
           id: string
           is_active: boolean
+          needs_domain_model: boolean
           owasp_item_id: string
           step_description: string | null
           step_name: string
@@ -737,6 +738,7 @@ export type Database = {
           edge_function_name: string
           id?: string
           is_active?: boolean
+          needs_domain_model?: boolean
           owasp_item_id: string
           step_description?: string | null
           step_name: string
@@ -749,6 +751,7 @@ export type Database = {
           edge_function_name?: string
           id?: string
           is_active?: boolean
+          needs_domain_model?: boolean
           owasp_item_id?: string
           step_description?: string | null
           step_name?: string
