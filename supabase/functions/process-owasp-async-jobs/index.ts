@@ -326,20 +326,25 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
       shutdownHandled = true;
       
       const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      const memUsage = Deno.memoryUsage();
+      const heapMB = (memUsage.heapUsed / 1024 / 1024).toFixed(1);
+      
       console.log(`[Batch ${batch_number + 1}/${total_batches}] ⚠️ CPU TIMEOUT DETECTED: ${ev.detail?.reason}`);
       console.log(`[Batch ${batch_number + 1}/${total_batches}] Saving progress: ${processedEntities}/${totalEntities} entities processed in ${elapsed}s`);
+      console.log(`[Batch ${batch_number + 1}/${total_batches}] Memory at shutdown: ${heapMB} MB`);
       
       try {
         await supabase
           .from('owasp_async_jobs')
           .update({ 
             status: 'failed',
-            error_message: `CPU timeout after ${elapsed}s - processed ${processedEntities}/${totalEntities} entities`,
+            error_message: `CPU timeout after ${elapsed}s - processed ${processedEntities}/${totalEntities} entities, memory: ${heapMB} MB`,
             result: {
               checkpoint: {
                 processedEntities,
                 totalEntities,
-                timeElapsed: elapsed
+                timeElapsed: elapsed,
+                memoryUsedMB: heapMB
               },
               reason: 'cpu_timeout'
             },
@@ -361,16 +366,24 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
       try {
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
         const progress = totalEntities > 0 ? ((processedEntities / totalEntities) * 100).toFixed(1) : '0.0';
+        const memUsage = Deno.memoryUsage();
+        const heapMB = (memUsage.heapUsed / 1024 / 1024).toFixed(1);
+        const heapTotalMB = (memUsage.heapTotal / 1024 / 1024).toFixed(1);
         
         await supabase
           .from('owasp_async_jobs')
           .update({ 
             updated_at: new Date().toISOString(),
-            progress: `Processing: ${processedEntities}/${totalEntities} entities (${progress}%, ${elapsed}s elapsed)`
+            progress: `Processing: ${processedEntities}/${totalEntities} entities (${progress}%, ${elapsed}s elapsed, ${heapMB}MB mem)`
           })
           .eq('id', job.id);
         
-        console.log(`[Batch ${batch_number + 1}/${total_batches}] ❤️ Heartbeat: ${processedEntities}/${totalEntities} entities (${progress}%), ${elapsed}s elapsed`);
+        console.log(`[Batch ${batch_number + 1}/${total_batches}] ❤️ Heartbeat: ${processedEntities}/${totalEntities} entities (${progress}%), ${elapsed}s elapsed, Memory: ${heapMB}/${heapTotalMB} MB`);
+        
+        // Warning if memory exceeds 200 MB
+        if (memUsage.heapUsed > 200 * 1024 * 1024) {
+          console.warn(`[Batch ${batch_number + 1}/${total_batches}] ⚠️ HIGH MEMORY: ${heapMB} MB (approaching 256 MB limit)`);
+        }
         
         // Warning if approaching timeout (8 minutes = 480s)
         if (elapsed > 480) {
@@ -519,6 +532,20 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
     const domainModels = allDomainModels.slice(domain_model_start, domain_model_end);
     console.log(`[Batch ${batch_number + 1}/${total_batches}] Processing ${domainModels.length} domain models (${domain_model_start}-${domain_model_end - 1} of ${allDomainModels.length} total)`);
 
+    // Memory management utilities
+    function forceMemoryCleanup() {
+      if (globalThis.gc) {
+        globalThis.gc();
+      }
+    }
+    
+    function logMemoryUsage(label: string) {
+      const memUsage = Deno.memoryUsage();
+      const heapMB = (memUsage.heapUsed / 1024 / 1024).toFixed(1);
+      const heapTotalMB = (memUsage.heapTotal / 1024 / 1024).toFixed(1);
+      console.log(`[Memory] ${label}: ${heapMB}/${heapTotalMB} MB heap used`);
+    }
+
     // Helper function to check if an entity is persistable
     async function isPersistable(entity: any): Promise<boolean> {
       try {
@@ -545,21 +572,28 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
       }
     }
 
-    // Count total entities for progress tracking
-    for (const domainModel of domainModels) {
-      await domainModel.load();
-      totalEntities += domainModel.entities.filter((e: any) => e instanceof domainmodels.Entity).length;
-    }
-    console.log(`[Batch ${batch_number + 1}/${total_batches}] Total entities to process: ${totalEntities}`);
+    // STREAMING APPROACH: Process domain models one at a time
+    // Don't pre-load all models - count entities as we process to minimize memory usage
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] Starting streaming processing of ${domainModels.length} domain models`);
+    logMemoryUsage('Before processing domain models');
 
     // Process each domain model
     for (const domainModel of domainModels) {
+      const moduleIndex = domainModels.indexOf(domainModel);
+      
+      // Log memory before loading this module
+      logMemoryUsage(`Before loading module ${moduleIndex + 1}/${domainModels.length}`);
+      
       await domainModel.load();
       const moduleName = domainModel.containerAsModule ? domainModel.containerAsModule.name : 'Unknown';
-      const moduleIndex = domainModels.indexOf(domainModel);
-      console.log(`[Batch ${batch_number + 1}/${total_batches}] Processing module ${moduleIndex + 1}/${domainModels.length}: ${moduleName}`);
+      
+      // Count entities in this module
+      const moduleEntities = domainModel.entities.filter((e: any) => e instanceof domainmodels.Entity);
+      totalEntities += moduleEntities.length;
+      
+      console.log(`[Batch ${batch_number + 1}/${total_batches}] Processing module ${moduleIndex + 1}/${domainModels.length}: ${moduleName} (${moduleEntities.length} entities)`);
 
-      for (const entity of domainModel.entities) {
+      for (const entity of moduleEntities) {
         // Check timeout
         if (Date.now() - startTime > BATCH_TIMEOUT_MS) {
           if (heartbeatInterval) clearInterval(heartbeatInterval);
@@ -569,9 +603,6 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
             details: `Batch ${batch_number + 1}/${total_batches} timed out after ${BATCH_TIMEOUT_MS / 1000 / 60} minutes. Processed ${processedEntities}/${totalEntities} entities.`,
           };
         }
-        
-        if (!(entity instanceof domainmodels.Entity)) continue;
-        if (!entity) continue;
 
         try {
           await entity.load();
@@ -609,7 +640,7 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
           if (processedEntities % 5 === 0) {
             const elapsed = Math.floor((Date.now() - startTime) / 1000);
             const rate = processedEntities / elapsed;
-            const remaining = (totalEntities - processedEntities) / rate;
+            const remaining = totalEntities > processedEntities ? (totalEntities - processedEntities) / rate : 0;
             console.log(`[Batch ${batch_number + 1}/${total_batches}] Progress: ${processedEntities}/${totalEntities} entities (${elapsed}s elapsed, ~${Math.ceil(remaining)}s remaining, ${rate.toFixed(1)} entities/s)`);
           }
         } catch (entityError) {
@@ -618,7 +649,15 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
           // Continue with next entity instead of failing entire batch
         }
       }
+      
+      // CRITICAL: Unload this domain model from memory
+      await domainModel.unload();
+      forceMemoryCleanup();
+      
+      logMemoryUsage(`After unloading module ${moduleIndex + 1}/${domainModels.length}: ${moduleName}`);
     }
+    
+    logMemoryUsage('After processing all domain models');
     
     // Clear heartbeat
     if (heartbeatInterval) clearInterval(heartbeatInterval);
