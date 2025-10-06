@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
     console.log('[OWASP Cleanup] Starting cleanup of stale jobs...');
 
     const now = new Date();
-    const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60 * 1000);
+    const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000); // Reduced from 15 to 5 minutes
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
     const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
@@ -49,12 +49,12 @@ Deno.serve(async (req) => {
       console.log(`[OWASP Cleanup] Deleted ${deletedCompletedCount || 0} completed jobs older than 1 week`);
     }
 
-    // Mark stuck processing jobs as failed (no updates for 15 minutes)
+    // Mark stuck processing jobs as failed (no updates for 5 minutes)
     const { data: stuckJobs, error: stuckError } = await supabase
       .from('owasp_async_jobs')
-      .select('id, job_type, payload')
+      .select('id, job_type, payload, progress, updated_at')
       .eq('status', 'processing')
-      .lt('updated_at', fifteenMinutesAgo.toISOString());
+      .lt('updated_at', fiveMinutesAgo.toISOString());
 
     if (stuckError) {
       console.error('[OWASP Cleanup] Error fetching stuck jobs:', stuckError);
@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
         .from('owasp_async_jobs')
         .update({
           status: 'failed',
-          error_message: 'Job timed out - no updates for 15 minutes',
+          error_message: 'Job timed out - no updates for 5 minutes (likely CPU timeout)',
           completed_at: new Date().toISOString(),
         })
         .in('id', stuckJobs.map(j => j.id));
@@ -71,12 +71,15 @@ Deno.serve(async (req) => {
       if (updateError) {
         console.error('[OWASP Cleanup] Error updating stuck jobs:', updateError);
       } else {
-        console.log(`[OWASP Cleanup] Marked ${stuckJobs.length} stuck jobs as failed (no updates for 15+ minutes)`);
+        console.log(`[OWASP Cleanup] Marked ${stuckJobs.length} stuck jobs as failed (no updates for 5+ minutes)`);
         stuckJobs.forEach((job: any) => {
           const batchInfo = job.job_type === 'multi-check-batch' 
             ? ` (Batch ${job.payload?.batch_number + 1}/${job.payload?.total_batches})`
             : '';
-          console.log(`[OWASP Cleanup] - Job ${job.id} (${job.job_type})${batchInfo}`);
+          console.log(`[OWASP Cleanup] - Stuck job ${job.id} (${job.job_type})${batchInfo}`);
+          console.log(`[OWASP Cleanup]   Last progress: ${job.progress || 'N/A'}`);
+          console.log(`[OWASP Cleanup]   Last update: ${job.updated_at}`);
+          console.log(`[OWASP Cleanup]   Likely cause: CPU timeout or function crash`);
         });
       }
     }

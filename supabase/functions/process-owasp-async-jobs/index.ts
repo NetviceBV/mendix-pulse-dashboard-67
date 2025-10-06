@@ -235,56 +235,48 @@ async function discoverAndQueueBatches(job: any, supabase: any): Promise<{ statu
     console.log(`[Discovery] Found ${totalDomainModels} domain models`);
     console.log('[Discovery] Working copy will be automatically cleaned up by Mendix Platform');
 
-    // Calculate batches (5 domain models per batch)
-    const MODELS_PER_BATCH = 5;
-    const totalBatches = Math.ceil(totalDomainModels / MODELS_PER_BATCH);
-    
-    console.log(`[Discovery] Creating ${totalBatches} batch jobs (${MODELS_PER_BATCH} models per batch)`);
+    // Create SINGLE job covering ALL domain models (no batching)
+    console.log(`[Discovery] Creating single processing job for all ${totalDomainModels} models`);
+    console.log(`[Discovery] This will open the model ONCE and process all entities in a single job`);
 
-    // Create batch jobs - each batch will run ALL checks on its assigned models
-    const batchJobs = [];
-    for (let i = 0; i < totalBatches; i++) {
-      const startIndex = i * MODELS_PER_BATCH;
-      const endIndex = Math.min(startIndex + MODELS_PER_BATCH, totalDomainModels);
-      
-      batchJobs.push({
+    // Create ONE job that covers ALL models
+    const singleJob = {
+      user_id,
+      run_id,
+      step_id: null, // No single step, this is multi-check
+      job_type: 'multi-check-batch',
+      payload: {
+        credential_id,
+        project_id,
+        environment_name,
         user_id,
-        run_id,
-        step_id: null, // No single step, this is multi-check
-        job_type: 'multi-check-batch',
-        payload: {
-          credential_id,
-          project_id,
-          environment_name,
-          user_id,
-          batch_number: i,
-          total_batches: totalBatches,
-          domain_model_start: startIndex,
-          domain_model_end: endIndex,
-          checks_to_run, // Pass all checks to each batch
-        },
-        status: 'queued',
-      });
-    }
+        batch_number: 0,
+        total_batches: 1,
+        domain_model_start: 0,
+        domain_model_end: totalDomainModels,
+        checks_to_run, // Pass all checks to the job
+      },
+      status: 'queued',
+    };
 
-    // Insert all batch jobs
-    const { error: batchError } = await supabase
+    // Insert the single job
+    const { error: jobError } = await supabase
       .from('owasp_async_jobs')
-      .insert(batchJobs);
+      .insert([singleJob]);
 
-    if (batchError) {
-      console.error('[Discovery] Failed to create batch jobs:', batchError);
+    if (jobError) {
+      console.error('[Discovery] Failed to create processing job:', jobError);
       return {
         status: 'error',
-        details: `Failed to create batch jobs: ${batchError.message}`,
+        details: `Failed to create processing job: ${jobError.message}`,
       };
     }
 
-    console.log(`[Discovery] Successfully queued ${totalBatches} batch jobs`);
+    console.log(`[Discovery] Successfully queued single processing job for ${totalDomainModels} models with ${checks_to_run.length} checks`);
 
     return {
       status: 'completed',
-      details: `Discovery complete: ${totalDomainModels} domain models found, ${totalBatches} batch jobs created for ${checks_to_run.length} checks`,
+      details: `Discovery complete: ${totalDomainModels} domain models found, 1 processing job created for ${checks_to_run.length} checks`,
     };
 
   } catch (error) {
@@ -322,9 +314,43 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
   let heartbeatInterval: number | null = null;
   let processedEntities = 0;
   let totalEntities = 0;
+  let currentJobId = job.id;
+  let shutdownHandled = false;
   
   try {
     const { credential_id, project_id, environment_name, user_id, batch_number, total_batches, domain_model_start, domain_model_end, checks_to_run } = job.payload;
+
+    // Add CPU timeout handler FIRST
+    addEventListener('beforeunload', async (ev) => {
+      if (shutdownHandled) return;
+      shutdownHandled = true;
+      
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      console.log(`[Batch ${batch_number + 1}/${total_batches}] ⚠️ CPU TIMEOUT DETECTED: ${ev.detail?.reason}`);
+      console.log(`[Batch ${batch_number + 1}/${total_batches}] Saving progress: ${processedEntities}/${totalEntities} entities processed in ${elapsed}s`);
+      
+      try {
+        await supabase
+          .from('owasp_async_jobs')
+          .update({ 
+            status: 'failed',
+            error_message: `CPU timeout after ${elapsed}s - processed ${processedEntities}/${totalEntities} entities`,
+            result: {
+              checkpoint: {
+                processedEntities,
+                totalEntities,
+                timeElapsed: elapsed
+              },
+              reason: 'cpu_timeout'
+            },
+            completed_at: new Date().toISOString()
+          })
+          .eq('id', currentJobId);
+        console.log(`[Batch ${batch_number + 1}/${total_batches}] Progress saved successfully before timeout`);
+      } catch (err) {
+        console.error(`[Batch ${batch_number + 1}/${total_batches}] Failed to save progress on timeout:`, err);
+      }
+    });
 
     console.log(`[Batch ${batch_number + 1}/${total_batches}] Starting for project: ${project_id}, models ${domain_model_start}-${domain_model_end - 1}`);
     console.log(`[Batch ${batch_number + 1}/${total_batches}] Running ${checks_to_run.length} checks`);
@@ -334,14 +360,22 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
     heartbeatInterval = setInterval(async () => {
       try {
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const progress = totalEntities > 0 ? ((processedEntities / totalEntities) * 100).toFixed(1) : '0.0';
+        
         await supabase
           .from('owasp_async_jobs')
           .update({ 
             updated_at: new Date().toISOString(),
-            progress: `Processing: ${processedEntities}/${totalEntities} entities (${elapsed}s elapsed)`
+            progress: `Processing: ${processedEntities}/${totalEntities} entities (${progress}%, ${elapsed}s elapsed)`
           })
           .eq('id', job.id);
-        console.log(`[Batch ${batch_number + 1}/${total_batches}] Heartbeat: ${processedEntities}/${totalEntities} entities, ${elapsed}s elapsed`);
+        
+        console.log(`[Batch ${batch_number + 1}/${total_batches}] ❤️ Heartbeat: ${processedEntities}/${totalEntities} entities (${progress}%), ${elapsed}s elapsed`);
+        
+        // Warning if approaching timeout (8 minutes = 480s)
+        if (elapsed > 480) {
+          console.warn(`[Batch ${batch_number + 1}/${total_batches}] ⚠️ WARNING: Approaching 10-minute timeout limit (${elapsed}s elapsed)`);
+        }
       } catch (error) {
         console.error(`[Batch ${batch_number + 1}/${total_batches}] Heartbeat error:`, error);
       }
@@ -417,8 +451,16 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
       };
     }
 
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] Opening Mendix model for project ${project_id}...`);
+    const modelOpenStart = Date.now();
+    
     const model = await workingCopy.openModel();
-    console.log(`[Batch ${batch_number + 1}/${total_batches}] Model opened successfully`);
+    
+    const modelOpenTime = Date.now() - modelOpenStart;
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] ✓ Model opened successfully in ${modelOpenTime}ms (${(modelOpenTime / 1000).toFixed(1)}s)`);
+    if (modelOpenTime > 30000) {
+      console.warn(`[Batch ${batch_number + 1}/${total_batches}] ⚠️ Model opening took ${(modelOpenTime / 1000).toFixed(1)}s - this is the most CPU-intensive operation`);
+    }
 
     // Initialize results storage for each check
     const checkResults: any = {};
@@ -514,6 +556,8 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
     for (const domainModel of domainModels) {
       await domainModel.load();
       const moduleName = domainModel.containerAsModule ? domainModel.containerAsModule.name : 'Unknown';
+      const moduleIndex = domainModels.indexOf(domainModel);
+      console.log(`[Batch ${batch_number + 1}/${total_batches}] Processing module ${moduleIndex + 1}/${domainModels.length}: ${moduleName}`);
 
       for (const entity of domainModel.entities) {
         // Check timeout
@@ -561,9 +605,12 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
           
           processedEntities++;
           
-          // Log progress every 10 entities
-          if (processedEntities % 10 === 0) {
-            console.log(`[Batch ${batch_number + 1}/${total_batches}] Progress: ${processedEntities}/${totalEntities} entities`);
+          // Log progress every 5 entities for more granular tracking
+          if (processedEntities % 5 === 0) {
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            const rate = processedEntities / elapsed;
+            const remaining = (totalEntities - processedEntities) / rate;
+            console.log(`[Batch ${batch_number + 1}/${total_batches}] Progress: ${processedEntities}/${totalEntities} entities (${elapsed}s elapsed, ~${Math.ceil(remaining)}s remaining, ${rate.toFixed(1)} entities/s)`);
           }
         } catch (entityError) {
           console.error(`[Batch ${batch_number + 1}/${total_batches}] Error processing entity in ${moduleName}:`, getErrorMessage(entityError));
@@ -578,6 +625,16 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
 
     console.log(`[Batch ${batch_number + 1}/${total_batches}] Working copy will be automatically cleaned up by Mendix Platform`);
 
+    // Enhanced final summary
+    const totalTime = Math.floor((Date.now() - startTime) / 1000);
+    const avgTimePerEntity = totalEntities > 0 ? (totalTime / totalEntities).toFixed(2) : 'N/A';
+    
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] ====== BATCH COMPLETED ======`);
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] Total time: ${totalTime}s (${(totalTime / 60).toFixed(1)} minutes)`);
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] Entities processed: ${processedEntities}/${totalEntities}`);
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] Average time per entity: ${avgTimePerEntity}s`);
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] Checks run: ${checks_to_run.length}`);
+
     // Log results summary
     for (const [checkType, result] of Object.entries(checkResults)) {
       const vulnCount = (result as any).vulnerable_entities.length;
@@ -586,7 +643,7 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
 
     return {
       status: 'completed',
-      details: `Batch ${batch_number + 1}/${total_batches} completed`,
+      details: `Batch ${batch_number + 1}/${total_batches} completed in ${totalTime}s - ${processedEntities}/${totalEntities} entities processed`,
       check_results: checkResults
     };
 
