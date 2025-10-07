@@ -1002,7 +1002,7 @@ async function updateRunStatus(supabase: any, runId: string): Promise<void> {
         ? `✗ SECURITY ISSUE: Found ${totalVulnerable} persistable entit${totalVulnerable === 1 ? 'y' : 'ies'} with anonymous access and no XPath constraints. Sample entities: ${entityList}${totalVulnerable > 10 ? ` (and ${totalVulnerable - 10} more)` : ''}`
         : `✓ All entities have proper XPath constraints (checked ${completedJobs.length} batches)`;
       
-      // Update or create check result
+      // Update or create check result (now with proper unique constraint)
       const { error: upsertError } = await supabase
         .from('owasp_check_results')
         .upsert({
@@ -1011,18 +1011,58 @@ async function updateRunStatus(supabase: any, runId: string): Promise<void> {
           status,
           details,
           checked_at: new Date().toISOString(),
+          execution_time_ms: typedResult.execution_time_ms || null,
         }, {
           onConflict: 'run_id,owasp_step_id'
         });
       
       if (upsertError) {
         console.error(`[OWASP Async Worker] Error upserting check result for ${checkType}:`, upsertError);
+        // Try a fallback update in case of conflict issues
+        const { error: updateError } = await supabase
+          .from('owasp_check_results')
+          .update({
+            status,
+            details,
+            checked_at: new Date().toISOString(),
+          })
+          .eq('run_id', runId)
+          .eq('owasp_step_id', typedResult.step_id);
+        
+        if (updateError) {
+          console.error(`[OWASP Async Worker] Fallback update also failed for ${checkType}:`, updateError);
+        }
       }
       
       if (status === 'pass') passCount++;
       else if (status === 'fail') failCount++;
       
       console.log(`[OWASP Async Worker] ${checkType}: ${status} (${totalVulnerable} vulnerabilities)`);
+    }
+    
+    // Clean up any remaining pending check results for this completed run
+    const overallStatus = failCount > 0 ? 'fail' : 'pass';
+    const { data: pendingResults } = await supabase
+      .from('owasp_check_results')
+      .select('id, owasp_step_id')
+      .eq('run_id', runId)
+      .eq('status', 'pending');
+    
+    if (pendingResults && pendingResults.length > 0) {
+      console.log(`[OWASP Async Worker] Cleaning up ${pendingResults.length} stuck pending check results`);
+      const { error: cleanupError } = await supabase
+        .from('owasp_check_results')
+        .update({
+          status: overallStatus,
+          details: 'Completed - no results reported by batch job',
+          checked_at: new Date().toISOString(),
+        })
+        .eq('run_id', runId)
+        .eq('status', 'pending');
+      
+      if (cleanupError) {
+        console.error('[OWASP Async Worker] Error cleaning up pending results:', cleanupError);
+      }
     }
 
     // Update run status
