@@ -305,10 +305,12 @@ async function discoverAndQueueBatches(job: any, supabase: any): Promise<{ statu
   }
 }
 
-// Execute multiple checks on a batch of domain models
+// Execute multiple checks on a batch of domain models with checkpoint/resume
 async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status: string; details: string; check_results?: any }> {
   const BATCH_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
   const HEARTBEAT_INTERVAL_MS = 30 * 1000; // 30 seconds
+  const YIELD_TIME_SECONDS = 18; // Yield after 18 seconds to avoid 25s CPU timeout
+  const YIELD_ENTITY_BATCH_SIZE = 150; // Yield after processing N entities
   
   const startTime = Date.now();
   let heartbeatInterval: number | null = null;
@@ -318,10 +320,15 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
   let shutdownHandled = false;
   let maxHeapUsedMB = 0; // Track peak memory usage
   
+  // Checkpoint state for resumable processing
+  let currentModelIndex = 0;
+  let currentEntityIndex = 0;
+  let checkResults: any = {};
+  
   try {
     const { credential_id, project_id, environment_name, user_id, batch_number, total_batches, domain_model_start, domain_model_end, checks_to_run } = job.payload;
 
-    // Add CPU timeout handler FIRST
+    // Add CPU timeout handler - save checkpoint and re-queue instead of failing
     addEventListener('beforeunload', async (ev) => {
       if (shutdownHandled) return;
       shutdownHandled = true;
@@ -331,30 +338,33 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
       const heapMB = (memUsage.heapUsed / 1024 / 1024).toFixed(1);
       
       console.log(`[Batch ${batch_number + 1}/${total_batches}] ⚠️ CPU TIMEOUT DETECTED: ${ev.detail?.reason}`);
-      console.log(`[Batch ${batch_number + 1}/${total_batches}] Saving progress: ${processedEntities}/${totalEntities} entities processed in ${elapsed}s`);
+      console.log(`[Batch ${batch_number + 1}/${total_batches}] Saving checkpoint: model ${currentModelIndex}, entity ${currentEntityIndex}, ${processedEntities}/${totalEntities} entities in ${elapsed}s`);
       console.log(`[Batch ${batch_number + 1}/${total_batches}] Memory at shutdown: ${heapMB} MB`);
       
       try {
+        // Save checkpoint and re-queue job (don't increment attempts for reschedule)
         await supabase
           .from('owasp_async_jobs')
           .update({ 
-            status: 'failed',
-            error_message: `CPU timeout after ${elapsed}s - processed ${processedEntities}/${totalEntities} entities, memory: ${heapMB} MB`,
+            status: 'queued', // Re-queue to resume
+            attempts: job.attempts, // Don't increment - this is a reschedule, not a failure
             result: {
               checkpoint: {
+                modelIndex: currentModelIndex,
+                entityIndex: currentEntityIndex,
                 processedEntities,
                 totalEntities,
-                timeElapsed: elapsed,
-                memoryUsedMB: heapMB
+                maxHeapUsedMB,
+                check_results: checkResults
               },
-              reason: 'cpu_timeout'
+              reason: 'reschedule_timeout'
             },
-            completed_at: new Date().toISOString()
+            updated_at: new Date().toISOString()
           })
           .eq('id', currentJobId);
-        console.log(`[Batch ${batch_number + 1}/${total_batches}] Progress saved successfully before timeout`);
+        console.log(`[Batch ${batch_number + 1}/${total_batches}] Checkpoint saved, job re-queued for resume`);
       } catch (err) {
-        console.error(`[Batch ${batch_number + 1}/${total_batches}] Failed to save progress on timeout:`, err);
+        console.error(`[Batch ${batch_number + 1}/${total_batches}] Failed to save checkpoint:`, err);
       }
     });
 
@@ -482,17 +492,30 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
       console.warn(`[Batch ${batch_number + 1}/${total_batches}] ⚠️ Model opening took ${(modelOpenTime / 1000).toFixed(1)}s - this is the most CPU-intensive operation`);
     }
 
+    // Check for checkpoint and resume if exists
+    const existingCheckpoint = job.result?.checkpoint;
+    if (existingCheckpoint && existingCheckpoint.modelIndex !== undefined) {
+      console.log(`[Batch ${batch_number + 1}/${total_batches}] 🔄 RESUMING from checkpoint: model ${existingCheckpoint.modelIndex}, entity ${existingCheckpoint.entityIndex}, ${existingCheckpoint.processedEntities} entities processed`);
+      currentModelIndex = existingCheckpoint.modelIndex;
+      currentEntityIndex = existingCheckpoint.entityIndex;
+      processedEntities = existingCheckpoint.processedEntities;
+      totalEntities = existingCheckpoint.totalEntities || 0;
+      maxHeapUsedMB = existingCheckpoint.maxHeapUsedMB || 0;
+      checkResults = existingCheckpoint.check_results || {};
+    }
+    
     // Initialize results storage for each check (memory-light: counts + capped samples)
-    const checkResults: any = {};
-    checks_to_run.forEach((check: any) => {
-      checkResults[check.check_type] = {
-        step_id: check.step_id,
-        owasp_id: check.owasp_id,
-        step_name: check.step_name,
-        total_vulnerabilities: 0,
-        sample_entities: [] // Capped at 50 to prevent unbounded memory growth
-      };
-    });
+    if (Object.keys(checkResults).length === 0) {
+      checks_to_run.forEach((check: any) => {
+        checkResults[check.check_type] = {
+          step_id: check.step_id,
+          owasp_id: check.owasp_id,
+          step_name: check.step_name,
+          total_vulnerabilities: 0,
+          sample_entities: [] // Capped at 50 to prevent unbounded memory growth
+        };
+      });
+    }
 
     // Get project security (needed for all checks)
     const allSecurityUnits = model.allProjectSecurities();
@@ -593,14 +616,45 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
       }
     }
 
-    // STREAMING APPROACH: Process domain models one at a time
-    // Don't pre-load all models - count entities as we process to minimize memory usage
-    console.log(`[Batch ${batch_number + 1}/${total_batches}] Starting streaming processing of ${domainModels.length} domain models`);
+    // STREAMING APPROACH: Process domain models one at a time with checkpoint resume
+    console.log(`[Batch ${batch_number + 1}/${total_batches}] Starting streaming processing of ${domainModels.length} domain models (starting from model ${currentModelIndex})`);
     logMemoryUsage('Before processing domain models');
+    
+    // Helper function to save checkpoint and re-queue job
+    async function saveCheckpointAndYield(reason: string): Promise<void> {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      const memUsage = Deno.memoryUsage();
+      const heapMB = (memUsage.heapUsed / 1024 / 1024).toFixed(1);
+      
+      console.log(`[Batch ${batch_number + 1}/${total_batches}] 💾 Saving checkpoint (${reason}): model ${currentModelIndex}, entity ${currentEntityIndex}, ${processedEntities}/${totalEntities} entities`);
+      
+      await supabase
+        .from('owasp_async_jobs')
+        .update({ 
+          status: 'queued',
+          attempts: job.attempts, // Don't increment for checkpoint
+          result: {
+            checkpoint: {
+              modelIndex: currentModelIndex,
+              entityIndex: currentEntityIndex,
+              processedEntities,
+              totalEntities,
+              maxHeapUsedMB,
+              check_results: checkResults
+            },
+            reason: `checkpoint_${reason}`
+          },
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', currentJobId);
+      
+      console.log(`[Batch ${batch_number + 1}/${total_batches}] ✅ Checkpoint saved, yielding to avoid timeout (${elapsed}s elapsed, ${heapMB}MB mem)`);
+    }
 
-    // Process each domain model
-    for (const domainModel of domainModels) {
-      const moduleIndex = domainModels.indexOf(domainModel);
+    // Process each domain model starting from checkpoint
+    for (let moduleIndex = currentModelIndex; moduleIndex < domainModels.length; moduleIndex++) {
+      const domainModel = domainModels[moduleIndex];
+      currentModelIndex = moduleIndex;
       
       // Log memory before loading this module
       logMemoryUsage(`Before loading module ${moduleIndex + 1}/${domainModels.length}`);
@@ -610,11 +664,25 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
       
       // Count entities in this module
       const moduleEntities = domainModel.entities.filter((e: any) => e instanceof domainmodels.Entity);
-      totalEntities += moduleEntities.length;
       
-      console.log(`[Batch ${batch_number + 1}/${total_batches}] Processing module ${moduleIndex + 1}/${domainModels.length}: ${moduleName} (${moduleEntities.length} entities)`);
+      // Only add to totalEntities if not resuming (first pass)
+      if (existingCheckpoint && moduleIndex < currentModelIndex) {
+        // Skip - already counted
+      } else if (existingCheckpoint && moduleIndex === currentModelIndex) {
+        // Partial - only count remaining
+        totalEntities += moduleEntities.length - currentEntityIndex;
+      } else {
+        totalEntities += moduleEntities.length;
+      }
+      
+      console.log(`[Batch ${batch_number + 1}/${total_batches}] Processing module ${moduleIndex + 1}/${domainModels.length}: ${moduleName} (${moduleEntities.length} entities${existingCheckpoint && moduleIndex === currentModelIndex ? `, resuming from entity ${currentEntityIndex}` : ''})`);
 
-      for (const entity of moduleEntities) {
+      // Start from checkpoint entity index if resuming same module
+      const startEntityIndex = (existingCheckpoint && moduleIndex === currentModelIndex) ? currentEntityIndex : 0;
+      
+      for (let entityIndex = startEntityIndex; entityIndex < moduleEntities.length; entityIndex++) {
+        const entity = moduleEntities[entityIndex];
+        currentEntityIndex = entityIndex;
         // Check timeout
         if (Date.now() - startTime > BATCH_TIMEOUT_MS) {
           if (heartbeatInterval) clearInterval(heartbeatInterval);
@@ -663,6 +731,22 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
           
           processedEntities++;
           
+          // Check yield conditions: time limit OR entity batch size
+          const elapsedSeconds = (Date.now() - startTime) / 1000;
+          if (elapsedSeconds > YIELD_TIME_SECONDS || (processedEntities > 0 && processedEntities % YIELD_ENTITY_BATCH_SIZE === 0)) {
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            
+            const reason = elapsedSeconds > YIELD_TIME_SECONDS ? 'time_limit' : 'entity_batch';
+            await saveCheckpointAndYield(reason);
+            
+            // Return success status to indicate checkpoint saved (not an error)
+            return {
+              status: 'completed',
+              details: `Checkpoint saved: ${processedEntities}/${totalEntities} entities processed, resuming in next invocation`,
+              check_results: checkResults
+            };
+          }
+          
           // Log progress every 5 entities for more granular tracking
           if (processedEntities % 5 === 0) {
             const elapsed = Math.floor((Date.now() - startTime) / 1000);
@@ -677,15 +761,13 @@ async function executeMultiCheckBatch(job: any, supabase: any): Promise<{ status
         }
       }
       
-      // CRITICAL: Unload this domain model from memory and free local references
-      await domainModel.unload();
+      // Reset entity index for next module
+      currentEntityIndex = 0;
       
-      // Explicitly null large local arrays to help GC
-      // (moduleEntities is already out of scope, but be explicit about intent)
-      
+      // Force garbage collection after each module
       forceMemoryCleanup();
       
-      logMemoryUsage(`After unloading module ${moduleIndex + 1}/${domainModels.length}: ${moduleName}`);
+      logMemoryUsage(`After processing module ${moduleIndex + 1}/${domainModels.length}: ${moduleName}`);
     }
     
     logMemoryUsage('After processing all domain models');
@@ -809,20 +891,51 @@ async function updateRunStatus(supabase: any, runId: string): Promise<void> {
 
     console.log(`[OWASP Async Worker] All jobs complete for run ${runId}, aggregating results...`);
 
-    // Get all completed batch jobs for this run
-    const { data: completedJobs, error: jobsError } = await supabase
+    // Get completed and failed batch jobs for this run
+    const { data: completedJobs, error: completedError } = await supabase
       .from('owasp_async_jobs')
       .select('result, payload')
       .eq('run_id', runId)
       .eq('job_type', 'multi-check-batch')
       .eq('status', 'completed');
 
-    if (jobsError || !completedJobs) {
-      console.error('[OWASP Async Worker] Error fetching completed jobs:', jobsError);
+    const { data: failedJobs, error: failedError } = await supabase
+      .from('owasp_async_jobs')
+      .select('id')
+      .eq('run_id', runId)
+      .eq('job_type', 'multi-check-batch')
+      .eq('status', 'failed');
+
+    if (completedError || failedError) {
+      console.error('[OWASP Async Worker] Error fetching jobs:', completedError || failedError);
       return;
     }
 
-    console.log(`[OWASP Async Worker] Aggregating ${completedJobs.length} batch jobs`);
+    const failedCount = failedJobs?.length || 0;
+    const completedCount = completedJobs?.length || 0;
+    
+    console.log(`[OWASP Async Worker] Aggregating ${completedCount} completed jobs, ${failedCount} failed jobs`);
+    
+    // If no completed jobs but failed jobs exist, mark run as failed
+    if (completedCount === 0 && failedCount > 0) {
+      console.log(`[OWASP Async Worker] No completed jobs, ${failedCount} failed - marking run as failed`);
+      await supabase
+        .from('owasp_check_runs')
+        .update({
+          run_completed_at: new Date().toISOString(),
+          overall_status: 'fail',
+          total_checks: 0,
+          passed_checks: 0,
+          failed_checks: 0,
+        })
+        .eq('id', runId);
+      return;
+    }
+    
+    if (!completedJobs || completedJobs.length === 0) {
+      console.log('[OWASP Async Worker] No completed jobs to aggregate');
+      return;
+    }
 
     // Aggregate results by check_type (using counts + samples)
     const aggregatedResults: any = {};
