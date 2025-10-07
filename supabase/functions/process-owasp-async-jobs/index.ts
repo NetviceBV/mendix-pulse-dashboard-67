@@ -1065,8 +1065,7 @@ async function updateRunStatus(supabase: any, runId: string): Promise<void> {
       }
     }
 
-    // Update run status
-    const overallStatus = failCount > 0 ? 'fail' : 'pass';
+    // Update run status (reusing overallStatus calculated above on line 1044)
     
     await supabase
       .from('owasp_check_runs')
