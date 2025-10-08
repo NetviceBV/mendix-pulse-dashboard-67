@@ -1,6 +1,6 @@
 project_id = "hfmeoajwhaiobjngpyhe"
 
-[functions.owasp-discovery-orchestrator]
+[functions.owasp-check-railway-anonymous-entity]
 verify_jwt = false
 
 [functions.run-cloud-actions-v2]
@@ -31,12 +31,6 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.owasp-check-endpoint-restdoc]
-verify_jwt = false
-
-[functions.owasp-check-anonymous-entity-access-no-xpath]
-verify_jwt = false
-
-[functions.process-owasp-async-jobs]
 verify_jwt = false
 
 [functions.cleanup-stale-owasp-jobs]

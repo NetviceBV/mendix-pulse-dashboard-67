@@ -113,103 +113,83 @@ Deno.serve(async (req) => {
     let failCount = 0;
     let warningCount = 0;
 
-    // Separate steps into those needing domain model and those that don't
-    const modelSteps: any[] = [];
-    const nonModelSteps: any[] = [];
-
+    // Collect all active steps (no more model vs non-model separation)
+    const allSteps: any[] = [];
     for (const item of owaspItems || []) {
       const steps = Array.isArray(item.owasp_steps) ? item.owasp_steps : [];
       
       for (const step of steps) {
         if (!step.is_active) continue;
-        
-        // Check if this step needs domain model access
-        if (step.needs_domain_model) {
-          modelSteps.push({
-            ...step,
-            owasp_id: item.owasp_id,
-          });
-        } else {
-          nonModelSteps.push(step);
-        }
+        allSteps.push({
+          ...step,
+          owasp_id: item.owasp_id,
+        });
       }
     }
 
-    console.log(`Model-dependent steps: ${modelSteps.length}, Non-model steps: ${nonModelSteps.length}`);
+    console.log(`Total active steps to execute: ${allSteps.length}`);
 
-    // If there are steps needing domain model, call orchestrator ONCE
-    if (modelSteps.length > 0) {
-      console.log('Invoking orchestrator for domain model checks...');
-      
+    // Execute all steps in parallel using Promise.allSettled (Supabase free tier can handle it)
+    const stepPromises = allSteps.map(async (step) => {
       const startTime = Date.now();
       
-      const { data: orchestratorResult, error: orchestratorError } = await supabase.functions.invoke(
-        'owasp-discovery-orchestrator',
-        {
-          body: {
-            credential_id,
-            project_id,
-            environment_name,
-            user_id: user.id,
-            run_id: runRecord.id,
-            checks_to_run: modelSteps.map(s => ({
-              step_id: s.id,
-              check_type: `${s.owasp_id}-${s.step_name.toLowerCase().replace(/\s+/g, '-')}`,
-              step_name: s.step_name,
-              owasp_id: s.owasp_id
-            }))
-          }
-        }
-      );
+      try {
+        console.log(`Executing step: ${step.step_name} (function: ${step.edge_function_name})`);
 
-      const executionTime = Date.now() - startTime;
-
-      if (orchestratorError) {
-        console.error('Error invoking orchestrator:', orchestratorError);
-        
-        // Create error results for all model steps
-        for (const step of modelSteps) {
-          allResults.push({
-            step_id: step.id,
-            step_name: step.step_name,
-            status: 'error',
-            details: `Orchestrator error: ${orchestratorError.message}`,
-            execution_time_ms: executionTime,
-          });
-        }
-      } else {
-        // Create pending results for model-based checks (will be updated by batches)
-        for (const step of modelSteps) {
-          allResults.push({
-            step_id: step.id,
-            step_name: step.step_name,
-            status: 'pending',
-            details: orchestratorResult.details || 'Queued for batch processing',
-            execution_time_ms: executionTime,
-            job_id: orchestratorResult.job_id,
-          });
-          
-          // Store placeholder result in database
-          await supabase
-            .from('owasp_check_results')
-            .insert({
-              user_id: user.id,
-              app_id: project_id,
+        // Call the edge function for this step
+        const { data: functionResult, error: functionError } = await supabase.functions.invoke(
+          step.edge_function_name,
+          {
+            body: {
+              project_id,
               environment_name,
-              owasp_step_id: step.id,
+              credential_id,
+              user_id: user.id,
               run_id: runRecord.id,
-              status: 'pending',
-              details: orchestratorResult.details || 'Queued for batch processing',
-              execution_time_ms: executionTime,
-              checked_at: new Date().toISOString(),
-              job_id: orchestratorResult.job_id,
-            });
-        }
-      }
-    }
+              step_id: step.id,
+            },
+          }
+        );
 
-    // Process non-model steps normally
-    for (const step of nonModelSteps) {
+        const executionTime = Date.now() - startTime;
+
+        if (functionError) {
+          console.error(`Error executing function ${step.edge_function_name}:`, functionError);
+          return {
+            step_id: step.id,
+            step_name: step.step_name,
+            status: 'error' as const,
+            details: `Function error: ${functionError.message}`,
+            execution_time_ms: executionTime,
+          };
+        }
+
+        return {
+          step_id: step.id,
+          step_name: step.step_name,
+          status: functionResult.status || 'error',
+          details: functionResult.details || 'No details provided',
+          execution_time_ms: executionTime,
+        };
+      } catch (error) {
+        console.error(`Exception executing step ${step.step_name}:`, error);
+        return {
+          step_id: step.id,
+          step_name: step.step_name,
+          status: 'error' as const,
+          details: error instanceof Error ? error.message : 'Unknown error',
+          execution_time_ms: Date.now() - startTime,
+        };
+      }
+    });
+
+    // Wait for all steps to complete
+    const settledResults = await Promise.allSettled(stepPromises);
+
+    // Process results and store in database
+    for (const result of settledResults) {
+      if (result.status === 'fulfilled') {
+        const stepResult = result.value;
 
         const startTime = Date.now();
         let stepResult: StepResult = {
@@ -272,48 +252,47 @@ Deno.serve(async (req) => {
 
         allResults.push(stepResult);
 
-        // Count results by status (don't count pending in final tallies)
+        // Count results by status
         if (stepResult.status === 'pass') passCount++;
         else if (stepResult.status === 'fail') failCount++;
         else if (stepResult.status === 'warning') warningCount++;
 
-        // Store result in database with run_id
-        const insertData: any = {
-          user_id: user.id,
-          app_id: project_id,
-          environment_name,
-          owasp_step_id: step.id,
-          run_id: runRecord.id,
-          status: stepResult.status,
-          details: stepResult.details,
-          execution_time_ms: stepResult.execution_time_ms,
-          checked_at: new Date().toISOString(),
-        };
-
-        // Store job_id for async jobs
-        if (stepResult.job_id) {
-          insertData.job_id = stepResult.job_id;
-        }
-
+        // Store result in database
         const { error: insertError } = await supabase
           .from('owasp_check_results')
-          .insert(insertData);
+          .insert({
+            user_id: user.id,
+            app_id: project_id,
+            environment_name,
+            owasp_step_id: stepResult.step_id,
+            run_id: runRecord.id,
+            status: stepResult.status,
+            details: stepResult.details,
+            execution_time_ms: stepResult.execution_time_ms,
+            checked_at: new Date().toISOString(),
+          });
 
         if (insertError) {
           console.error('Error storing check result:', insertError);
         }
+      } else {
+        // Promise was rejected - create error result
+        console.error('Step promise rejected:', result.reason);
+        allResults.push({
+          step_id: 'unknown',
+          step_name: 'Unknown step',
+          status: 'error',
+          details: `Promise rejection: ${result.reason}`,
+          execution_time_ms: 0,
+        });
+      }
     }
 
     console.log(`Completed OWASP checks. Total steps executed: ${allResults.length}`);
 
-    // Check if any results are pending
-    const hasPendingResults = allResults.some(r => r.status === 'pending');
-
-    // Determine overall status
-    let overallStatus: 'pass' | 'fail' | 'warning' | 'running' = 'pass';
-    if (hasPendingResults) {
-      overallStatus = 'running'; // Keep as running if there are pending async jobs
-    } else if (failCount > 0) {
+    // Determine overall status (no more pending state - all checks are synchronous now)
+    let overallStatus: 'pass' | 'fail' | 'warning' = 'pass';
+    if (failCount > 0) {
       overallStatus = 'fail';
     } else if (warningCount > 0) {
       overallStatus = 'warning';
