@@ -129,31 +129,45 @@ Deno.serve(async (req) => {
       // Parse success response
       const result = railwayData as RailwaySuccessResponse;
 
-      // Check if any vulnerable entities found
-      if (result.totalEntitiesWithAnonymousAccessNoXPath === 0) {
-        console.log('[Railway Anonymous Entity Check] PASS - No vulnerable entities found');
+      // NEW LOGIC: Check anonymousEnabled first
+      // Scenario 1: Anonymous Access is Disabled → PASS
+      if (!result.anonymousEnabled) {
+        console.log('[Railway Anonymous Entity Check] PASS - Anonymous access is disabled');
         return new Response(
           JSON.stringify({
             status: 'pass',
-            details: '✓ No entities with anonymous access and no XPath constraints found',
-            raw_response: railwayData, // Include raw response for debugging
+            details: '✓ Anonymous access is disabled for this application',
+            raw_response: railwayData,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      // Vulnerable entities found - return FAIL with details
-      const vulnerableEntities = result.entitiesWithAnonymousAccessNoXPath
+      // Scenario 2: Anonymous Access Enabled + No Vulnerable Entities → PASS
+      if (result.anonymousEnabled && (result.totalEntitiesWithAnonymousAccessNoXPath ?? 0) === 0) {
+        console.log('[Railway Anonymous Entity Check] PASS - Anonymous enabled but no vulnerable entities');
+        return new Response(
+          JSON.stringify({
+            status: 'pass',
+            details: '✓ Anonymous access is enabled but all entities have proper XPath constraints',
+            raw_response: railwayData,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Scenario 3: Anonymous Access Enabled + Vulnerable Entities Found → FAIL
+      const vulnerableEntities = (result.entitiesWithAnonymousAccessNoXPath ?? [])
         .map(e => e.qualifiedName)
         .join(', ');
 
-      console.log(`[Railway Anonymous Entity Check] FAIL - Found ${result.totalEntitiesWithAnonymousAccessNoXPath} vulnerable entities`);
+      console.log(`[Railway Anonymous Entity Check] FAIL - Found ${result.totalEntitiesWithAnonymousAccessNoXPath} vulnerable entities with anonymous access enabled`);
       
       return new Response(
         JSON.stringify({
           status: 'fail',
           details: `✗ SECURITY ISSUE: Found ${result.totalEntitiesWithAnonymousAccessNoXPath} persistable entities with anonymous access and no XPath constraints. Vulnerable entities: ${vulnerableEntities}`,
-          raw_response: railwayData, // Include raw response for debugging
+          raw_response: railwayData,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
