@@ -510,6 +510,7 @@ export type Database = {
           id: string
           job_id: string | null
           owasp_step_id: string
+          raw_response: Json | null
           run_id: string | null
           status: string
           user_id: string
@@ -524,6 +525,7 @@ export type Database = {
           id?: string
           job_id?: string | null
           owasp_step_id: string
+          raw_response?: Json | null
           run_id?: string | null
           status: string
           user_id: string
@@ -538,6 +540,7 @@ export type Database = {
           id?: string
           job_id?: string | null
           owasp_step_id?: string
+          raw_response?: Json | null
           run_id?: string | null
           status?: string
           user_id?: string

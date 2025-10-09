@@ -12,6 +12,7 @@ interface StepResult {
   details: string;
   execution_time_ms: number;
   job_id?: string;
+  raw_response?: any; // Store full Railway API response for debugging
 }
 
 Deno.serve(async (req) => {
@@ -211,6 +212,7 @@ Deno.serve(async (req) => {
             details: stepResult.details,
             execution_time_ms: stepResult.execution_time_ms,
             checked_at: new Date().toISOString(),
+            raw_response: stepResult.raw_response || null, // Store raw Railway response
           });
 
         if (insertError) {

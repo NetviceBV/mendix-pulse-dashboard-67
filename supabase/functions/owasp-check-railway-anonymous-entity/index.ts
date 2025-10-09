@@ -94,6 +94,9 @@ Deno.serve(async (req) => {
 
       const railwayData = await railwayResponse.json();
 
+      // Log full Railway response for debugging
+      console.log('[Railway Anonymous Entity Check] Full Railway response:', JSON.stringify(railwayData, null, 2));
+
       // Handle Railway error response
       if (railwayData.error || !railwayResponse.ok) {
         const errorResponse = railwayData as RailwayErrorResponse;
@@ -105,6 +108,7 @@ Deno.serve(async (req) => {
             JSON.stringify({
               status: 'error',
               details: `⚠ Access denied: Invalid PAT or insufficient permissions. Railway error: ${errorResponse.details}`,
+              raw_response: railwayData, // Include raw response for debugging
             }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
@@ -116,6 +120,7 @@ Deno.serve(async (req) => {
           JSON.stringify({
             status: 'error',
             details: `Railway analysis failed: ${errorResponse.error}. Details: ${errorResponse.details}`,
+            raw_response: railwayData, // Include raw response for debugging
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
@@ -131,6 +136,7 @@ Deno.serve(async (req) => {
           JSON.stringify({
             status: 'pass',
             details: '✓ No entities with anonymous access and no XPath constraints found',
+            raw_response: railwayData, // Include raw response for debugging
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
@@ -147,6 +153,7 @@ Deno.serve(async (req) => {
         JSON.stringify({
           status: 'fail',
           details: `✗ SECURITY ISSUE: Found ${result.totalEntitiesWithAnonymousAccessNoXPath} persistable entities with anonymous access and no XPath constraints. Vulnerable entities: ${vulnerableEntities}`,
+          raw_response: railwayData, // Include raw response for debugging
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
