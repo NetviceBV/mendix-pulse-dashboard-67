@@ -191,65 +191,6 @@ Deno.serve(async (req) => {
       if (result.status === 'fulfilled') {
         const stepResult = result.value;
 
-        const startTime = Date.now();
-        let stepResult: StepResult = {
-          step_id: step.id,
-          step_name: step.step_name,
-          status: 'error',
-          details: 'Step execution failed',
-          execution_time_ms: 0,
-        };
-
-        try {
-          console.log(`Executing step: ${step.step_name} (function: ${step.edge_function_name})`);
-
-          // Call the edge function for this step
-          const { data: functionResult, error: functionError } = await supabase.functions.invoke(
-            step.edge_function_name,
-            {
-              body: {
-                project_id,
-                environment_name,
-                credential_id,
-                user_id: user.id,
-                run_id: runRecord.id,
-                step_id: step.id,
-              },
-            }
-          );
-
-          const executionTime = Date.now() - startTime;
-
-          if (functionError) {
-            console.error(`Error executing function ${step.edge_function_name}:`, functionError);
-            stepResult = {
-              step_id: step.id,
-              step_name: step.step_name,
-              status: 'error',
-              details: `Function error: ${functionError.message}`,
-              execution_time_ms: executionTime,
-            };
-          } else {
-            stepResult = {
-              step_id: step.id,
-              step_name: step.step_name,
-              status: functionResult.status || 'error',
-              details: functionResult.details || 'No details provided',
-              execution_time_ms: executionTime,
-              job_id: functionResult.job_id, // Store job_id for async jobs
-            };
-          }
-        } catch (error) {
-          console.error(`Exception executing step ${step.step_name}:`, error);
-          stepResult = {
-            step_id: step.id,
-            step_name: step.step_name,
-            status: 'error',
-            details: error instanceof Error ? error.message : 'Unknown error',
-            execution_time_ms: Date.now() - startTime,
-          };
-        }
-
         allResults.push(stepResult);
 
         // Count results by status
