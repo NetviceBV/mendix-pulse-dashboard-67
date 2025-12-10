@@ -934,6 +934,10 @@ export type Database = {
         Args: { env_name: string }
         Returns: string
       }
+      user_has_app_access: {
+        Args: { check_app_id: string; check_user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
