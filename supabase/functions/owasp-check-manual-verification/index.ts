@@ -31,42 +31,19 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get authorization header
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      console.error('[Manual Verification Check] No authorization header');
-      return new Response(
-        JSON.stringify({ status: 'error', details: 'Authorization required' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Verify the user
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    );
-
-    if (authError || !user) {
-      console.error('[Manual Verification Check] Auth error:', authError);
-      return new Response(
-        JSON.stringify({ status: 'error', details: 'Invalid authorization' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Parse request body
-    const { app_id, environment_name, owasp_item_id } = await req.json();
+    // Parse request body - get user_id from body (passed by run-owasp-checks)
+    const { app_id, environment_name, owasp_item_id, user_id } = await req.json();
     
     console.log('[Manual Verification Check] Request:', { 
-      user_id: user.id, 
+      user_id, 
       app_id, 
       environment_name, 
       owasp_item_id 
     });
 
-    if (!owasp_item_id) {
+    if (!owasp_item_id || !user_id) {
       return new Response(
-        JSON.stringify({ status: 'error', details: 'owasp_item_id is required' }),
+        JSON.stringify({ status: 'error', details: 'owasp_item_id and user_id are required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -76,7 +53,7 @@ serve(async (req) => {
       .from('owasp_items')
       .select('id, owasp_id, title, expiration_months')
       .eq('id', owasp_item_id)
-      .eq('user_id', user.id)
+      .eq('user_id', user_id)
       .single();
 
     if (owaspItemError || !owaspItem) {
@@ -91,7 +68,7 @@ serve(async (req) => {
     const { data: urls, error: urlsError } = await supabase
       .from('owasp_manual_check_urls')
       .select('id, url, description, display_order')
-      .eq('user_id', user.id)
+      .eq('user_id', user_id)
       .eq('owasp_item_id', owasp_item_id)
       .order('display_order', { ascending: true });
 
@@ -121,7 +98,7 @@ serve(async (req) => {
     const { data: verification, error: verificationError } = await supabase
       .from('owasp_manual_verifications')
       .select('id, verified_at, verified_by, notes')
-      .eq('user_id', user.id)
+      .eq('user_id', user_id)
       .eq('owasp_item_id', owasp_item_id)
       .eq('app_id', app_id)
       .eq('environment_name', environment_name || 'Production')
