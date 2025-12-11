@@ -124,6 +124,7 @@ Deno.serve(async (req) => {
         allSteps.push({
           ...step,
           owasp_id: item.owasp_id,
+          owasp_item_id: item.id,  // Include the UUID for owasp_item
         });
       }
     }
@@ -143,11 +144,13 @@ Deno.serve(async (req) => {
           {
             body: {
               project_id,
+              app_id: project_id,  // Alias for functions expecting app_id
               environment_name,
               credential_id,
               user_id: user.id,
               run_id: runRecord.id,
               step_id: step.id,
+              owasp_item_id: step.owasp_item_id,  // Pass the OWASP item UUID
             },
           }
         );
