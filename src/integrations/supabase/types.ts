@@ -646,6 +646,91 @@ export type Database = {
         }
         Relationships: []
       }
+      owasp_manual_check_urls: {
+        Row: {
+          created_at: string
+          description: string | null
+          display_order: number | null
+          id: string
+          owasp_item_id: string
+          updated_at: string
+          url: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          owasp_item_id: string
+          updated_at?: string
+          url: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          owasp_item_id?: string
+          updated_at?: string
+          url?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "owasp_manual_check_urls_owasp_item_id_fkey"
+            columns: ["owasp_item_id"]
+            isOneToOne: false
+            referencedRelation: "owasp_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      owasp_manual_verifications: {
+        Row: {
+          app_id: string
+          created_at: string
+          environment_name: string
+          id: string
+          notes: string | null
+          owasp_item_id: string
+          user_id: string
+          verified_at: string
+          verified_by: string | null
+        }
+        Insert: {
+          app_id: string
+          created_at?: string
+          environment_name?: string
+          id?: string
+          notes?: string | null
+          owasp_item_id: string
+          user_id: string
+          verified_at?: string
+          verified_by?: string | null
+        }
+        Update: {
+          app_id?: string
+          created_at?: string
+          environment_name?: string
+          id?: string
+          notes?: string | null
+          owasp_item_id?: string
+          user_id?: string
+          verified_at?: string
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "owasp_manual_verifications_owasp_item_id_fkey"
+            columns: ["owasp_item_id"]
+            isOneToOne: false
+            referencedRelation: "owasp_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       owasp_steps: {
         Row: {
           created_at: string

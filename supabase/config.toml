@@ -3,6 +3,9 @@ project_id = "hfmeoajwhaiobjngpyhe"
 [functions.owasp-check-railway-anonymous-entity]
 verify_jwt = false
 
+[functions.owasp-check-manual-verification]
+verify_jwt = false
+
 [functions.run-cloud-actions-v2]
 verify_jwt = false
 
