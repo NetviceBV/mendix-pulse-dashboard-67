@@ -135,6 +135,37 @@ export function OWASPDetailsDialog({ open, onOpenChange, owaspItem, onVerificati
 
       if (error) throw error;
 
+      // Also update owasp_check_results to reflect the new pass status
+      // First, find the manual verification step for A02
+      const { data: owaspStep } = await supabase
+        .from("owasp_steps")
+        .select("id")
+        .eq("owasp_item_id", owaspItem.owaspItemId)
+        .eq("edge_function_name", "owasp-check-manual-verification")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (owaspStep) {
+        // Update or insert the check result to pass
+        const { error: resultError } = await supabase
+          .from("owasp_check_results")
+          .upsert({
+            user_id: user.id,
+            app_id: owaspItem.appId,
+            environment_name: owaspItem.environmentName,
+            owasp_step_id: owaspStep.id,
+            status: 'pass',
+            details: `Manual verification completed on ${format(new Date(), 'MMM d, yyyy HH:mm')}. URLs verified successfully.`,
+            checked_at: new Date().toISOString(),
+          }, {
+            onConflict: 'user_id,app_id,environment_name,owasp_step_id'
+          });
+
+        if (resultError) {
+          console.error("Error updating check result:", resultError);
+        }
+      }
+
       toast.success("URLs marked as verified successfully");
       await loadManualVerificationData();
       onVerificationComplete?.();
