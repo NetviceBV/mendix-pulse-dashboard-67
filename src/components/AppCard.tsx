@@ -371,6 +371,9 @@ const AppCard = ({
             owaspUrl: `https://owasp.org/Top10/${item.owasp_id}_2021/`,
             expirationMonths: item.expiration_months,
             steps: stepDetails,
+            owaspItemId: item.id,
+            appId: app.project_id,
+            environmentName: app.environments[0]?.environment_name || 'Production',
           };
         });
 
