@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Trash2, Edit2, Save, X, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { ManualVerificationURLs } from "./ManualVerificationURLs";
 
 interface OWASPItem {
   id: string;
@@ -622,6 +623,11 @@ export const OWASPSettings = () => {
                     </p>
                   )}
                 </div>
+
+                {/* Show Manual Verification URLs section for A02 */}
+                {item.owasp_id === 'A02' && (
+                  <ManualVerificationURLs owaspItemId={item.id} owaspId={item.owasp_id} />
+                )}
               </div>
             </CardContent>
           </Card>
