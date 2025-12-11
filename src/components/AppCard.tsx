@@ -373,7 +373,7 @@ const AppCard = ({
             steps: stepDetails,
             owaspItemId: item.id,
             appId: app.project_id,
-            environmentName: app.environments[0]?.environment_name || 'Production',
+            environmentName: 'Production', // OWASP checks target Production environment
           };
         });
 
@@ -1046,6 +1046,7 @@ const AppCard = ({
         open={isOwaspDialogOpen}
         onOpenChange={setIsOwaspDialogOpen}
         owaspItem={selectedOwaspItem}
+        onVerificationComplete={() => setOwaspReloadTrigger(prev => prev + 1)}
       />
     </Card>;
 };
