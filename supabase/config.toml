@@ -6,6 +6,9 @@ verify_jwt = false
 [functions.owasp-check-manual-verification]
 verify_jwt = false
 
+[functions.owasp-check-a03-manual-verification]
+verify_jwt = false
+
 [functions.run-cloud-actions-v2]
 verify_jwt = false
 
