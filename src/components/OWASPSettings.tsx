@@ -11,7 +11,7 @@ import { Plus, Trash2, Edit2, Save, X, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { ManualVerificationURLs } from "./ManualVerificationURLs";
-
+import { JSWhitelist } from "./JSWhitelist";
 interface OWASPItem {
   id: string;
   owasp_id: string;
@@ -627,6 +627,17 @@ export const OWASPSettings = () => {
                 {/* Show Manual Verification URLs section for A02, A03, and A04 */}
                 {(item.owasp_id === 'A02' || item.owasp_id === 'A03' || item.owasp_id === 'A04') && (
                   <ManualVerificationURLs owaspItemId={item.id} owaspId={item.owasp_id} />
+                )}
+
+                {/* Show info about JS whitelist for A05 */}
+                {item.owasp_id === 'A05' && (
+                  <div className="mt-4 pt-4 border-t">
+                    <div className="flex items-start gap-2 p-3 bg-muted/50 rounded-lg text-sm">
+                      <span className="text-muted-foreground">
+                        JavaScript whitelist is configured per-app. Run the A05 check from the Dashboard, then manage the whitelist from the check results dialog.
+                      </span>
+                    </div>
+                  </div>
                 )}
               </div>
             </CardContent>

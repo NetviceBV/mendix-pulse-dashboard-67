@@ -15,6 +15,9 @@ verify_jwt = false
 [functions.owasp-check-a04-log-monitoring]
 verify_jwt = false
 
+[functions.owasp-check-a05-js-imports]
+verify_jwt = false
+
 [functions.run-cloud-actions-v2]
 verify_jwt = false
 
