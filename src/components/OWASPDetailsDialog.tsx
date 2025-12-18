@@ -2,12 +2,13 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, CheckCircle2, XCircle, ExternalLink, Calendar, Clock, Link, CheckSquare, Code, Shield } from "lucide-react";
+import { AlertTriangle, CheckCircle2, XCircle, ExternalLink, Calendar, Clock, Link, CheckSquare, Code, Shield, Settings } from "lucide-react";
 import { format, differenceInMonths, addMonths } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { JSWhitelist } from "./JSWhitelist";
 import { VulnerabilityScanDialog } from "./VulnerabilityScanDialog";
+import { A07AppSettings } from "./A07AppSettings";
 
 interface ManualCheckUrl {
   id: string;
@@ -73,7 +74,7 @@ export function OWASPDetailsDialog({ open, onOpenChange, owaspItem, onVerificati
     if (open && owaspItem?.owaspItemId && (owaspItem.id === 'A02' || owaspItem.id === 'A03' || owaspItem.id === 'A04')) {
       loadManualVerificationData();
     }
-    if (open && owaspItem?.appId && owaspItem.id === 'A06') {
+    if (open && owaspItem?.appId && (owaspItem.id === 'A06' || owaspItem.id === 'A07')) {
       loadAppName();
     }
   }, [open, owaspItem?.owaspItemId, owaspItem?.appId, owaspItem?.environmentName]);
@@ -221,6 +222,9 @@ export function OWASPDetailsDialog({ open, onOpenChange, owaspItem, onVerificati
 
   // Check if this is A06 (Vulnerable and Outdated Components) - show vulnerability scan section
   const showVulnerabilityScanSection = owaspItem.id === 'A06' && owaspItem.appId && owaspItem.environmentName;
+
+  // Check if this is A07 (Identification and Authentication Failures) - show app-specific settings
+  const showA07Settings = owaspItem.id === 'A07' && owaspItem.appId;
 
   // Calculate manual verification expiration
   const manualVerificationExpired = manualVerification
@@ -442,6 +446,20 @@ export function OWASPDetailsDialog({ open, onOpenChange, owaspItem, onVerificati
               appName={appName}
               showResultsOnOpen={true}
             />
+          )}
+
+          {/* A07 App-Specific Settings */}
+          {showA07Settings && (
+            <div className="border rounded-lg p-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <Settings className="h-5 w-5 text-primary" />
+                <h4 className="font-semibold">Authentication Settings</h4>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Configure app-specific password policies and SSO detection patterns. These settings override your default A07 settings for this application.
+              </p>
+              <A07AppSettings appId={owaspItem.appId!} appName={appName || owaspItem.appId} />
+            </div>
           )}
 
           {owaspItem.steps && owaspItem.steps.length > 0 && (
