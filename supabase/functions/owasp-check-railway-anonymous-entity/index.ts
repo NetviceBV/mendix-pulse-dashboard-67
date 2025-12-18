@@ -5,7 +5,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const RAILWAY_ANALYZER_URL = 'https://mendix-analyzer-staging.up.railway.app/analyze';
+const RAILWAY_ANALYZER_URL = 'https://mendix-analyzer-production.up.railway.app/analyze';
 const TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
 interface RailwaySuccessResponse {
