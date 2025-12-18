@@ -17,15 +17,15 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { appId, environmentName, userId, expirationMonths = 3 } = await req.json();
+    const { app_id, environment_name, user_id, expirationMonths = 3 } = await req.json();
     
-    console.log(`[A06] Starting vulnerability check for app: ${appId}, environment: ${environmentName}`);
+    console.log(`[A06] Starting vulnerability check for app: ${app_id}, environment: ${environment_name}`);
 
-    if (!appId || !environmentName || !userId) {
+    if (!app_id || !environment_name || !user_id) {
       return new Response(
         JSON.stringify({ 
           status: 'error', 
-          details: 'Missing required parameters: appId, environmentName, or userId' 
+          details: 'Missing required parameters: app_id, environment_name, or user_id' 
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
@@ -35,9 +35,9 @@ serve(async (req) => {
     const { data: environment, error: envError } = await supabase
       .from('mendix_environments')
       .select('id, environment_name, url')
-      .eq('app_id', appId)
-      .eq('user_id', userId)
-      .ilike('environment_name', environmentName)
+      .eq('app_id', app_id)
+      .eq('user_id', user_id)
+      .ilike('environment_name', environment_name)
       .maybeSingle();
 
     if (envError) {
@@ -52,11 +52,11 @@ serve(async (req) => {
     }
 
     if (!environment) {
-      console.log(`[A06] No ${environmentName} environment found for app ${appId}`);
+      console.log(`[A06] No ${environment_name} environment found for app ${app_id}`);
       return new Response(
         JSON.stringify({ 
           status: 'warning', 
-          details: `No ${environmentName} environment found for this application. Cannot evaluate vulnerability status.` 
+          details: `No ${environment_name} environment found for this application. Cannot evaluate vulnerability status.` 
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -66,9 +66,9 @@ serve(async (req) => {
     const { data: latestScan, error: scanError } = await supabase
       .from('vulnerability_scans')
       .select('*')
-      .eq('app_id', appId)
-      .eq('user_id', userId)
-      .ilike('environment_name', environmentName)
+      .eq('app_id', app_id)
+      .eq('user_id', user_id)
+      .ilike('environment_name', environment_name)
       .eq('scan_status', 'completed')
       .order('completed_at', { ascending: false })
       .limit(1)
@@ -87,7 +87,7 @@ serve(async (req) => {
 
     // No scan exists
     if (!latestScan) {
-      console.log(`[A06] No vulnerability scan found for app ${appId}`);
+      console.log(`[A06] No vulnerability scan found for app ${app_id}`);
       return new Response(
         JSON.stringify({ 
           status: 'warning', 
