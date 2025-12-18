@@ -625,8 +625,8 @@ export const OWASPSettings = () => {
                   )}
                 </div>
 
-                {/* Show Manual Verification URLs section for A02, A03, and A04 */}
-                {(item.owasp_id === 'A02' || item.owasp_id === 'A03' || item.owasp_id === 'A04') && (
+                {/* Show Manual Verification URLs section for A02, A03, A04, and A10 */}
+                {(item.owasp_id === 'A02' || item.owasp_id === 'A03' || item.owasp_id === 'A04' || item.owasp_id === 'A10') && (
                   <ManualVerificationURLs owaspItemId={item.id} owaspId={item.owasp_id} />
                 )}
 
