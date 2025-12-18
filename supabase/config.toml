@@ -30,6 +30,12 @@ verify_jwt = false
 [functions.owasp-check-a09-log-monitoring]
 verify_jwt = false
 
+[functions.owasp-check-a10-endpoint-restdoc]
+verify_jwt = false
+
+[functions.owasp-check-a10-manual-verification]
+verify_jwt = false
+
 [functions.run-cloud-actions-v2]
 verify_jwt = false
 
@@ -61,7 +67,4 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.cleanup-stale-owasp-jobs]
-verify_jwt = false
-
-[functions.owasp-check-a10-manual-verification]
 verify_jwt = false
