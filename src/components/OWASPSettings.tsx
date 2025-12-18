@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { ManualVerificationURLs } from "./ManualVerificationURLs";
 import { JSWhitelist } from "./JSWhitelist";
+import { A07Settings } from "./A07Settings";
 interface OWASPItem {
   id: string;
   owasp_id: string;
@@ -649,6 +650,11 @@ export const OWASPSettings = () => {
                       </span>
                     </div>
                   </div>
+                )}
+
+                {/* Show A07 default settings configuration */}
+                {item.owasp_id === 'A07' && (
+                  <A07Settings />
                 )}
               </div>
             </CardContent>
