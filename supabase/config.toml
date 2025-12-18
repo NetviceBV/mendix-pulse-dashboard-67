@@ -27,6 +27,9 @@ verify_jwt = false
 [functions.owasp-check-a08-integrity]
 verify_jwt = false
 
+[functions.owasp-check-a09-log-monitoring]
+verify_jwt = false
+
 [functions.run-cloud-actions-v2]
 verify_jwt = false
 
