@@ -66,7 +66,7 @@ export function OWASPDetailsDialog({ open, onOpenChange, owaspItem, onVerificati
   const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
-    if (open && owaspItem?.owaspItemId && (owaspItem.id === 'A02' || owaspItem.id === 'A03')) {
+    if (open && owaspItem?.owaspItemId && (owaspItem.id === 'A02' || owaspItem.id === 'A03' || owaspItem.id === 'A04')) {
       loadManualVerificationData();
     }
   }, [open, owaspItem?.owaspItemId, owaspItem?.appId, owaspItem?.environmentName]);
@@ -137,9 +137,11 @@ export function OWASPDetailsDialog({ open, onOpenChange, owaspItem, onVerificati
 
       // Also update owasp_check_results to reflect the new pass status
       // Determine the correct edge function based on OWASP item
-      const edgeFunctionName = owaspItem.id === 'A03' 
-        ? 'owasp-check-a03-manual-verification' 
-        : 'owasp-check-manual-verification';
+      const edgeFunctionName = owaspItem.id === 'A04'
+        ? 'owasp-check-a04-manual-verification'
+        : owaspItem.id === 'A03' 
+          ? 'owasp-check-a03-manual-verification' 
+          : 'owasp-check-manual-verification';
 
       const { data: owaspStep } = await supabase
         .from("owasp_steps")
@@ -194,8 +196,8 @@ export function OWASPDetailsDialog({ open, onOpenChange, owaspItem, onVerificati
   const effectiveStatus = isExpired && owaspItem.status !== 'unknown' ? 'fail' : owaspItem.status;
   const StatusIcon = statusConfig[effectiveStatus].icon;
 
-  // Check if this is A02 (Cryptographic Failures) or A03 (Injection) - show manual verification section
-  const showManualVerification = owaspItem.id === 'A02' || owaspItem.id === 'A03';
+  // Check if this is A02 (Cryptographic Failures), A03 (Injection), or A04 (Insecure Design) - show manual verification section
+  const showManualVerification = owaspItem.id === 'A02' || owaspItem.id === 'A03' || owaspItem.id === 'A04';
 
   // Calculate manual verification expiration
   const manualVerificationExpired = manualVerification
