@@ -639,6 +639,17 @@ export const OWASPSettings = () => {
                     </div>
                   </div>
                 )}
+
+                {/* Show info about vulnerability scanning for A06 */}
+                {item.owasp_id === 'A06' && (
+                  <div className="mt-4 pt-4 border-t">
+                    <div className="flex items-start gap-2 p-3 bg-muted/50 rounded-lg text-sm">
+                      <span className="text-muted-foreground">
+                        This check evaluates existing vulnerability scan results. Run vulnerability scans from the environment card on your Dashboard. Scans older than {item.expiration_months} months will trigger a warning.
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

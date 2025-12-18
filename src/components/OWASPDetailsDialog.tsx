@@ -2,11 +2,12 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, CheckCircle2, XCircle, ExternalLink, Calendar, Clock, Link, CheckSquare, Code } from "lucide-react";
+import { AlertTriangle, CheckCircle2, XCircle, ExternalLink, Calendar, Clock, Link, CheckSquare, Code, Shield } from "lucide-react";
 import { format, differenceInMonths, addMonths } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { JSWhitelist } from "./JSWhitelist";
+import { VulnerabilityScanDialog } from "./VulnerabilityScanDialog";
 
 interface ManualCheckUrl {
   id: string;
@@ -65,12 +66,27 @@ export function OWASPDetailsDialog({ open, onOpenChange, owaspItem, onVerificati
   const [manualVerification, setManualVerification] = useState<ManualVerification | null>(null);
   const [loadingUrls, setLoadingUrls] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [showVulnerabilityScan, setShowVulnerabilityScan] = useState(false);
+  const [appName, setAppName] = useState<string>("");
 
   useEffect(() => {
     if (open && owaspItem?.owaspItemId && (owaspItem.id === 'A02' || owaspItem.id === 'A03' || owaspItem.id === 'A04')) {
       loadManualVerificationData();
     }
+    if (open && owaspItem?.appId && owaspItem.id === 'A06') {
+      loadAppName();
+    }
   }, [open, owaspItem?.owaspItemId, owaspItem?.appId, owaspItem?.environmentName]);
+
+  const loadAppName = async () => {
+    if (!owaspItem?.appId) return;
+    const { data } = await supabase
+      .from('mendix_apps')
+      .select('app_name')
+      .eq('project_id', owaspItem.appId)
+      .maybeSingle();
+    setAppName(data?.app_name || owaspItem.appId);
+  };
 
   const loadManualVerificationData = async () => {
     if (!owaspItem?.owaspItemId) return;
@@ -202,6 +218,9 @@ export function OWASPDetailsDialog({ open, onOpenChange, owaspItem, onVerificati
 
   // Check if this is A05 (Security Misconfiguration) - show JS whitelist section
   const showJSWhitelist = owaspItem.id === 'A05' && owaspItem.appId;
+
+  // Check if this is A06 (Vulnerable and Outdated Components) - show vulnerability scan section
+  const showVulnerabilityScanSection = owaspItem.id === 'A06' && owaspItem.appId && owaspItem.environmentName;
 
   // Calculate manual verification expiration
   const manualVerificationExpired = manualVerification
@@ -390,6 +409,39 @@ export function OWASPDetailsDialog({ open, onOpenChange, owaspItem, onVerificati
               </p>
               <JSWhitelist appId={owaspItem.appId!} />
             </div>
+          )}
+
+          {/* Vulnerability Scan Section for A06 */}
+          {showVulnerabilityScanSection && (
+            <div className="border rounded-lg p-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <Shield className="h-5 w-5 text-primary" />
+                <h4 className="font-semibold">Vulnerability Scan</h4>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                This check evaluates the latest vulnerability scan results for your production environment. 
+                Run regular scans to keep your components up to date.
+              </p>
+              <Button
+                onClick={() => setShowVulnerabilityScan(true)}
+                className="w-full"
+              >
+                <Shield className="h-4 w-4 mr-2" />
+                Open Vulnerability Scan
+              </Button>
+            </div>
+          )}
+
+          {/* Vulnerability Scan Dialog for A06 */}
+          {showVulnerabilityScanSection && (
+            <VulnerabilityScanDialog
+              isOpen={showVulnerabilityScan}
+              onClose={() => setShowVulnerabilityScan(false)}
+              appId={owaspItem.appId!}
+              environmentName={owaspItem.environmentName!}
+              appName={appName}
+              showResultsOnOpen={true}
+            />
           )}
 
           {owaspItem.steps && owaspItem.steps.length > 0 && (
