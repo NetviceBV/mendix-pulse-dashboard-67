@@ -202,10 +202,10 @@ Deno.serve(async (req) => {
         else if (stepResult.status === 'fail') failCount++;
         else if (stepResult.status === 'warning') warningCount++;
 
-        // Store result in database
+        // Store result in database (upsert to handle re-runs)
         const { error: insertError } = await supabase
           .from('owasp_check_results')
-          .insert({
+          .upsert({
             user_id: user.id,
             app_id: project_id,
             environment_name,
@@ -215,7 +215,9 @@ Deno.serve(async (req) => {
             details: stepResult.details,
             execution_time_ms: stepResult.execution_time_ms,
             checked_at: new Date().toISOString(),
-            raw_response: stepResult.raw_response || null, // Store raw Railway response
+            raw_response: stepResult.raw_response || null,
+          }, {
+            onConflict: 'user_id,app_id,environment_name,owasp_step_id',
           });
 
         if (insertError) {
