@@ -21,6 +21,9 @@ verify_jwt = false
 [functions.owasp-check-a06-vulnerabilities]
 verify_jwt = false
 
+[functions.owasp-check-a07-auth-failures]
+verify_jwt = false
+
 [functions.run-cloud-actions-v2]
 verify_jwt = false
 

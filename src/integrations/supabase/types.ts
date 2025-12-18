@@ -499,6 +499,45 @@ export type Database = {
         }
         Relationships: []
       }
+      owasp_a07_settings: {
+        Row: {
+          app_id: string | null
+          created_at: string | null
+          id: string
+          minimum_length: number | null
+          require_digit: boolean | null
+          require_mixed_case: boolean | null
+          require_symbol: boolean | null
+          sso_patterns: Json | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          app_id?: string | null
+          created_at?: string | null
+          id?: string
+          minimum_length?: number | null
+          require_digit?: boolean | null
+          require_mixed_case?: boolean | null
+          require_symbol?: boolean | null
+          sso_patterns?: Json | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          app_id?: string | null
+          created_at?: string | null
+          id?: string
+          minimum_length?: number | null
+          require_digit?: boolean | null
+          require_mixed_case?: boolean | null
+          require_symbol?: boolean | null
+          sso_patterns?: Json | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       owasp_check_results: {
         Row: {
           app_id: string
@@ -768,6 +807,7 @@ export type Database = {
           id: string
           is_active: boolean
           needs_domain_model: boolean
+          needs_railway_analysis: boolean | null
           owasp_item_id: string
           step_description: string | null
           step_name: string
@@ -781,6 +821,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           needs_domain_model?: boolean
+          needs_railway_analysis?: boolean | null
           owasp_item_id: string
           step_description?: string | null
           step_name: string
@@ -794,6 +835,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           needs_domain_model?: boolean
+          needs_railway_analysis?: boolean | null
           owasp_item_id?: string
           step_description?: string | null
           step_name?: string
@@ -837,6 +879,39 @@ export type Database = {
           full_name?: string | null
           id?: string
           updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      railway_analysis_cache: {
+        Row: {
+          analysis_data: Json
+          created_at: string | null
+          expires_at: string | null
+          id: string
+          project_id: string
+          request_parameters: Json | null
+          run_id: string
+          user_id: string
+        }
+        Insert: {
+          analysis_data: Json
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          project_id: string
+          request_parameters?: Json | null
+          run_id: string
+          user_id: string
+        }
+        Update: {
+          analysis_data?: Json
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          project_id?: string
+          request_parameters?: Json | null
+          run_id?: string
           user_id?: string
         }
         Relationships: []
