@@ -71,7 +71,7 @@ export function OWASPDetailsDialog({ open, onOpenChange, owaspItem, onVerificati
   const [appName, setAppName] = useState<string>("");
 
   useEffect(() => {
-    if (open && owaspItem?.owaspItemId && (owaspItem.id === 'A02' || owaspItem.id === 'A03' || owaspItem.id === 'A04' || owaspItem.id === 'A08')) {
+    if (open && owaspItem?.owaspItemId && (owaspItem.id === 'A02' || owaspItem.id === 'A03' || owaspItem.id === 'A04' || owaspItem.id === 'A08' || owaspItem.id === 'A10')) {
       loadManualVerificationData();
     }
     if (open && owaspItem?.appId && (owaspItem.id === 'A06' || owaspItem.id === 'A07' || owaspItem.id === 'A08')) {
@@ -155,13 +155,15 @@ export function OWASPDetailsDialog({ open, onOpenChange, owaspItem, onVerificati
 
       // Also update owasp_check_results to reflect the new pass status
       // Determine the correct edge function based on OWASP item
-      const edgeFunctionName = owaspItem.id === 'A08'
-        ? 'owasp-check-a08-integrity'
-        : owaspItem.id === 'A04'
-          ? 'owasp-check-a04-manual-verification'
-          : owaspItem.id === 'A03' 
-            ? 'owasp-check-a03-manual-verification' 
-            : 'owasp-check-manual-verification';
+      const edgeFunctionName = owaspItem.id === 'A10'
+        ? 'owasp-check-a10-manual-verification'
+        : owaspItem.id === 'A08'
+          ? 'owasp-check-a08-integrity'
+          : owaspItem.id === 'A04'
+            ? 'owasp-check-a04-manual-verification'
+            : owaspItem.id === 'A03' 
+              ? 'owasp-check-a03-manual-verification' 
+              : 'owasp-check-manual-verification';
 
       const { data: owaspStep } = await supabase
         .from("owasp_steps")
@@ -218,7 +220,7 @@ export function OWASPDetailsDialog({ open, onOpenChange, owaspItem, onVerificati
 
   // Check if this is A02 (Cryptographic Failures), A03 (Injection), A04 (Insecure Design), or A08 (Software Integrity) - show manual verification section
   // Note: A08 only shows manual verification for non-Mendix Cloud apps (handled by status/details from edge function)
-  const showManualVerification = owaspItem.id === 'A02' || owaspItem.id === 'A03' || owaspItem.id === 'A04' || owaspItem.id === 'A08';
+  const showManualVerification = owaspItem.id === 'A02' || owaspItem.id === 'A03' || owaspItem.id === 'A04' || owaspItem.id === 'A08' || owaspItem.id === 'A10';
 
   // Check if this is A05 (Security Misconfiguration) - show JS whitelist section
   const showJSWhitelist = owaspItem.id === 'A05' && owaspItem.appId;

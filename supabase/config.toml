@@ -62,3 +62,6 @@ verify_jwt = false
 
 [functions.cleanup-stale-owasp-jobs]
 verify_jwt = false
+
+[functions.owasp-check-a10-manual-verification]
+verify_jwt = false
