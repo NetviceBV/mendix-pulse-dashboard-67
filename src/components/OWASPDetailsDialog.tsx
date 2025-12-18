@@ -2,10 +2,11 @@ import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, CheckCircle2, XCircle, ExternalLink, Calendar, Clock, Link, CheckSquare } from "lucide-react";
+import { AlertTriangle, CheckCircle2, XCircle, ExternalLink, Calendar, Clock, Link, CheckSquare, Code } from "lucide-react";
 import { format, differenceInMonths, addMonths } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { JSWhitelist } from "./JSWhitelist";
 
 interface ManualCheckUrl {
   id: string;
@@ -199,6 +200,9 @@ export function OWASPDetailsDialog({ open, onOpenChange, owaspItem, onVerificati
   // Check if this is A02 (Cryptographic Failures), A03 (Injection), or A04 (Insecure Design) - show manual verification section
   const showManualVerification = owaspItem.id === 'A02' || owaspItem.id === 'A03' || owaspItem.id === 'A04';
 
+  // Check if this is A05 (Security Misconfiguration) - show JS whitelist section
+  const showJSWhitelist = owaspItem.id === 'A05' && owaspItem.appId;
+
   // Calculate manual verification expiration
   const manualVerificationExpired = manualVerification
     ? new Date() > addMonths(new Date(manualVerification.verified_at), owaspItem.expirationMonths)
@@ -371,6 +375,20 @@ export function OWASPDetailsDialog({ open, onOpenChange, owaspItem, onVerificati
                   </Button>
                 </>
               )}
+            </div>
+          )}
+
+          {/* JavaScript Whitelist Section for A05 */}
+          {showJSWhitelist && (
+            <div className="border rounded-lg p-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <Code className="h-5 w-5 text-primary" />
+                <h4 className="font-semibold">JavaScript Import Whitelist</h4>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Non-vanilla Mendix JavaScript imports detected in index.html will be flagged unless whitelisted below.
+              </p>
+              <JSWhitelist appId={owaspItem.appId!} />
             </div>
           )}
 

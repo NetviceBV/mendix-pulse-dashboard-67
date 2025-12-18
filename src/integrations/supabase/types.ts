@@ -646,6 +646,36 @@ export type Database = {
         }
         Relationships: []
       }
+      owasp_js_whitelist: {
+        Row: {
+          app_id: string
+          created_at: string
+          description: string | null
+          id: string
+          script_pattern: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          app_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          script_pattern: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          app_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          script_pattern?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       owasp_manual_check_urls: {
         Row: {
           created_at: string
