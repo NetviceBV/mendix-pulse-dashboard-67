@@ -499,74 +499,44 @@ export type Database = {
         }
         Relationships: []
       }
-      owasp_async_jobs: {
+      owasp_a07_settings: {
         Row: {
-          attempts: number
-          completed_at: string | null
-          created_at: string
-          error_message: string | null
+          app_id: string | null
+          created_at: string | null
           id: string
-          job_type: string
-          max_attempts: number
-          payload: Json
-          result: Json | null
-          run_id: string | null
-          started_at: string | null
-          status: string
-          step_id: string | null
-          updated_at: string
+          minimum_length: number | null
+          require_digit: boolean | null
+          require_mixed_case: boolean | null
+          require_symbol: boolean | null
+          sso_patterns: Json | null
+          updated_at: string | null
           user_id: string
         }
         Insert: {
-          attempts?: number
-          completed_at?: string | null
-          created_at?: string
-          error_message?: string | null
+          app_id?: string | null
+          created_at?: string | null
           id?: string
-          job_type: string
-          max_attempts?: number
-          payload?: Json
-          result?: Json | null
-          run_id?: string | null
-          started_at?: string | null
-          status?: string
-          step_id?: string | null
-          updated_at?: string
+          minimum_length?: number | null
+          require_digit?: boolean | null
+          require_mixed_case?: boolean | null
+          require_symbol?: boolean | null
+          sso_patterns?: Json | null
+          updated_at?: string | null
           user_id: string
         }
         Update: {
-          attempts?: number
-          completed_at?: string | null
-          created_at?: string
-          error_message?: string | null
+          app_id?: string | null
+          created_at?: string | null
           id?: string
-          job_type?: string
-          max_attempts?: number
-          payload?: Json
-          result?: Json | null
-          run_id?: string | null
-          started_at?: string | null
-          status?: string
-          step_id?: string | null
-          updated_at?: string
+          minimum_length?: number | null
+          require_digit?: boolean | null
+          require_mixed_case?: boolean | null
+          require_symbol?: boolean | null
+          sso_patterns?: Json | null
+          updated_at?: string | null
           user_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "owasp_async_jobs_run_id_fkey"
-            columns: ["run_id"]
-            isOneToOne: false
-            referencedRelation: "owasp_check_runs"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "owasp_async_jobs_step_id_fkey"
-            columns: ["step_id"]
-            isOneToOne: false
-            referencedRelation: "owasp_steps"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       owasp_check_results: {
         Row: {
@@ -579,6 +549,7 @@ export type Database = {
           id: string
           job_id: string | null
           owasp_step_id: string
+          raw_response: Json | null
           run_id: string | null
           status: string
           user_id: string
@@ -593,6 +564,7 @@ export type Database = {
           id?: string
           job_id?: string | null
           owasp_step_id: string
+          raw_response?: Json | null
           run_id?: string | null
           status: string
           user_id: string
@@ -607,18 +579,12 @@ export type Database = {
           id?: string
           job_id?: string | null
           owasp_step_id?: string
+          raw_response?: Json | null
           run_id?: string | null
           status?: string
           user_id?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "owasp_check_results_job_id_fkey"
-            columns: ["job_id"]
-            isOneToOne: false
-            referencedRelation: "owasp_async_jobs"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "owasp_check_results_owasp_step_id_fkey"
             columns: ["owasp_step_id"]
@@ -719,12 +685,129 @@ export type Database = {
         }
         Relationships: []
       }
+      owasp_js_whitelist: {
+        Row: {
+          app_id: string
+          created_at: string
+          description: string | null
+          id: string
+          script_pattern: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          app_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          script_pattern: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          app_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          script_pattern?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      owasp_manual_check_urls: {
+        Row: {
+          created_at: string
+          description: string | null
+          display_order: number | null
+          id: string
+          owasp_item_id: string
+          updated_at: string
+          url: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          owasp_item_id: string
+          updated_at?: string
+          url: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          owasp_item_id?: string
+          updated_at?: string
+          url?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "owasp_manual_check_urls_owasp_item_id_fkey"
+            columns: ["owasp_item_id"]
+            isOneToOne: false
+            referencedRelation: "owasp_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      owasp_manual_verifications: {
+        Row: {
+          app_id: string
+          created_at: string
+          environment_name: string
+          id: string
+          notes: string | null
+          owasp_item_id: string
+          user_id: string
+          verified_at: string
+          verified_by: string | null
+        }
+        Insert: {
+          app_id: string
+          created_at?: string
+          environment_name?: string
+          id?: string
+          notes?: string | null
+          owasp_item_id: string
+          user_id: string
+          verified_at?: string
+          verified_by?: string | null
+        }
+        Update: {
+          app_id?: string
+          created_at?: string
+          environment_name?: string
+          id?: string
+          notes?: string | null
+          owasp_item_id?: string
+          user_id?: string
+          verified_at?: string
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "owasp_manual_verifications_owasp_item_id_fkey"
+            columns: ["owasp_item_id"]
+            isOneToOne: false
+            referencedRelation: "owasp_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       owasp_steps: {
         Row: {
           created_at: string
           edge_function_name: string
           id: string
           is_active: boolean
+          needs_domain_model: boolean
+          needs_railway_analysis: boolean | null
           owasp_item_id: string
           step_description: string | null
           step_name: string
@@ -737,6 +820,8 @@ export type Database = {
           edge_function_name: string
           id?: string
           is_active?: boolean
+          needs_domain_model?: boolean
+          needs_railway_analysis?: boolean | null
           owasp_item_id: string
           step_description?: string | null
           step_name: string
@@ -749,6 +834,8 @@ export type Database = {
           edge_function_name?: string
           id?: string
           is_active?: boolean
+          needs_domain_model?: boolean
+          needs_railway_analysis?: boolean | null
           owasp_item_id?: string
           step_description?: string | null
           step_name?: string
@@ -792,6 +879,39 @@ export type Database = {
           full_name?: string | null
           id?: string
           updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      railway_analysis_cache: {
+        Row: {
+          analysis_data: Json
+          created_at: string | null
+          expires_at: string | null
+          id: string
+          project_id: string
+          request_parameters: Json | null
+          run_id: string
+          user_id: string
+        }
+        Insert: {
+          analysis_data: Json
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          project_id: string
+          request_parameters?: Json | null
+          run_id: string
+          user_id: string
+        }
+        Update: {
+          analysis_data?: Json
+          created_at?: string | null
+          expires_at?: string | null
+          id?: string
+          project_id?: string
+          request_parameters?: Json | null
+          run_id?: string
           user_id?: string
         }
         Relationships: []
@@ -1003,6 +1123,10 @@ export type Database = {
       normalize_environment_name: {
         Args: { env_name: string }
         Returns: string
+      }
+      user_has_app_access: {
+        Args: { check_app_id: string; check_user_id: string }
+        Returns: boolean
       }
     }
     Enums: {

@@ -1,5 +1,41 @@
 project_id = "mucojbkzmpmkcivoxrze"
 
+[functions.owasp-check-railway-anonymous-entity]
+verify_jwt = false
+
+[functions.owasp-check-manual-verification]
+verify_jwt = false
+
+[functions.owasp-check-a03-manual-verification]
+verify_jwt = false
+
+[functions.owasp-check-a04-manual-verification]
+verify_jwt = false
+
+[functions.owasp-check-a04-log-monitoring]
+verify_jwt = false
+
+[functions.owasp-check-a05-js-imports]
+verify_jwt = false
+
+[functions.owasp-check-a06-vulnerabilities]
+verify_jwt = false
+
+[functions.owasp-check-a07-auth-failures]
+verify_jwt = false
+
+[functions.owasp-check-a08-integrity]
+verify_jwt = false
+
+[functions.owasp-check-a09-log-monitoring]
+verify_jwt = false
+
+[functions.owasp-check-a10-endpoint-restdoc]
+verify_jwt = false
+
+[functions.owasp-check-a10-manual-verification]
+verify_jwt = false
+
 [functions.run-cloud-actions-v2]
 verify_jwt = false
 
@@ -28,12 +64,6 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.owasp-check-endpoint-restdoc]
-verify_jwt = false
-
-[functions.owasp-check-anonymous-entity-access-no-xpath]
-verify_jwt = false
-
-[functions.process-owasp-async-jobs]
 verify_jwt = false
 
 [functions.cleanup-stale-owasp-jobs]

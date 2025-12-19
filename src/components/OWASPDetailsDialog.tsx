@@ -1,8 +1,28 @@
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AlertTriangle, CheckCircle2, XCircle, ExternalLink, Calendar, Clock } from "lucide-react";
+import { AlertTriangle, CheckCircle2, XCircle, ExternalLink, Calendar, Clock, Link, CheckSquare, Code, Shield, Settings } from "lucide-react";
 import { format, differenceInMonths, addMonths } from "date-fns";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { JSWhitelist } from "./JSWhitelist";
+import { VulnerabilityScanDialog } from "./VulnerabilityScanDialog";
+import { A07AppSettings } from "./A07AppSettings";
+
+interface ManualCheckUrl {
+  id: string;
+  url: string;
+  description: string | null;
+  display_order: number;
+}
+
+interface ManualVerification {
+  id: string;
+  verified_at: string;
+  verified_by: string | null;
+  notes: string | null;
+}
 
 export interface OWASPItem {
   id: string;
@@ -15,6 +35,9 @@ export interface OWASPItem {
   description: string;
   owaspUrl: string;
   expirationMonths: number;
+  owaspItemId?: string;
+  appId?: string;
+  environmentName?: string;
   steps?: Array<{
     step_name: string;
     environment: string;
@@ -28,6 +51,7 @@ interface OWASPDetailsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   owaspItem: OWASPItem | null;
+  onVerificationComplete?: () => void;
 }
 
 const statusConfig = {
@@ -38,7 +62,149 @@ const statusConfig = {
   unknown: { icon: AlertTriangle, color: "text-muted-foreground", bgColor: "bg-muted", label: "Not Checked" },
 };
 
-export function OWASPDetailsDialog({ open, onOpenChange, owaspItem }: OWASPDetailsDialogProps) {
+export function OWASPDetailsDialog({ open, onOpenChange, owaspItem, onVerificationComplete }: OWASPDetailsDialogProps) {
+  const [manualUrls, setManualUrls] = useState<ManualCheckUrl[]>([]);
+  const [manualVerification, setManualVerification] = useState<ManualVerification | null>(null);
+  const [loadingUrls, setLoadingUrls] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+  const [showVulnerabilityScan, setShowVulnerabilityScan] = useState(false);
+  const [appName, setAppName] = useState<string>("");
+
+  useEffect(() => {
+    if (open && owaspItem?.owaspItemId && (owaspItem.id === 'A02' || owaspItem.id === 'A03' || owaspItem.id === 'A04' || owaspItem.id === 'A08' || owaspItem.id === 'A10')) {
+      loadManualVerificationData();
+    }
+    if (open && owaspItem?.appId && (owaspItem.id === 'A06' || owaspItem.id === 'A07' || owaspItem.id === 'A08')) {
+      loadAppName();
+    }
+  }, [open, owaspItem?.owaspItemId, owaspItem?.appId, owaspItem?.environmentName]);
+
+  const loadAppName = async () => {
+    if (!owaspItem?.appId) return;
+    const { data } = await supabase
+      .from('mendix_apps')
+      .select('app_name')
+      .eq('project_id', owaspItem.appId)
+      .maybeSingle();
+    setAppName(data?.app_name || owaspItem.appId);
+  };
+
+  const loadManualVerificationData = async () => {
+    if (!owaspItem?.owaspItemId) return;
+
+    setLoadingUrls(true);
+    try {
+      // Load URLs configured for this OWASP item
+      const { data: urls, error: urlsError } = await supabase
+        .from("owasp_manual_check_urls")
+        .select("*")
+        .eq("owasp_item_id", owaspItem.owaspItemId)
+        .order("display_order", { ascending: true });
+
+      if (urlsError) throw urlsError;
+      setManualUrls(urls || []);
+
+      // Load verification status for this app/environment
+      if (owaspItem.appId && owaspItem.environmentName) {
+        const { data: verification } = await supabase
+          .from("owasp_manual_verifications")
+          .select("*")
+          .eq("owasp_item_id", owaspItem.owaspItemId)
+          .eq("app_id", owaspItem.appId)
+          .eq("environment_name", owaspItem.environmentName)
+          .single();
+
+        setManualVerification(verification || null);
+      }
+    } catch (error) {
+      console.error("Error loading manual verification data:", error);
+    } finally {
+      setLoadingUrls(false);
+    }
+  };
+
+  const handleMarkAsVerified = async () => {
+    if (!owaspItem?.owaspItemId || !owaspItem.appId || !owaspItem.environmentName) {
+      toast.error("Missing required context for verification");
+      return;
+    }
+
+    setVerifying(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("You must be logged in to verify");
+        return;
+      }
+
+      // Upsert verification record
+      const { error } = await supabase
+        .from("owasp_manual_verifications")
+        .upsert({
+          user_id: user.id,
+          owasp_item_id: owaspItem.owaspItemId,
+          app_id: owaspItem.appId,
+          environment_name: owaspItem.environmentName,
+          verified_at: new Date().toISOString(),
+          verified_by: user.id,
+        }, {
+          onConflict: 'user_id,owasp_item_id,app_id,environment_name'
+        });
+
+      if (error) throw error;
+
+      // Also update owasp_check_results to reflect the new pass status
+      // Determine the correct edge function based on OWASP item
+      const edgeFunctionName = owaspItem.id === 'A10'
+        ? 'owasp-check-a10-manual-verification'
+        : owaspItem.id === 'A08'
+          ? 'owasp-check-a08-integrity'
+          : owaspItem.id === 'A04'
+            ? 'owasp-check-a04-manual-verification'
+            : owaspItem.id === 'A03' 
+              ? 'owasp-check-a03-manual-verification' 
+              : 'owasp-check-manual-verification';
+
+      const { data: owaspStep } = await supabase
+        .from("owasp_steps")
+        .select("id")
+        .eq("owasp_item_id", owaspItem.owaspItemId)
+        .eq("edge_function_name", edgeFunctionName)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (owaspStep) {
+        // Update or insert the check result to pass
+        const { error: resultError } = await supabase
+          .from("owasp_check_results")
+          .upsert({
+            user_id: user.id,
+            app_id: owaspItem.appId,
+            environment_name: owaspItem.environmentName,
+            owasp_step_id: owaspStep.id,
+            status: 'pass',
+            details: `Manual verification completed on ${format(new Date(), 'MMM d, yyyy HH:mm')}. URLs verified successfully.`,
+            checked_at: new Date().toISOString(),
+          }, {
+            onConflict: 'user_id,app_id,environment_name,owasp_step_id'
+          });
+
+        if (resultError) {
+          console.error("Error updating check result:", resultError);
+        }
+      }
+
+      toast.success("URLs marked as verified successfully");
+      await loadManualVerificationData();
+      onVerificationComplete?.();
+    } catch (error) {
+      console.error("Error marking as verified:", error);
+      toast.error("Failed to mark URLs as verified");
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   if (!owaspItem) return null;
 
   const isExpired = owaspItem.checkDate 
@@ -51,6 +217,24 @@ export function OWASPDetailsDialog({ open, onOpenChange, owaspItem }: OWASPDetai
 
   const effectiveStatus = isExpired && owaspItem.status !== 'unknown' ? 'fail' : owaspItem.status;
   const StatusIcon = statusConfig[effectiveStatus].icon;
+
+  // Check if this is A02 (Cryptographic Failures), A03 (Injection), A04 (Insecure Design), or A08 (Software Integrity) - show manual verification section
+  // Note: A08 only shows manual verification for non-Mendix Cloud apps (handled by status/details from edge function)
+  const showManualVerification = owaspItem.id === 'A02' || owaspItem.id === 'A03' || owaspItem.id === 'A04' || owaspItem.id === 'A08' || owaspItem.id === 'A10';
+
+  // Check if this is A05 (Security Misconfiguration) - show JS whitelist section
+  const showJSWhitelist = owaspItem.id === 'A05' && owaspItem.appId;
+
+  // Check if this is A06 (Vulnerable and Outdated Components) - show vulnerability scan section
+  const showVulnerabilityScanSection = owaspItem.id === 'A06' && owaspItem.appId && owaspItem.environmentName;
+
+  // Check if this is A07 (Identification and Authentication Failures) - show app-specific settings
+  const showA07Settings = owaspItem.id === 'A07' && owaspItem.appId;
+
+  // Calculate manual verification expiration
+  const manualVerificationExpired = manualVerification
+    ? new Date() > addMonths(new Date(manualVerification.verified_at), owaspItem.expirationMonths)
+    : true;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -132,6 +316,154 @@ export function OWASPDetailsDialog({ open, onOpenChange, owaspItem }: OWASPDetai
               <p className="text-sm text-muted-foreground">
                 All automated checks for this OWASP item have passed successfully. Review the step details below for complete information.
               </p>
+            </div>
+          )}
+
+          {/* Manual Verification Section for A02 */}
+          {showManualVerification && (
+            <div className="border rounded-lg p-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <Link className="h-5 w-5 text-primary" />
+                <h4 className="font-semibold">Manual Verification URLs</h4>
+              </div>
+
+              {loadingUrls ? (
+                <p className="text-sm text-muted-foreground">Loading verification URLs...</p>
+              ) : manualUrls.length === 0 ? (
+                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3">
+                  <p className="text-sm text-yellow-600">
+                    No verification URLs configured. Go to Settings → OWASP Security → A02 to add URLs for manual verification.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    {manualUrls.map((url) => (
+                      <a
+                        key={url.id}
+                        href={url.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 p-3 border rounded-lg hover:bg-muted/50 transition-colors group"
+                      >
+                        <ExternalLink className="h-4 w-4 text-primary group-hover:scale-110 transition-transform" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-primary truncate">{url.url}</p>
+                          {url.description && (
+                            <p className="text-xs text-muted-foreground">{url.description}</p>
+                          )}
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+
+                  {/* Verification Status */}
+                  <div className="pt-3 border-t">
+                    {manualVerification ? (
+                      <div className={`rounded-lg p-3 ${manualVerificationExpired ? 'bg-destructive/10' : 'bg-green-500/10'}`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          {manualVerificationExpired ? (
+                            <XCircle className="h-4 w-4 text-destructive" />
+                          ) : (
+                            <CheckCircle2 className="h-4 w-4 text-green-500" />
+                          )}
+                          <span className={`text-sm font-medium ${manualVerificationExpired ? 'text-destructive' : 'text-green-600'}`}>
+                            {manualVerificationExpired ? 'Verification Expired' : 'URLs Verified'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Last verified: {format(new Date(manualVerification.verified_at), 'MMM d, yyyy HH:mm')}
+                          {!manualVerificationExpired && (
+                            <> • Valid until: {format(addMonths(new Date(manualVerification.verified_at), owaspItem.expirationMonths), 'MMM d, yyyy')}</>
+                          )}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="bg-muted rounded-lg p-3">
+                        <div className="flex items-center gap-2 mb-1">
+                          <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-medium text-muted-foreground">Never Verified</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          These URLs have never been verified for this environment.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Mark as Verified Button */}
+                  <Button
+                    onClick={handleMarkAsVerified}
+                    disabled={verifying}
+                    className="w-full"
+                    variant={manualVerification && !manualVerificationExpired ? "outline" : "default"}
+                  >
+                    <CheckSquare className="h-4 w-4 mr-2" />
+                    {verifying ? "Marking as Verified..." : "Mark URLs as Verified"}
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* JavaScript Whitelist Section for A05 */}
+          {showJSWhitelist && (
+            <div className="border rounded-lg p-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <Code className="h-5 w-5 text-primary" />
+                <h4 className="font-semibold">JavaScript Import Whitelist</h4>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Non-vanilla Mendix JavaScript imports detected in index.html will be flagged unless whitelisted below.
+              </p>
+              <JSWhitelist appId={owaspItem.appId!} />
+            </div>
+          )}
+
+          {/* Vulnerability Scan Section for A06 */}
+          {showVulnerabilityScanSection && (
+            <div className="border rounded-lg p-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <Shield className="h-5 w-5 text-primary" />
+                <h4 className="font-semibold">Vulnerability Scan</h4>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                This check evaluates the latest vulnerability scan results for your production environment. 
+                Run regular scans to keep your components up to date.
+              </p>
+              <Button
+                onClick={() => setShowVulnerabilityScan(true)}
+                className="w-full"
+              >
+                <Shield className="h-4 w-4 mr-2" />
+                Open Vulnerability Scan
+              </Button>
+            </div>
+          )}
+
+          {/* Vulnerability Scan Dialog for A06 */}
+          {showVulnerabilityScanSection && (
+            <VulnerabilityScanDialog
+              isOpen={showVulnerabilityScan}
+              onClose={() => setShowVulnerabilityScan(false)}
+              appId={owaspItem.appId!}
+              environmentName={owaspItem.environmentName!}
+              appName={appName}
+              showResultsOnOpen={true}
+            />
+          )}
+
+          {/* A07 App-Specific Settings */}
+          {showA07Settings && (
+            <div className="border rounded-lg p-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <Settings className="h-5 w-5 text-primary" />
+                <h4 className="font-semibold">Authentication Settings</h4>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Configure app-specific password policies and SSO detection patterns. These settings override your default A07 settings for this application.
+              </p>
+              <A07AppSettings appId={owaspItem.appId!} appName={appName || owaspItem.appId} />
             </div>
           )}
 

@@ -38,6 +38,8 @@ interface CloudActionRow {
   completed_at: string | null;
   error_message: string | null;
   created_at: string;
+  creator_email?: string;
+  creator_name?: string;
 }
 
 interface Credential { id: string; name: string; }
@@ -1015,7 +1017,7 @@ export default function CloudActionsPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [{ data: actions }, { data: apps }] = await Promise.all([
+      const [{ data: actions }, { data: apps }, { data: profiles }] = await Promise.all([
         supabase
           .from("cloud_actions")
           .select("*")
@@ -1024,8 +1026,22 @@ export default function CloudActionsPage() {
         supabase
           .from("mendix_apps")
           .select("id, app_id, app_name, credential_id, project_id"),
+        supabase
+          .from("profiles")
+          .select("user_id, email, full_name"),
       ]);
-      setActions((actions || []) as any);
+      
+      // Enrich actions with creator info
+      const enrichedActions = (actions || []).map((action: any) => {
+        const creator = profiles?.find((p: any) => p.user_id === action.user_id);
+        return {
+          ...action,
+          creator_email: creator?.email || null,
+          creator_name: creator?.full_name || null,
+        };
+      });
+      
+      setActions(enrichedActions as any);
       setApps((apps || []) as any);
     } catch (e) {
       console.error(e);
@@ -1195,6 +1211,7 @@ export default function CloudActionsPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Created</TableHead>
+              <TableHead>Created By</TableHead>
               <TableHead>App</TableHead>
               <TableHead>Environment</TableHead>
               <TableHead>Action</TableHead>
@@ -1208,14 +1225,14 @@ export default function CloudActionsPage() {
           <TableBody>
             {loading && (
               <TableRow>
-                <TableCell colSpan={9}>
+                <TableCell colSpan={10}>
                   <div className="flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin"/> Loading...</div>
                 </TableCell>
               </TableRow>
             )}
             {!loading && actions.length === 0 && (
               <TableRow>
-                <TableCell colSpan={9}>
+                <TableCell colSpan={10}>
                   <div className="text-sm text-muted-foreground">No actions yet. Create one to get started.</div>
                 </TableCell>
               </TableRow>
@@ -1223,6 +1240,11 @@ export default function CloudActionsPage() {
             {actions.map(a => (
               <TableRow key={a.id}>
                 <TableCell>{new Date(a.created_at).toLocaleString()}</TableCell>
+                <TableCell>
+                  <span className="text-sm" title={a.creator_email || undefined}>
+                    {a.creator_name || a.creator_email || "Unknown"}
+                  </span>
+                </TableCell>
                 <TableCell>{appName(a.app_id)}</TableCell>
                 <TableCell>{a.environment_name}</TableCell>
                 <TableCell className="capitalize">{a.action_type}</TableCell>

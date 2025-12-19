@@ -10,7 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Trash2, Edit2, Save, X, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
-
+import { ManualVerificationURLs } from "./ManualVerificationURLs";
+import { JSWhitelist } from "./JSWhitelist";
+import { A07Settings } from "./A07Settings";
 interface OWASPItem {
   id: string;
   owasp_id: string;
@@ -622,6 +624,38 @@ export const OWASPSettings = () => {
                     </p>
                   )}
                 </div>
+
+                {/* Show Manual Verification URLs section for A02, A03, A04, and A10 */}
+                {(item.owasp_id === 'A02' || item.owasp_id === 'A03' || item.owasp_id === 'A04' || item.owasp_id === 'A10') && (
+                  <ManualVerificationURLs owaspItemId={item.id} owaspId={item.owasp_id} />
+                )}
+
+                {/* Show info about JS whitelist for A05 */}
+                {item.owasp_id === 'A05' && (
+                  <div className="mt-4 pt-4 border-t">
+                    <div className="flex items-start gap-2 p-3 bg-muted/50 rounded-lg text-sm">
+                      <span className="text-muted-foreground">
+                        JavaScript whitelist is configured per-app. Run the A05 check from the Dashboard, then manage the whitelist from the check results dialog.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Show info about vulnerability scanning for A06 */}
+                {item.owasp_id === 'A06' && (
+                  <div className="mt-4 pt-4 border-t">
+                    <div className="flex items-start gap-2 p-3 bg-muted/50 rounded-lg text-sm">
+                      <span className="text-muted-foreground">
+                        This check evaluates existing vulnerability scan results. Run vulnerability scans from the environment card on your Dashboard. Scans older than {item.expiration_months} months will trigger a warning.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Show A07 default settings configuration */}
+                {item.owasp_id === 'A07' && (
+                  <A07Settings />
+                )}
               </div>
             </CardContent>
           </Card>

@@ -371,6 +371,9 @@ const AppCard = ({
             owaspUrl: `https://owasp.org/Top10/${item.owasp_id}_2021/`,
             expirationMonths: item.expiration_months,
             steps: stepDetails,
+            owaspItemId: item.id,
+            appId: app.project_id,
+            environmentName: 'Production', // OWASP checks target Production environment
           };
         });
 
@@ -1043,6 +1046,7 @@ const AppCard = ({
         open={isOwaspDialogOpen}
         onOpenChange={setIsOwaspDialogOpen}
         owaspItem={selectedOwaspItem}
+        onVerificationComplete={() => setOwaspReloadTrigger(prev => prev + 1)}
       />
     </Card>;
 };
