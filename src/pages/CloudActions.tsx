@@ -432,6 +432,13 @@ const form = useForm<FormValues>({
         }
       }
 
+      // Get user profile name
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("user_id", user.id)
+        .single();
+
       // Insert into cloud_actions table
       const { error: insertError } = await supabase
         .from("cloud_actions")
@@ -445,6 +452,7 @@ const form = useForm<FormValues>({
           scheduled_for: scheduledFor,
           retry_until: retryUntil,
           payload: payload,
+          creator_name: profile?.full_name || user.email || null,
         });
 
       if (insertError) {
@@ -1017,7 +1025,7 @@ export default function CloudActionsPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [{ data: actions }, { data: apps }, { data: profiles }] = await Promise.all([
+      const [{ data: actions }, { data: apps }] = await Promise.all([
         supabase
           .from("cloud_actions")
           .select("*")
@@ -1026,22 +1034,9 @@ export default function CloudActionsPage() {
         supabase
           .from("mendix_apps")
           .select("id, app_id, app_name, credential_id, project_id"),
-        supabase
-          .from("profiles")
-          .select("user_id, email, full_name"),
       ]);
       
-      // Enrich actions with creator info
-      const enrichedActions = (actions || []).map((action: any) => {
-        const creator = profiles?.find((p: any) => p.user_id === action.user_id);
-        return {
-          ...action,
-          creator_email: creator?.email || null,
-          creator_name: creator?.full_name || null,
-        };
-      });
-      
-      setActions(enrichedActions as any);
+      setActions((actions || []) as any);
       setApps((apps || []) as any);
     } catch (e) {
       console.error(e);
@@ -1241,8 +1236,8 @@ export default function CloudActionsPage() {
               <TableRow key={a.id}>
                 <TableCell>{new Date(a.created_at).toLocaleString()}</TableCell>
                 <TableCell>
-                  <span className="text-sm" title={a.creator_email || undefined}>
-                    {a.creator_name || a.creator_email || "Unknown"}
+                  <span className="text-sm">
+                    {a.creator_name || "Unknown"}
                   </span>
                 </TableCell>
                 <TableCell>{appName(a.app_id)}</TableCell>
