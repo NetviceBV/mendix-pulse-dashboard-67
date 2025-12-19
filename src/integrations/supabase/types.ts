@@ -49,6 +49,7 @@ export type Database = {
           backup_id: string | null
           completed_at: string | null
           created_at: string
+          creator_name: string | null
           credential_id: string
           current_step: string | null
           environment_name: string
@@ -72,6 +73,7 @@ export type Database = {
           backup_id?: string | null
           completed_at?: string | null
           created_at?: string
+          creator_name?: string | null
           credential_id: string
           current_step?: string | null
           environment_name: string
@@ -95,6 +97,7 @@ export type Database = {
           backup_id?: string | null
           completed_at?: string | null
           created_at?: string
+          creator_name?: string | null
           credential_id?: string
           current_step?: string | null
           environment_name?: string
