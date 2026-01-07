@@ -94,32 +94,54 @@ serve(async (req) => {
     }
 
     console.log(`Fetching branches for project ${projectId} as user ${user.id}`);
-    const mxRes = await fetch(url, { headers, method: "GET" });
+    
+    // Use cursor-based pagination to fetch all branches
+    let allBranches: string[] = [];
+    let cursor: string | undefined = undefined;
+    let pageCount = 0;
+    const baseUrl = `https://repository.api.mendix.com/v1/repositories/${projectId}/branches`;
 
-    if (!mxRes.ok) {
-      const text = await mxRes.text();
-      console.error("Mendix repo API error:", mxRes.status, text);
-      return new Response(
-        JSON.stringify({ error: `Mendix API returned ${mxRes.status}`, details: text }),
-        { status: 502, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
+    do {
+      const paginatedUrl = `${baseUrl}?limit=100${cursor ? `&cursor=${cursor}` : ''}`;
+      console.log(`Fetching page ${pageCount + 1}: ${paginatedUrl}`);
+      
+      const mxRes = await fetch(paginatedUrl, { headers, method: "GET" });
 
-    const json = await mxRes.json();
+      if (!mxRes.ok) {
+        const text = await mxRes.text();
+        console.error("Mendix repo API error:", mxRes.status, text);
+        return new Response(
+          JSON.stringify({ error: `Mendix API returned ${mxRes.status}`, details: text }),
+          { status: 502, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
 
-    let branches: string[] = [];
-    if (Array.isArray(json)) {
-      branches = json
-        .map((b: any) => b?.name || b?.Name || b?.branchName || b?.displayName || (typeof b === "string" ? b : null))
-        .filter((v: any) => !!v);
-    } else if (json?.items && Array.isArray(json.items)) {
-      branches = json.items
-        .map((b: any) => b?.name || b?.Name || b?.branchName || b?.displayName || (typeof b === "string" ? b : null))
-        .filter((v: any) => !!v);
-    }
+      const json = await mxRes.json();
+      pageCount++;
+
+      // Extract branch names from this page
+      let pageBranches: string[] = [];
+      if (Array.isArray(json)) {
+        pageBranches = json
+          .map((b: any) => b?.name || b?.Name || b?.branchName || b?.displayName || (typeof b === "string" ? b : null))
+          .filter((v: any) => !!v);
+      } else if (json?.items && Array.isArray(json.items)) {
+        pageBranches = json.items
+          .map((b: any) => b?.name || b?.Name || b?.branchName || b?.displayName || (typeof b === "string" ? b : null))
+          .filter((v: any) => !!v);
+      }
+      
+      allBranches.push(...pageBranches);
+      
+      // Get next cursor for pagination
+      cursor = json?.cursors?.next;
+      console.log(`Page ${pageCount}: Found ${pageBranches.length} branches, next cursor: ${cursor ? 'yes' : 'no'}`);
+    } while (cursor);
+
+    console.log(`Total: Fetched ${allBranches.length} branches across ${pageCount} page(s)`);
 
     // Ensure unique and sorted
-    branches = Array.from(new Set(branches)).sort((a, b) => a.localeCompare(b));
+    const branches = Array.from(new Set(allBranches)).sort((a, b) => a.localeCompare(b));
 
     return new Response(JSON.stringify({ branches }), {
       status: 200,
