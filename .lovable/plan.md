@@ -1,105 +1,55 @@
 
 
-## Plan: Add Database Indexes for Query Optimization
+## Plan: Document pg_net Extension Security Exception in Knowledge Base
 
-### Problem Summary
-Two heavily-queried tables lack indexes, causing full table scans on every query:
-- **`mendix_logs`**: Queried frequently for error counts, log viewing, and real-time monitoring
-- **`cloud_actions`**: Queried every minute by the orchestrator cron job and by the UI
+### Overview
+Add documentation to `KNOWLEDGE.md` explaining why `pg_net` being registered in the `public` schema is acceptable and should not be flagged in security audits.
 
-### Query Patterns Identified
+### Location
+Add a new subsection under the existing "Authentication & Security" section (after line 270), titled "Database Extension Security Notes".
 
-**`mendix_logs` table queries:**
-| Location | Query Pattern | Needs Index |
-|----------|--------------|-------------|
-| `AppCard.tsx` | `app_id` + `level` (error counting) | `(app_id, level)` |
-| `useMendixOperations.ts` | `app_id` + `environment` (log filtering) | `(app_id, environment)` |
-| `useMendixOperations.ts` | `ORDER BY timestamp DESC` | `(timestamp DESC)` |
+### Content to Add
 
-**`cloud_actions` table queries:**
-| Location | Query Pattern | Needs Index |
-|----------|--------------|-------------|
-| `cloud-action-orchestrator` | `status = 'scheduled'` + `scheduled_for` | `(status, scheduled_for)` |
-| `cloud-action-orchestrator` | `status = 'running'` + `last_heartbeat` | `(status, last_heartbeat)` |
-| `run-cloud-actions-v2` | `user_id` + `status` | `(user_id, status)` |
-| `CloudActions.tsx` | `ORDER BY created_at DESC` | `(created_at DESC)` |
+```markdown
+### Database Extension Security Notes
 
-### Solution: Create Database Migration
+#### pg_net Extension - Security Audit Exception
+The `pg_net` extension appears registered in the `public` schema when querying `pg_extension`, which may trigger security audit warnings about extensions in public schema. However, this is a **safe exception** that does not require remediation:
 
-Create a new migration file that adds the following indexes:
+**Why it's safe:**
+- The extension's operational objects (tables, functions) are properly isolated in a dedicated `net` schema
+- All function calls use schema-qualified names (e.g., `net.http_post()`)
+- The `public` registration is only metadata - no actual extension objects pollute the public namespace
+- PostgreSQL does not support `ALTER EXTENSION pg_net SET SCHEMA` - the extension cannot be relocated after installation
 
-```sql
--- ================================================
--- Performance Indexes for mendix_logs table
--- ================================================
+**Extension object locations:**
+| Object | Schema | Purpose |
+|--------|--------|---------|
+| `net.http_post()` | `net` | HTTP POST requests |
+| `net._http_response` | `net` | Response storage table |
+| `net.http_request_queue` | `net` | Request queue table |
 
--- Index for filtering logs by app and environment (used in LogsViewer)
-CREATE INDEX IF NOT EXISTS idx_mendix_logs_app_env 
-ON public.mendix_logs (app_id, environment);
+**Other extensions status:**
+| Extension | Schema | Status |
+|-----------|--------|--------|
+| `pgcrypto` | `extensions` | Properly isolated |
+| `uuid-ossp` | `extensions` | Properly isolated |
+| `pg_cron` | `pg_catalog` | System-managed |
+| `pg_graphql` | `graphql` | Properly isolated |
+| `pg_stat_statements` | `extensions` | Properly isolated |
 
--- Index for error/warning counting (used in AppCard for badges)
-CREATE INDEX IF NOT EXISTS idx_mendix_logs_app_level 
-ON public.mendix_logs (app_id, level);
-
--- Index for timestamp ordering (used in all log queries)
-CREATE INDEX IF NOT EXISTS idx_mendix_logs_timestamp 
-ON public.mendix_logs (timestamp DESC);
-
--- Composite index for the most common query pattern
-CREATE INDEX IF NOT EXISTS idx_mendix_logs_app_env_timestamp 
-ON public.mendix_logs (app_id, environment, timestamp DESC);
-
--- ================================================
--- Performance Indexes for cloud_actions table
--- ================================================
-
--- Partial index for scheduled actions (used by orchestrator every minute)
--- Partial index is smaller and faster since it only includes scheduled rows
-CREATE INDEX IF NOT EXISTS idx_cloud_actions_scheduled 
-ON public.cloud_actions (scheduled_for) 
-WHERE status = 'scheduled';
-
--- Partial index for running actions with heartbeat (stale detection)
-CREATE INDEX IF NOT EXISTS idx_cloud_actions_running_heartbeat 
-ON public.cloud_actions (last_heartbeat) 
-WHERE status = 'running';
-
--- Index for user-specific queries
-CREATE INDEX IF NOT EXISTS idx_cloud_actions_user_status 
-ON public.cloud_actions (user_id, status);
-
--- Index for UI ordering
-CREATE INDEX IF NOT EXISTS idx_cloud_actions_created_at 
-ON public.cloud_actions (created_at DESC);
+**Audit Response:** When security tools flag `pg_net` in public schema, document that this is a known PostgreSQL/Supabase limitation where the extension registration cannot be moved, but the actual security-relevant objects are properly isolated in the `net` schema.
 ```
 
-### Technical Details
+### Changes Summary
 
-| Table | Index | Type | Purpose |
-|-------|-------|------|---------|
-| `mendix_logs` | `idx_mendix_logs_app_env` | B-tree | Filter by app + environment |
-| `mendix_logs` | `idx_mendix_logs_app_level` | B-tree | Count errors/warnings |
-| `mendix_logs` | `idx_mendix_logs_timestamp` | B-tree (DESC) | Order by time |
-| `mendix_logs` | `idx_mendix_logs_app_env_timestamp` | B-tree composite | Combined filter + order |
-| `cloud_actions` | `idx_cloud_actions_scheduled` | Partial B-tree | Orchestrator scheduled scan |
-| `cloud_actions` | `idx_cloud_actions_running_heartbeat` | Partial B-tree | Stale action detection |
-| `cloud_actions` | `idx_cloud_actions_user_status` | B-tree | User dashboard queries |
-| `cloud_actions` | `idx_cloud_actions_created_at` | B-tree (DESC) | UI list ordering |
+| File | Section | Action |
+|------|---------|--------|
+| `KNOWLEDGE.md` | After "API Security" (line ~270) | Add new "Database Extension Security Notes" subsection |
 
-### Why Partial Indexes?
-For `cloud_actions`, using **partial indexes** (with `WHERE status = 'scheduled'` or `WHERE status = 'running'`) is more efficient because:
-- Only a small fraction of rows have these statuses at any time
-- The index is smaller and faster to scan
-- Reduces storage overhead
-
-### Expected Impact
-- **Orchestrator cron job**: Faster execution every minute (currently scanning full table)
-- **Log queries**: Faster filtering and counting operations
-- **UI responsiveness**: Faster dashboard and log viewer loading
-- **Database CPU**: Reduced load from eliminated full table scans
-
-### Implementation Steps
-1. Create a new Supabase migration with the index creation SQL
-2. The migration will run automatically on deployment
-3. Indexes are created with `IF NOT EXISTS` for safety
+### Why This Helps
+- Provides clear documentation for future security audits
+- Explains the technical limitation preventing remediation
+- Documents the actual object isolation that makes this safe
+- Serves as an audit response template
 
