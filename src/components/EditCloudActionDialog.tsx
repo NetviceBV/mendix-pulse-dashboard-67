@@ -18,45 +18,7 @@ import { Edit, Loader2, CalendarClock, CloudCog } from "lucide-react";
 import { format, parse, startOfToday, isSameDay } from "date-fns";
 import { cn } from "@/lib/utils";
 
-interface CloudActionRow {
-  id: string;
-  user_id: string;
-  credential_id: string;
-  app_id: string;
-  environment_name: string;
-  action_type: string;
-  status: string;
-  scheduled_for: string | null;
-  retry_until?: string | null;
-  payload?: any;
-  created_at: string;
-  updated_at?: string;
-  started_at: string | null;
-  completed_at: string | null;
-  error_message: string | null;
-}
-
-interface Credential {
-  id: string;
-  name: string;
-  username: string;
-  api_key: string | null;
-  pat: string | null;
-}
-
-interface App {
-  id: string;
-  credential_id: string;
-  app_id: string | null;
-  app_name: string;
-  project_id: string | null;
-}
-
-interface Env {
-  id: string;
-  app_id: string;
-  environment_name: string;
-}
+import type { CloudActionRow, Credential, App, Env } from "@/types/cloudActions";
 
 interface EditCloudActionDialogProps {
   action: CloudActionRow;
