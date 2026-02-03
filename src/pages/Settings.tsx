@@ -31,22 +31,10 @@ const Settings = () => {
     });
   }, [navigate]);
 
-  // Load credentials from localStorage on mount
-  useEffect(() => {
-    const savedCredentials = localStorage.getItem('mendix-credentials');
-    if (savedCredentials) {
-      try {
-        setMendixCredentials(JSON.parse(savedCredentials));
-      } catch (error) {
-        console.error('Failed to parse saved credentials:', error);
-      }
-    }
-  }, []);
-
-  // Save credentials to localStorage whenever they change
+  // Credentials are managed by MendixCredentials component via Supabase
+  // State is kept here only for prop drilling
   const handleCredentialsChange = (credentials: MendixCredential[]) => {
     setMendixCredentials(credentials);
-    localStorage.setItem('mendix-credentials', JSON.stringify(credentials));
   };
 
   const handleSignOut = async () => {
