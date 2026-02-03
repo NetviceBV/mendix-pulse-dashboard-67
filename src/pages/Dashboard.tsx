@@ -2,8 +2,12 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useQueryClient } from "@tanstack/react-query";
 
 import AppCard, { MendixApp } from "@/components/AppCard";
+import { DashboardSkeleton } from "@/components/DashboardSkeleton";
+import { useAppsQuery } from "@/hooks/useAppsQuery";
+import { queryKeys } from "@/lib/queryKeys";
 import { 
   Search, 
   RefreshCw, 
@@ -21,13 +25,14 @@ interface DashboardProps {
 }
 
 const Dashboard = ({ onSignOut }: DashboardProps) => {
-  const [apps, setApps] = useState<MendixApp[]>([]);
-  const [filteredApps, setFilteredApps] = useState<MendixApp[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("production");
   const { toast } = useToast();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
+  // Use React Query for data fetching
+  const { data: apps = [], isLoading, refetch, isRefetching } = useAppsQuery();
 
   // Helper functions to categorize apps
   const isSandboxOnlyApp = (app: MendixApp) => {
@@ -62,74 +67,11 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
     return filtered;
   };
 
+  const filteredApps = getFilteredApps();
   const productionApps = apps.filter(app => hasNonSandboxEnvironments(app));
   const sandboxApps = apps.filter(app => isSandboxOnlyApp(app));
 
-  // Shared function for fetching apps with environments (optimized: 2 queries instead of N+1)
-  const fetchAppsData = async (showToast = false) => {
-    setLoading(true);
-    try {
-      const [appsResult, environmentsResult] = await Promise.all([
-        supabase
-          .from('mendix_apps')
-          .select('*')
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('mendix_environments')
-          .select('*')
-      ]);
-
-      if (appsResult.error) throw appsResult.error;
-
-      const appsData = appsResult.data || [];
-      const environmentsData = environmentsResult.data || [];
-
-      // Create map for O(1) lookup
-      const environmentsByAppId = environmentsData.reduce((acc, env) => {
-        const appId = env.app_id;
-        if (!acc[appId]) acc[appId] = [];
-        acc[appId].push(env);
-        return acc;
-      }, {} as Record<string, typeof environmentsData>);
-
-      // Merge environments into apps
-      const appsWithEnvironments: MendixApp[] = appsData.map(app => ({
-        ...app,
-        environments: environmentsByAppId[app.project_id || ''] || []
-      }));
-
-      setApps(appsWithEnvironments);
-      setFilteredApps(appsWithEnvironments);
-
-      if (showToast) {
-        toast({
-          title: "Applications refreshed",
-          description: "Latest status updates have been loaded"
-        });
-      }
-    } catch (error) {
-      console.error('Error fetching apps:', error);
-      setApps([]);
-      setFilteredApps([]);
-      if (showToast) {
-        toast({
-          title: "Refresh failed",
-          description: "Could not load latest application data",
-          variant: "destructive"
-        });
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Initial load
-  useEffect(() => {
-    fetchAppsData(false);
-  }, []);
-
-
-  // Set up real-time subscriptions
+  // Set up real-time subscriptions that invalidate React Query cache
   useEffect(() => {
     const channel = supabase
       .channel('schema-db-changes')
@@ -140,16 +82,9 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
           schema: 'public',
           table: 'mendix_apps'
         },
-        (payload) => {
-          console.log('App update received:', payload);
-          // Refresh apps when there are changes
-          if (payload.eventType === 'UPDATE') {
-            setApps(prevApps => 
-              prevApps.map(app => 
-                app.id === payload.new.id ? { ...app, ...payload.new } : app
-              )
-            );
-          }
+        () => {
+          // Invalidate cache to trigger refetch
+          queryClient.invalidateQueries({ queryKey: queryKeys.appsWithEnvironments });
         }
       )
       .on(
@@ -177,14 +112,16 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [toast]);
+  }, [queryClient, toast]);
 
-  useEffect(() => {
-    setFilteredApps(getFilteredApps());
-  }, [apps, searchTerm, activeTab]);
-
-  // Manual refresh wrapper with toast feedback
-  const refreshApps = () => fetchAppsData(true);
+  // Manual refresh with toast feedback
+  const refreshApps = async () => {
+    await refetch();
+    toast({
+      title: "Applications refreshed",
+      description: "Latest status updates have been loaded"
+    });
+  };
 
   const handleOpenApp = (app: MendixApp) => {
     toast({
@@ -193,16 +130,30 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
     });
   };
 
-
-  if (loading) {
+  if (isLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="w-12 h-12 bg-gradient-primary rounded-xl mx-auto animate-pulse"></div>
-          <div className="space-y-2">
-            <div className="font-semibold">Loading your applications...</div>
-            <div className="text-sm text-muted-foreground">Connecting to Mendix SDK</div>
+      <div className="min-h-screen bg-background">
+        {/* Header */}
+        <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+          <div className="container mx-auto px-4 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
+                  <Activity className="w-4 h-4 text-primary-foreground" />
+                </div>
+                <div>
+                  <h1 className="text-xl font-bold">Mendix Dashboard</h1>
+                  <p className="text-sm text-muted-foreground">
+                    Manage your Mendix applications
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
+        </header>
+        
+        <div className="container mx-auto px-4 py-6">
+          <DashboardSkeleton />
         </div>
       </div>
     );
@@ -231,9 +182,9 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
                 variant="outline"
                 size="sm"
                 onClick={refreshApps}
-                disabled={loading}
+                disabled={isRefetching}
               >
-                <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                <RefreshCw className={`w-4 h-4 mr-2 ${isRefetching ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
               <Button 
