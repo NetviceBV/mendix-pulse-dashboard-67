@@ -1,96 +1,125 @@
 
 
-## Plan: Remove Redundant localStorage Credential Storage
+## Plan: Extract Components from CloudActions.tsx
 
 ### Problem Summary
-`Settings.tsx` stores Mendix credentials in localStorage (lines 34-50), but credentials are already stored in Supabase via `MendixCredentials.tsx`. This creates:
+`CloudActions.tsx` is 1,287 lines with multiple components defined inline:
+- `AddCloudActionDialog` (895 lines) - main extraction candidate
+- `LogsDialog` (40 lines) - small utility dialog
+- `CloudActionsPage` (287 lines) - the page component
 
-1. **Data inconsistency**: Credentials updated on one device won't sync to another
-2. **Migration loop**: The migration in `MendixCredentials.tsx` deletes localStorage, but `Settings.tsx` immediately recreates it via `handleCredentialsChange`
-3. **Security concern**: Sensitive API keys/PATs stored in browser localStorage when Supabase RLS-protected storage is available
+This violates the single responsibility principle and makes the file difficult to maintain, test, and navigate.
 
-### Current Flow (Problematic)
+### Proposed File Structure
 
 ```text
-Settings.tsx                          MendixCredentials.tsx
-     |                                        |
-     |-- Load from localStorage (mount)       |
-     |                                        |-- Migrate localStorage → Supabase
-     |                                        |-- Delete localStorage
-     |                                        |-- Fetch from Supabase
-     |                                        |-- Call onCredentialsChange()
-     |                                        |
-     |<-- handleCredentialsChange() ----------|
-     |-- Save back to localStorage! (recreates it)
+src/
+├── pages/
+│   └── CloudActions.tsx           (refactored: ~350 lines)
+│
+├── components/
+│   ├── AddCloudActionDialog.tsx   (new: ~950 lines)
+│   ├── CloudActionLogsDialog.tsx  (new: ~70 lines)
+│   └── EditCloudActionDialog.tsx  (existing)
+│
+└── types/
+    └── cloudActions.ts            (new: ~40 lines - shared types)
 ```
 
-### Solution: Simplify Settings.tsx
+### Extraction Details
 
-Remove the localStorage logic entirely from `Settings.tsx`. The `MendixCredentials` component already:
-- Fetches credentials from Supabase on mount
-- Handles all CRUD operations against Supabase
-- Has one-time migration logic for existing localStorage data
+**File 1: `src/types/cloudActions.ts`** (NEW)
+Extract shared interfaces to avoid duplication between Add and Edit dialogs:
 
-### Changes Required
+| Type | Description |
+|------|-------------|
+| `CloudActionRow` | Database row structure for cloud_actions table |
+| `Credential` | Mendix credentials reference |
+| `App` | Mendix app metadata |
+| `Env` | Environment metadata |
+| `statusColor` | Status badge color mapping constant |
 
-**File: `src/pages/Settings.tsx`**
+**File 2: `src/components/AddCloudActionDialog.tsx`** (NEW)
+Move lines 59-954 to new file with:
+- All current imports needed by the dialog
+- The complete `AddCloudActionDialog` component
+- Internal form schema and types
+- All data fetching and form logic
 
-| Lines | Current | Change |
-|-------|---------|--------|
-| 19 | `const [mendixCredentials, setMendixCredentials] = useState<MendixCredential[]>([]);` | Keep as-is (still needed for prop passing) |
-| 34-44 | useEffect that loads from localStorage | **Remove entirely** |
-| 46-50 | `handleCredentialsChange` that saves to localStorage | **Simplify** to just update state |
-
-**Before:**
+Props interface:
 ```typescript
-// Load credentials from localStorage on mount
-useEffect(() => {
-  const savedCredentials = localStorage.getItem('mendix-credentials');
-  if (savedCredentials) {
-    try {
-      setMendixCredentials(JSON.parse(savedCredentials));
-    } catch (error) {
-      console.error('Failed to parse saved credentials:', error);
-    }
-  }
-}, []);
-
-// Save credentials to localStorage whenever they change
-const handleCredentialsChange = (credentials: MendixCredential[]) => {
-  setMendixCredentials(credentials);
-  localStorage.setItem('mendix-credentials', JSON.stringify(credentials));
-};
+interface AddCloudActionDialogProps {
+  onCreated: () => void;
+}
 ```
 
-**After:**
+**File 3: `src/components/CloudActionLogsDialog.tsx`** (NEW)
+Move lines 957-997 (LogsDialog) to new file:
+
+Props interface:
 ```typescript
-// Credentials are managed by MendixCredentials component via Supabase
-// State is kept here only for prop drilling
-const handleCredentialsChange = (credentials: MendixCredential[]) => {
-  setMendixCredentials(credentials);
-};
+interface CloudActionLogsDialogProps {
+  actionId: string;
+}
 ```
 
-### Why This Is Safe
+**File 4: `src/pages/CloudActions.tsx`** (REFACTOR)
+Keep only:
+- Page-level state management
+- Data loading logic
+- Action handlers (trigger, cancel, delete)
+- Page layout and table rendering
+- Import extracted components
 
-1. **MendixCredentials already handles migration**: Lines 46-81 in `MendixCredentials.tsx` migrate any existing localStorage credentials to Supabase before deleting them
-2. **All CRUD goes through Supabase**: `handleAddCredential`, `handleDeleteCredential`, `handleEditCredential` all use `supabase.from('mendix_credentials')`
-3. **Initial fetch from Supabase**: `fetchCredentials()` is called on component mount (line 106-108)
+### Code Sharing Benefits
 
-### Migration Path for Existing Users
+After extraction, `AddCloudActionDialog` and `EditCloudActionDialog` share:
+- Same Zod schema structure (can be extracted to shared file in future)
+- Similar form field patterns
+- Same data fetching patterns
 
-Users with credentials in localStorage will have them automatically migrated:
-1. `MendixCredentials.tsx` mount triggers migration useEffect
-2. Credentials are inserted into Supabase
-3. localStorage is cleared
-4. Fresh fetch from Supabase populates the UI
+### Migration Steps
 
-### Impact
+| Step | Action | Risk |
+|------|--------|------|
+| 1 | Create `src/types/cloudActions.ts` with shared interfaces | Low |
+| 2 | Create `src/components/CloudActionLogsDialog.tsx` | Low |
+| 3 | Create `src/components/AddCloudActionDialog.tsx` | Medium |
+| 4 | Update `src/pages/CloudActions.tsx` imports and remove inline components | Low |
+| 5 | Update `EditCloudActionDialog.tsx` to use shared types | Low |
 
-| Aspect | Before | After |
-|--------|--------|-------|
-| Data source | Dual (localStorage + Supabase) | Single (Supabase only) |
-| Cross-device sync | Broken | Works via Supabase |
-| Security | API keys in localStorage | API keys in RLS-protected database |
-| Migration | Broken (recreated after delete) | Works correctly |
+### Technical Considerations
+
+**Form Schema Placement**:
+- Keep the Zod schema inside `AddCloudActionDialog` component (not at module level)
+- This matches the current pattern and allows `z.infer` to work correctly
+
+**State Isolation**:
+- Each dialog manages its own open/close state
+- Parent only receives callbacks (`onCreated`, `onUpdated`)
+
+**Import Updates**:
+CloudActions.tsx will need:
+```typescript
+import { AddCloudActionDialog } from "@/components/AddCloudActionDialog";
+import { CloudActionLogsDialog } from "@/components/CloudActionLogsDialog";
+import { CloudActionRow, App, statusColor } from "@/types/cloudActions";
+```
+
+### File Size After Refactoring
+
+| File | Before | After |
+|------|--------|-------|
+| `CloudActions.tsx` | 1,287 lines | ~350 lines |
+| `AddCloudActionDialog.tsx` | N/A | ~950 lines |
+| `CloudActionLogsDialog.tsx` | N/A | ~70 lines |
+| `cloudActions.ts` (types) | N/A | ~40 lines |
+
+### Benefits
+
+1. **Maintainability**: Each file has a single responsibility
+2. **Testability**: Components can be unit tested in isolation
+3. **Code Navigation**: Easier to find and modify specific functionality
+4. **Reusability**: Types and components can be imported elsewhere
+5. **Future Refactoring**: Shared code between Add/Edit dialogs can be consolidated
 
