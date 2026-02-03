@@ -8,7 +8,16 @@ import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import CloudActions from "./pages/CloudActions";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000, // 30 seconds
+      gcTime: 5 * 60_000, // 5 minutes
+      retry: 2,
+      refetchOnWindowFocus: true,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
