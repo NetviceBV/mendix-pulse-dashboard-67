@@ -1,103 +1,105 @@
 
 
-## Plan: Fix N+1 Query Pattern in Dashboard
+## Plan: Add Database Indexes for Query Optimization
 
-### Problem
-The current code makes **N+1 database queries**:
-- 1 query to fetch all apps
-- N queries to fetch environments (one per app)
+### Problem Summary
+Two heavily-queried tables lack indexes, causing full table scans on every query:
+- **`mendix_logs`**: Queried frequently for error counts, log viewing, and real-time monitoring
+- **`cloud_actions`**: Queried every minute by the orchestrator cron job and by the UI
 
-With 20 apps, this means 21 separate database calls.
+### Query Patterns Identified
 
-### Solution
-Fetch both apps and environments in **just 2 queries**, then join them in JavaScript:
+**`mendix_logs` table queries:**
+| Location | Query Pattern | Needs Index |
+|----------|--------------|-------------|
+| `AppCard.tsx` | `app_id` + `level` (error counting) | `(app_id, level)` |
+| `useMendixOperations.ts` | `app_id` + `environment` (log filtering) | `(app_id, environment)` |
+| `useMendixOperations.ts` | `ORDER BY timestamp DESC` | `(timestamp DESC)` |
 
-```text
-┌─────────────────────────────────────────────────────────┐
-│ Current (N+1 Pattern)                                   │
-├─────────────────────────────────────────────────────────┤
-│ Query 1: SELECT * FROM mendix_apps                      │
-│ Query 2: SELECT * FROM mendix_environments WHERE app=1  │
-│ Query 3: SELECT * FROM mendix_environments WHERE app=2  │
-│ Query 4: SELECT * FROM mendix_environments WHERE app=3  │
-│ ... (continues for each app)                            │
-└─────────────────────────────────────────────────────────┘
+**`cloud_actions` table queries:**
+| Location | Query Pattern | Needs Index |
+|----------|--------------|-------------|
+| `cloud-action-orchestrator` | `status = 'scheduled'` + `scheduled_for` | `(status, scheduled_for)` |
+| `cloud-action-orchestrator` | `status = 'running'` + `last_heartbeat` | `(status, last_heartbeat)` |
+| `run-cloud-actions-v2` | `user_id` + `status` | `(user_id, status)` |
+| `CloudActions.tsx` | `ORDER BY created_at DESC` | `(created_at DESC)` |
 
-┌─────────────────────────────────────────────────────────┐
-│ Fixed (2 Queries)                                       │
-├─────────────────────────────────────────────────────────┤
-│ Query 1: SELECT * FROM mendix_apps                      │
-│ Query 2: SELECT * FROM mendix_environments              │
-│ JavaScript: Map environments to apps using project_id   │
-└─────────────────────────────────────────────────────────┘
+### Solution: Create Database Migration
+
+Create a new migration file that adds the following indexes:
+
+```sql
+-- ================================================
+-- Performance Indexes for mendix_logs table
+-- ================================================
+
+-- Index for filtering logs by app and environment (used in LogsViewer)
+CREATE INDEX IF NOT EXISTS idx_mendix_logs_app_env 
+ON public.mendix_logs (app_id, environment);
+
+-- Index for error/warning counting (used in AppCard for badges)
+CREATE INDEX IF NOT EXISTS idx_mendix_logs_app_level 
+ON public.mendix_logs (app_id, level);
+
+-- Index for timestamp ordering (used in all log queries)
+CREATE INDEX IF NOT EXISTS idx_mendix_logs_timestamp 
+ON public.mendix_logs (timestamp DESC);
+
+-- Composite index for the most common query pattern
+CREATE INDEX IF NOT EXISTS idx_mendix_logs_app_env_timestamp 
+ON public.mendix_logs (app_id, environment, timestamp DESC);
+
+-- ================================================
+-- Performance Indexes for cloud_actions table
+-- ================================================
+
+-- Partial index for scheduled actions (used by orchestrator every minute)
+-- Partial index is smaller and faster since it only includes scheduled rows
+CREATE INDEX IF NOT EXISTS idx_cloud_actions_scheduled 
+ON public.cloud_actions (scheduled_for) 
+WHERE status = 'scheduled';
+
+-- Partial index for running actions with heartbeat (stale detection)
+CREATE INDEX IF NOT EXISTS idx_cloud_actions_running_heartbeat 
+ON public.cloud_actions (last_heartbeat) 
+WHERE status = 'running';
+
+-- Index for user-specific queries
+CREATE INDEX IF NOT EXISTS idx_cloud_actions_user_status 
+ON public.cloud_actions (user_id, status);
+
+-- Index for UI ordering
+CREATE INDEX IF NOT EXISTS idx_cloud_actions_created_at 
+ON public.cloud_actions (created_at DESC);
 ```
-
-### Changes
-
-**File: `src/pages/Dashboard.tsx`**
-
-Replace the `fetchApps` function (lines 70-104) with optimized version:
-
-```typescript
-const fetchApps = async () => {
-  try {
-    // Fetch apps and environments in parallel (2 queries instead of N+1)
-    const [appsResult, environmentsResult] = await Promise.all([
-      supabase
-        .from('mendix_apps')
-        .select('*')
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('mendix_environments')
-        .select('*')
-    ]);
-
-    if (appsResult.error) throw appsResult.error;
-
-    const appsData = appsResult.data || [];
-    const environmentsData = environmentsResult.data || [];
-
-    // Create a map of project_id -> environments for efficient lookup
-    const environmentsByAppId = environmentsData.reduce((acc, env) => {
-      const appId = env.app_id;
-      if (!acc[appId]) acc[appId] = [];
-      acc[appId].push(env);
-      return acc;
-    }, {} as Record<string, typeof environmentsData>);
-
-    // Map environments to apps
-    const appsWithEnvironments = appsData.map(app => ({
-      ...app,
-      environments: environmentsByAppId[app.project_id || ''] || []
-    }));
-
-    setApps(appsWithEnvironments);
-    setFilteredApps(appsWithEnvironments);
-  } catch (error) {
-    console.error('Error fetching apps:', error);
-    setApps([]);
-    setFilteredApps([]);
-  } finally {
-    setLoading(false);
-  }
-};
-```
-
-Apply the same fix to `refreshApps` function (lines 164-206).
 
 ### Technical Details
 
-| Aspect | Before | After |
-|--------|--------|-------|
-| **Database queries** | N+1 (21 for 20 apps) | 2 (always) |
-| **Query execution** | Sequential | Parallel (`Promise.all`) |
-| **Data joining** | Server-side per query | Client-side O(n) mapping |
-| **Performance** | Slow with many apps | Constant 2 queries |
+| Table | Index | Type | Purpose |
+|-------|-------|------|---------|
+| `mendix_logs` | `idx_mendix_logs_app_env` | B-tree | Filter by app + environment |
+| `mendix_logs` | `idx_mendix_logs_app_level` | B-tree | Count errors/warnings |
+| `mendix_logs` | `idx_mendix_logs_timestamp` | B-tree (DESC) | Order by time |
+| `mendix_logs` | `idx_mendix_logs_app_env_timestamp` | B-tree composite | Combined filter + order |
+| `cloud_actions` | `idx_cloud_actions_scheduled` | Partial B-tree | Orchestrator scheduled scan |
+| `cloud_actions` | `idx_cloud_actions_running_heartbeat` | Partial B-tree | Stale action detection |
+| `cloud_actions` | `idx_cloud_actions_user_status` | B-tree | User dashboard queries |
+| `cloud_actions` | `idx_cloud_actions_created_at` | B-tree (DESC) | UI list ordering |
 
-### Why This Is Safe
-- Same data is fetched, just more efficiently
-- `Promise.all` runs both queries in parallel
-- Uses a hash map for O(1) environment lookup per app
-- Falls back to empty array if no environments found (same as before)
-- No changes to the component rendering logic
+### Why Partial Indexes?
+For `cloud_actions`, using **partial indexes** (with `WHERE status = 'scheduled'` or `WHERE status = 'running'`) is more efficient because:
+- Only a small fraction of rows have these statuses at any time
+- The index is smaller and faster to scan
+- Reduces storage overhead
+
+### Expected Impact
+- **Orchestrator cron job**: Faster execution every minute (currently scanning full table)
+- **Log queries**: Faster filtering and counting operations
+- **UI responsiveness**: Faster dashboard and log viewer loading
+- **Database CPU**: Reduced load from eliminated full table scans
+
+### Implementation Steps
+1. Create a new Supabase migration with the index creation SQL
+2. The migration will run automatically on deployment
+3. Indexes are created with `IF NOT EXISTS` for safety
 
