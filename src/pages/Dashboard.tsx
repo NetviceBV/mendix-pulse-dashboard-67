@@ -183,57 +183,8 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
     setFilteredApps(getFilteredApps());
   }, [apps, searchTerm, activeTab]);
 
-  const refreshApps = async () => {
-    setLoading(true);
-    try {
-      // Fetch apps and environments in parallel (optimized: 2 queries instead of N+1)
-      const [appsResult, environmentsResult] = await Promise.all([
-        supabase
-          .from('mendix_apps')
-          .select('*')
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('mendix_environments')
-          .select('*')
-      ]);
-
-      if (appsResult.error) throw appsResult.error;
-
-      const appsData = appsResult.data || [];
-      const environmentsData = environmentsResult.data || [];
-
-      // Create a map of project_id -> environments for O(1) lookup
-      const environmentsByAppId = environmentsData.reduce((acc, env) => {
-        const appId = env.app_id;
-        if (!acc[appId]) acc[appId] = [];
-        acc[appId].push(env);
-        return acc;
-      }, {} as Record<string, typeof environmentsData>);
-
-      // Map environments to apps
-      const appsWithEnvironments: MendixApp[] = appsData.map(app => ({
-        ...app,
-        environments: environmentsByAppId[app.project_id || ''] || []
-      }));
-
-      setApps(appsWithEnvironments);
-      setFilteredApps(appsWithEnvironments);
-      
-      toast({
-        title: "Applications refreshed",
-        description: "Latest status updates have been loaded"
-      });
-    } catch (error) {
-      console.error('Error refreshing apps:', error);
-      toast({
-        title: "Refresh failed",
-        description: "Could not load latest application data",
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Manual refresh wrapper with toast feedback
+  const refreshApps = () => fetchAppsData(true);
 
   const handleOpenApp = (app: MendixApp) => {
     toast({
