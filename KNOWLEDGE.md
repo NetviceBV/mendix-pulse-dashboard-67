@@ -298,6 +298,20 @@ The `pg_net` extension appears registered in the `public` schema when querying `
 
 **Audit Response:** When security tools flag `pg_net` in public schema, document that this is a known PostgreSQL/Supabase limitation where the extension registration cannot be moved, but the actual security-relevant objects are properly isolated in the `net` schema.
 
+### Data Retention Policies
+
+Automatic cleanup is implemented to prevent unbounded database growth:
+
+| Table | Retention Period | Cleanup Method |
+|-------|------------------|----------------|
+| `mendix_logs` | 30 days | Daily pg_cron job (3 AM) |
+| `cloud_action_logs` | 30 days | cloud-action-orchestrator |
+| `cloud_actions` (completed/failed) | 7 days | cloud-action-orchestrator |
+| `cron.job_run_details` | 2 days | Daily pg_cron job (3 AM) |
+| `net._http_response` | 1 day | Daily pg_cron job (3 AM) |
+
+The `cleanup-cron-history` pg_cron job runs daily at 3:00 AM UTC and handles cleanup for system tables and webhook logs. The index `idx_mendix_logs_created_at` optimizes the 30-day retention query.
+
 ## API Integrations
 
 ### Mendix Deploy API
