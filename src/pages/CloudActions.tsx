@@ -11,20 +11,27 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 import { CloudCog, Loader2, RefreshCcw, ArrowLeft, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { EditCloudActionDialog } from "@/components/EditCloudActionDialog";
 import { AddCloudActionDialog } from "@/components/AddCloudActionDialog";
 import { CloudActionLogsDialog } from "@/components/CloudActionLogsDialog";
-import { CloudActionRow, App, statusColor } from "@/types/cloudActions";
+import { CloudActionTableSkeleton } from "@/components/CloudActionTableSkeleton";
+import { useCloudActionsQuery } from "@/hooks/useCloudActionsQuery";
+import { queryKeys } from "@/lib/queryKeys";
+import { statusColor } from "@/types/cloudActions";
 
 export default function CloudActionsPage() {
-  const [loading, setLoading] = useState(true);
-  const [actions, setActions] = useState<CloudActionRow[]>([]);
-  const [apps, setApps] = useState<App[]>([]);
   const [isRunningAll, setIsRunningAll] = useState(false);
   const [runningActionId, setRunningActionId] = useState<string | null>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Use React Query for data fetching
+  const { data, isLoading, refetch } = useCloudActionsQuery();
+  const actions = data?.actions || [];
+  const apps = data?.apps || [];
 
   useEffect(() => {
     document.title = "Cloud actions | Mendix Monitoring";
@@ -48,32 +55,6 @@ export default function CloudActionsPage() {
     if (!link.parentNode) document.head.appendChild(link);
   }, []);
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const [{ data: actionsData }, { data: appsData }] = await Promise.all([
-        supabase
-          .from("cloud_actions")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .limit(200),
-        supabase.from("mendix_apps").select("id, app_id, app_name, credential_id, project_id"),
-      ]);
-
-      setActions((actionsData || []) as CloudActionRow[]);
-      setApps((appsData || []) as App[]);
-    } catch (e) {
-      console.error(e);
-      toast({ title: "Failed to load actions", variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    load();
-  }, []);
-
   const appName = (app_id: string) =>
     apps.find((a) => a.project_id === app_id)?.app_name || app_id;
 
@@ -94,7 +75,9 @@ export default function CloudActionsPage() {
         title: actionId ? "Action triggered" : "Runner started",
         description: `${actionId ? "Processing selected action" : "Processing due actions"} (Enhanced v2)`,
       });
-      await load();
+      
+      // Invalidate and refetch
+      queryClient.invalidateQueries({ queryKey: queryKeys.cloudActions });
     } catch (e: any) {
       toast({ title: "Runner failed", description: e.message, variant: "destructive" });
     } finally {
@@ -114,7 +97,7 @@ export default function CloudActionsPage() {
         title: "Cleanup Success",
         description: "Stale V1 actions cleaned up successfully",
       });
-      await load();
+      queryClient.invalidateQueries({ queryKey: queryKeys.cloudActions });
     } catch (e: any) {
       toast({
         title: "Cleanup Error",
@@ -150,7 +133,7 @@ export default function CloudActionsPage() {
         .eq("status", "scheduled");
       if (error) throw error;
       toast({ title: "Action canceled" });
-      await load();
+      queryClient.invalidateQueries({ queryKey: queryKeys.cloudActions });
     } catch (e: any) {
       toast({ title: "Cancel failed", description: e.message, variant: "destructive" });
     }
@@ -165,10 +148,14 @@ export default function CloudActionsPage() {
       const { error } = await supabase.from("cloud_actions").delete().eq("id", id);
       if (error) throw error;
       toast({ title: "Action deleted successfully" });
-      await load();
+      queryClient.invalidateQueries({ queryKey: queryKeys.cloudActions });
     } catch (e: any) {
       toast({ title: "Delete failed", description: e.message, variant: "destructive" });
     }
+  };
+
+  const handleActionCreated = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.cloudActions });
   };
 
   return (
@@ -200,7 +187,7 @@ export default function CloudActionsPage() {
               )}
               {isRunningAll ? "Running..." : "Run due now"}
             </Button>
-            <AddCloudActionDialog onCreated={load} />
+            <AddCloudActionDialog onCreated={handleActionCreated} />
           </div>
         </div>
 
@@ -239,16 +226,8 @@ export default function CloudActionsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {loading && (
-              <TableRow>
-                <TableCell colSpan={10}>
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" /> Loading...
-                  </div>
-                </TableCell>
-              </TableRow>
-            )}
-            {!loading && actions.length === 0 && (
+            {isLoading && <CloudActionTableSkeleton rows={5} />}
+            {!isLoading && actions.length === 0 && (
               <TableRow>
                 <TableCell colSpan={10}>
                   <div className="text-sm text-muted-foreground">
@@ -257,7 +236,7 @@ export default function CloudActionsPage() {
                 </TableCell>
               </TableRow>
             )}
-            {actions.map((a) => (
+            {!isLoading && actions.map((a) => (
               <TableRow key={a.id}>
                 <TableCell>{new Date(a.created_at).toLocaleString()}</TableCell>
                 <TableCell>
@@ -284,7 +263,7 @@ export default function CloudActionsPage() {
                   <CloudActionLogsDialog actionId={a.id} />
                   {a.status === "scheduled" && (
                     <>
-                      <EditCloudActionDialog action={a} onUpdated={load} />
+                      <EditCloudActionDialog action={a} onUpdated={handleActionCreated} />
                       <Button
                         variant="outline"
                         size="sm"
