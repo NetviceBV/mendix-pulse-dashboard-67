@@ -1,79 +1,103 @@
 
 
-# Database Cleanup Plan
+## Plan: Fix N+1 Query Pattern in Dashboard
 
-## Problem Summary
-Your Supabase database is using 1 GB, with 97% consumed by two system tables:
-- **`cron.job_run_details`**: 602 MB - Contains 575,000+ historical cron job run records dating back to September 2025
-- **`net._http_response`**: 395 MB - HTTP response cache from pg_net extension
+### Problem
+The current code makes **N+1 database queries**:
+- 1 query to fetch all apps
+- N queries to fetch environments (one per app)
 
-## Root Cause
-You have 3 cron jobs running **every minute**, generating ~4,320 records per day:
-- `cloud-action-orchestrator-v2` - 196,046 historical runs
-- `process-log-monitoring-every-minute` - 191,322 historical runs
-- `process-owasp-async-jobs` - 175,489 historical runs
+With 20 apps, this means 21 separate database calls.
 
-## Solution
+### Solution
+Fetch both apps and environments in **just 2 queries**, then join them in JavaScript:
 
-### Step 1: One-Time Cleanup (Run in Supabase SQL Editor)
+```text
+┌─────────────────────────────────────────────────────────┐
+│ Current (N+1 Pattern)                                   │
+├─────────────────────────────────────────────────────────┤
+│ Query 1: SELECT * FROM mendix_apps                      │
+│ Query 2: SELECT * FROM mendix_environments WHERE app=1  │
+│ Query 3: SELECT * FROM mendix_environments WHERE app=2  │
+│ Query 4: SELECT * FROM mendix_environments WHERE app=3  │
+│ ... (continues for each app)                            │
+└─────────────────────────────────────────────────────────┘
 
-Execute these SQL commands to clear historical data:
-
-```sql
--- Clear all cron job run history (keeps job definitions)
-TRUNCATE cron.job_run_details;
-
--- Clear HTTP response cache
-TRUNCATE net._http_response;
-
--- Reclaim disk space (optional but recommended)
-VACUUM FULL cron.job_run_details;
-VACUUM FULL net._http_response;
+┌─────────────────────────────────────────────────────────┐
+│ Fixed (2 Queries)                                       │
+├─────────────────────────────────────────────────────────┤
+│ Query 1: SELECT * FROM mendix_apps                      │
+│ Query 2: SELECT * FROM mendix_environments              │
+│ JavaScript: Map environments to apps using project_id   │
+└─────────────────────────────────────────────────────────┘
 ```
 
-**Expected result**: Free up ~997 MB of space immediately
+### Changes
 
-### Step 2: Automatic Cleanup (Prevent Future Buildup)
+**File: `src/pages/Dashboard.tsx`**
 
-Create a daily cleanup cron job that keeps only the last 7 days of history:
+Replace the `fetchApps` function (lines 70-104) with optimized version:
 
-```sql
--- Create cleanup cron job (runs daily at 3 AM)
-SELECT cron.schedule(
-  'cleanup-cron-history',
-  '0 3 * * *',
-  $$
-    DELETE FROM cron.job_run_details 
-    WHERE end_time < NOW() - INTERVAL '7 days';
-    
-    DELETE FROM net._http_response 
-    WHERE created < NOW() - INTERVAL '1 day';
-  $$
-);
+```typescript
+const fetchApps = async () => {
+  try {
+    // Fetch apps and environments in parallel (2 queries instead of N+1)
+    const [appsResult, environmentsResult] = await Promise.all([
+      supabase
+        .from('mendix_apps')
+        .select('*')
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('mendix_environments')
+        .select('*')
+    ]);
+
+    if (appsResult.error) throw appsResult.error;
+
+    const appsData = appsResult.data || [];
+    const environmentsData = environmentsResult.data || [];
+
+    // Create a map of project_id -> environments for efficient lookup
+    const environmentsByAppId = environmentsData.reduce((acc, env) => {
+      const appId = env.app_id;
+      if (!acc[appId]) acc[appId] = [];
+      acc[appId].push(env);
+      return acc;
+    }, {} as Record<string, typeof environmentsData>);
+
+    // Map environments to apps
+    const appsWithEnvironments = appsData.map(app => ({
+      ...app,
+      environments: environmentsByAppId[app.project_id || ''] || []
+    }));
+
+    setApps(appsWithEnvironments);
+    setFilteredApps(appsWithEnvironments);
+  } catch (error) {
+    console.error('Error fetching apps:', error);
+    setApps([]);
+    setFilteredApps([]);
+  } finally {
+    setLoading(false);
+  }
+};
 ```
 
-This will automatically prune old records daily, keeping the database lean.
+Apply the same fix to `refreshApps` function (lines 164-206).
 
-## Technical Details
+### Technical Details
 
-| Table | Current Size | After Cleanup | Retention |
-|-------|-------------|---------------|-----------|
-| `cron.job_run_details` | 602 MB | ~5 MB | Last 7 days |
-| `net._http_response` | 395 MB | ~1 MB | Last 1 day |
-| **Total Savings** | **997 MB** | - | - |
+| Aspect | Before | After |
+|--------|--------|-------|
+| **Database queries** | N+1 (21 for 20 apps) | 2 (always) |
+| **Query execution** | Sequential | Parallel (`Promise.all`) |
+| **Data joining** | Server-side per query | Client-side O(n) mapping |
+| **Performance** | Slow with many apps | Constant 2 queries |
 
-## Alternative: Reduce Cron Frequency
-
-If you want to further reduce database growth, consider:
-- Change `process-log-monitoring-every-minute` to every 5 minutes
-- Change `process-owasp-async-jobs` to every 5 minutes
-
-This would reduce cron history by 80% going forward.
-
-## Execution Steps
-
-1. **Go to Supabase Dashboard** > SQL Editor
-2. **Run the cleanup commands** from Step 1
-3. **Run the auto-cleanup cron job** from Step 2
-4. Verify space is reclaimed in Database settings
+### Why This Is Safe
+- Same data is fetched, just more efficiently
+- `Promise.all` runs both queries in parallel
+- Uses a hash map for O(1) environment lookup per app
+- Falls back to empty array if no environments found (same as before)
+- No changes to the component rendering logic
 
