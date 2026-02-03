@@ -65,52 +65,67 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
   const productionApps = apps.filter(app => hasNonSandboxEnvironments(app));
   const sandboxApps = apps.filter(app => isSandboxOnlyApp(app));
 
-  // Fetch real apps from Supabase with environments (optimized: 2 queries instead of N+1)
-  useEffect(() => {
-    const fetchApps = async () => {
-      try {
-        // Fetch apps and environments in parallel
-        const [appsResult, environmentsResult] = await Promise.all([
-          supabase
-            .from('mendix_apps')
-            .select('*')
-            .order('created_at', { ascending: false }),
-          supabase
-            .from('mendix_environments')
-            .select('*')
-        ]);
+  // Shared function for fetching apps with environments (optimized: 2 queries instead of N+1)
+  const fetchAppsData = async (showToast = false) => {
+    setLoading(true);
+    try {
+      const [appsResult, environmentsResult] = await Promise.all([
+        supabase
+          .from('mendix_apps')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('mendix_environments')
+          .select('*')
+      ]);
 
-        if (appsResult.error) throw appsResult.error;
+      if (appsResult.error) throw appsResult.error;
 
-        const appsData = appsResult.data || [];
-        const environmentsData = environmentsResult.data || [];
+      const appsData = appsResult.data || [];
+      const environmentsData = environmentsResult.data || [];
 
-        // Create a map of project_id -> environments for O(1) lookup
-        const environmentsByAppId = environmentsData.reduce((acc, env) => {
-          const appId = env.app_id;
-          if (!acc[appId]) acc[appId] = [];
-          acc[appId].push(env);
-          return acc;
-        }, {} as Record<string, typeof environmentsData>);
+      // Create map for O(1) lookup
+      const environmentsByAppId = environmentsData.reduce((acc, env) => {
+        const appId = env.app_id;
+        if (!acc[appId]) acc[appId] = [];
+        acc[appId].push(env);
+        return acc;
+      }, {} as Record<string, typeof environmentsData>);
 
-        // Map environments to apps
-        const appsWithEnvironments: MendixApp[] = appsData.map(app => ({
-          ...app,
-          environments: environmentsByAppId[app.project_id || ''] || []
-        }));
+      // Merge environments into apps
+      const appsWithEnvironments: MendixApp[] = appsData.map(app => ({
+        ...app,
+        environments: environmentsByAppId[app.project_id || ''] || []
+      }));
 
-        setApps(appsWithEnvironments);
-        setFilteredApps(appsWithEnvironments);
-      } catch (error) {
-        console.error('Error fetching apps:', error);
-        setApps([]);
-        setFilteredApps([]);
-      } finally {
-        setLoading(false);
+      setApps(appsWithEnvironments);
+      setFilteredApps(appsWithEnvironments);
+
+      if (showToast) {
+        toast({
+          title: "Applications refreshed",
+          description: "Latest status updates have been loaded"
+        });
       }
-    };
+    } catch (error) {
+      console.error('Error fetching apps:', error);
+      setApps([]);
+      setFilteredApps([]);
+      if (showToast) {
+        toast({
+          title: "Refresh failed",
+          description: "Could not load latest application data",
+          variant: "destructive"
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    fetchApps();
+  // Initial load
+  useEffect(() => {
+    fetchAppsData(false);
   }, []);
 
 
