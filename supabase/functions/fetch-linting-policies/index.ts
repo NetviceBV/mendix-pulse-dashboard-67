@@ -127,6 +127,20 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Remove rules that no longer exist in the API
+    const currentRuleIds = rows.map(r => r.rule_id)
+    if (currentRuleIds.length > 0) {
+      const { error: deleteError } = await supabase
+        .from('linting_policies')
+        .delete()
+        .eq('user_id', user.id)
+        .not('rule_id', 'in', `(${currentRuleIds.join(',')})`)
+
+      if (deleteError) {
+        console.error('Cleanup error:', deleteError)
+      }
+    }
+
     // Fetch all policies for this user
     const { data: allPolicies, error: fetchError } = await supabase
       .from('linting_policies')
