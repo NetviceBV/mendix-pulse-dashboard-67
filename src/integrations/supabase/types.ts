@@ -236,6 +236,44 @@ export type Database = {
         }
         Relationships: []
       }
+      linting_policy_overrides: {
+        Row: {
+          app_id: string
+          created_at: string | null
+          id: string
+          is_enabled: boolean
+          policy_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          app_id: string
+          created_at?: string | null
+          id?: string
+          is_enabled: boolean
+          policy_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          app_id?: string
+          created_at?: string | null
+          id?: string
+          is_enabled?: boolean
+          policy_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "linting_policy_overrides_policy_id_fkey"
+            columns: ["policy_id"]
+            isOneToOne: false
+            referencedRelation: "linting_policies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       linting_results: {
         Row: {
           app_id: string

@@ -19,6 +19,7 @@ import { OWASPDetailsDialog, OWASPItem } from "./OWASPDetailsDialog";
 import { useLintingQuery } from "@/hooks/useLintingQuery";
 import { LintingChapterGrid } from "./LintingChapterGrid";
 import { LintingDetailsDialog } from "./LintingDetailsDialog";
+import { AppLintingOverrides } from "./AppLintingOverrides";
 export interface MendixEnvironment {
   id: string;
   environment_id: string | null;
@@ -821,7 +822,7 @@ const AppCard = ({
             </TabsContent>
 
             {/* Linting Tab Content */}
-            <TabsContent value="linting" className="mt-0">
+            <TabsContent value="linting" className="mt-0 space-y-4">
               <LintingChapterGrid
                 data={lintingData || { run: null, results: [], chapters: [] }}
                 isLoading={lintingLoading}
@@ -830,6 +831,7 @@ const AppCard = ({
                   setIsLintingDialogOpen(true);
                 }}
               />
+              <AppLintingOverrides appId={app.app_id} appName={app.app_name} />
             </TabsContent>
           </Tabs>
         </div>
