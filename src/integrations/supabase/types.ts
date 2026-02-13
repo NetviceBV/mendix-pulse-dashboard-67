@@ -194,6 +194,45 @@ export type Database = {
         }
         Relationships: []
       }
+      linting_policies: {
+        Row: {
+          category: string
+          created_at: string | null
+          description: string | null
+          id: string
+          is_enabled: boolean
+          rule_id: string
+          severity: string | null
+          title: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          category: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_enabled?: boolean
+          rule_id: string
+          severity?: string | null
+          title: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          category?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_enabled?: boolean
+          rule_id?: string
+          severity?: string | null
+          title?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       linting_results: {
         Row: {
           app_id: string
