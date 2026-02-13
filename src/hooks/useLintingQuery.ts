@@ -94,3 +94,65 @@ export function useLintingQuery(appId: string | null) {
     staleTime: 30_000,
   });
 }
+
+export function useLintingRunsQuery(appId: string | null) {
+  return useQuery<LintingRun[]>({
+    queryKey: ['linting-runs', appId],
+    queryFn: async () => {
+      if (!appId) return [];
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [];
+
+      const { data, error } = await supabase
+        .from('linting_runs')
+        .select('*')
+        .eq('app_id', appId)
+        .eq('user_id', user.id)
+        .order('started_at', { ascending: false })
+        .limit(20);
+
+      if (error) throw error;
+      return (data || []) as LintingRun[];
+    },
+    enabled: !!appId,
+    staleTime: 30_000,
+  });
+}
+
+export function useLintingRunResultsQuery(runId: string | null) {
+  return useQuery<{ results: LintingResult[]; chapters: LintingChapterSummary[] }>({
+    queryKey: ['linting-run-results', runId],
+    queryFn: async () => {
+      if (!runId) return { results: [], chapters: [] };
+
+      const { data: results, error } = await supabase
+        .from('linting_results')
+        .select('*')
+        .eq('run_id', runId)
+        .order('chapter', { ascending: true })
+        .order('rule_name', { ascending: true });
+
+      if (error) throw error;
+
+      const chapterMap = new Map<string, LintingChapterSummary>();
+      (results || []).forEach((r) => {
+        if (!chapterMap.has(r.chapter)) {
+          chapterMap.set(r.chapter, { chapter: r.chapter, total: 0, passed: 0, failed: 0, warnings: 0 });
+        }
+        const ch = chapterMap.get(r.chapter)!;
+        ch.total++;
+        if (r.status === 'pass') ch.passed++;
+        else if (r.status === 'fail') ch.failed++;
+        else if (r.status === 'warning') ch.warnings++;
+      });
+
+      return {
+        results: (results || []) as LintingResult[],
+        chapters: Array.from(chapterMap.values()),
+      };
+    },
+    enabled: !!runId,
+    staleTime: 60_000,
+  });
+}

@@ -1,7 +1,10 @@
+import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, XCircle, AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { CheckCircle, XCircle, AlertTriangle, ChevronDown, Copy, Check } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import type { LintingResult } from "@/hooks/useLintingQuery";
 
@@ -39,6 +42,10 @@ export function LintingDetailsDialog({ open, onOpenChange, chapter, results }: L
 }
 
 function RuleRow({ rule }: { rule: LintingResult }) {
+  const [copied, setCopied] = useState(false);
+  const hasDetails = rule.details && rule.status !== "pass";
+  const lineCount = hasDetails ? rule.details!.split("\n").filter(Boolean).length : 0;
+
   const statusIcon =
     rule.status === "pass" ? (
       <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
@@ -48,42 +55,87 @@ function RuleRow({ rule }: { rule: LintingResult }) {
       <AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
     );
 
-  return (
-    <div
-      className={cn(
-        "p-3 rounded-md border",
-        rule.status === "pass" && "bg-green-500/5 border-green-500/20",
-        rule.status === "fail" && "bg-red-500/5 border-red-500/20",
-        rule.status === "warning" && "bg-yellow-500/5 border-yellow-500/20"
-      )}
-    >
-      <div className="flex items-start gap-2">
-        <div className="mt-0.5">{statusIcon}</div>
-        <div className="flex-1 min-w-0 space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium">{rule.rule_name}</span>
-            <Badge
-              variant="outline"
-              className={cn(
-                "text-[10px] px-1.5 py-0",
-                rule.severity === "error" && "border-red-500/30 text-red-600",
-                rule.severity === "warning" && "border-yellow-500/30 text-yellow-600",
-                rule.severity === "info" && "border-blue-500/30 text-blue-600"
-              )}
-            >
-              {rule.severity}
-            </Badge>
-          </div>
-          {rule.rule_description && (
-            <p className="text-xs text-muted-foreground">{rule.rule_description}</p>
-          )}
-          {rule.details && rule.status !== "pass" && (
-            <p className="text-xs text-muted-foreground bg-muted/50 p-2 rounded mt-1 font-mono">
-              {rule.details}
-            </p>
-          )}
+  const handleCopy = async () => {
+    if (!rule.details) return;
+    await navigator.clipboard.writeText(rule.details);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const header = (
+    <div className="flex items-start gap-2">
+      <div className="mt-0.5">{statusIcon}</div>
+      <div className="flex-1 min-w-0 space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">{rule.rule_name}</span>
+          <Badge
+            variant="outline"
+            className={cn(
+              "text-[10px] px-1.5 py-0",
+              rule.severity === "error" && "border-red-500/30 text-red-600",
+              rule.severity === "warning" && "border-yellow-500/30 text-yellow-600",
+              rule.severity === "info" && "border-blue-500/30 text-blue-600"
+            )}
+          >
+            {rule.severity}
+          </Badge>
         </div>
+        {rule.rule_description && (
+          <p className="text-xs text-muted-foreground">{rule.rule_description}</p>
+        )}
       </div>
     </div>
+  );
+
+  if (!hasDetails) {
+    return (
+      <div
+        className={cn(
+          "p-3 rounded-md border",
+          rule.status === "pass" && "bg-green-500/5 border-green-500/20",
+          rule.status === "fail" && "bg-red-500/5 border-red-500/20",
+          rule.status === "warning" && "bg-yellow-500/5 border-yellow-500/20"
+        )}
+      >
+        {header}
+      </div>
+    );
+  }
+
+  return (
+    <Collapsible>
+      <div
+        className={cn(
+          "rounded-md border",
+          rule.status === "fail" && "bg-red-500/5 border-red-500/20",
+          rule.status === "warning" && "bg-yellow-500/5 border-yellow-500/20"
+        )}
+      >
+        <CollapsibleTrigger className="w-full p-3 text-left">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">{header}</div>
+            <div className="flex items-center gap-1.5 ml-2 shrink-0">
+              <span className="text-[10px] text-muted-foreground">{lineCount} items</span>
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform [[data-state=open]_&]:rotate-180" />
+            </div>
+          </div>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="px-3 pb-3">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[10px] text-muted-foreground">{lineCount} items found</span>
+              <Button variant="ghost" size="sm" className="h-5 px-1.5 text-[10px]" onClick={handleCopy}>
+                {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+              </Button>
+            </div>
+            <ScrollArea className="max-h-[200px]">
+              <pre className="text-xs text-muted-foreground bg-muted/50 p-2 rounded font-mono whitespace-pre-wrap break-all">
+                {rule.details}
+              </pre>
+            </ScrollArea>
+          </div>
+        </CollapsibleContent>
+      </div>
+    </Collapsible>
   );
 }
