@@ -1,79 +1,107 @@
 
+## Redesign Linting UI: Results in Card, History, and Details Viewer
 
-## Per-App Linting Rule Overrides
+### Overview
 
-### Concept
+Rethink the linting tab in the AppCard to have three clear layers:
 
-Use a **sparse overrides table** -- only store a row when an app's setting differs from the global default. When no override exists, the app inherits the global setting automatically.
+1. **Card view** -- shows the latest run's chapter summaries (compact) with one gear icon for overrides
+2. **Run history** -- a list of past runs with date, pass/fail counts, accessible from the card
+3. **Details view** -- when clicking a chapter or run, show individual rule results with expandable details for long content
 
-### How It Works
+### Current Problems to Solve
+- The `AppLintingOverrides` component takes up too much space inline in the card
+- No run history -- only the latest run is visible
+- Long `details` fields (100s of lines) are shown as a single `<p>` block which is hard to read
 
+---
+
+### 1. Card View (Linting Tab in AppCard)
+
+**Keep**: Chapter grid showing categories with pass/fail counts (existing `LintingChapterGrid`)
+
+**Add**: A single gear icon button in the tab header (next to "Run Linting" button) that opens a Dialog with the full `AppLintingOverrides` component
+
+**Add**: A small "History" button (clock icon) that opens a dialog showing past runs
+
+**Remove**: The inline `<AppLintingOverrides>` below the chapter grid (line 834)
+
+Layout of the linting tab header:
 ```text
-Global Policy (linting_policies)       App Override (linting_policy_overrides)
-+------------------+-----------+       +--------+------------------+-----------+
-| rule_id          | is_enabled|       | app_id | rule_id          | is_enabled|
-+------------------+-----------+       +--------+------------------+-----------+
-| 001_0001         | true      |       | app-X  | 001_0001         | false     |  <-- turned OFF for this app
-| 001_0002         | false     |       | app-X  | 001_0002         | true      |  <-- turned ON for this app
-| 002_0001         | true      |       |        |                  |           |  <-- no override = use global
-+------------------+-----------+       +--------+------------------+-----------+
+[Linting tab]                    [clock] [gear] [Run Linting]
 ```
 
-**Effective state for app-X:**
-- `001_0001`: OFF (overridden)
-- `001_0002`: ON (overridden)
-- `002_0001`: ON (inherited from global)
+**Files changed:**
+- `src/components/AppCard.tsx` -- remove inline `AppLintingOverrides`, add gear icon opening a Dialog with overrides, add history button
 
-### Database Changes
+---
 
-**New table: `linting_policy_overrides`**
-```sql
-CREATE TABLE public.linting_policy_overrides (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  app_id text NOT NULL,
-  policy_id uuid REFERENCES public.linting_policies(id) ON DELETE CASCADE NOT NULL,
-  is_enabled boolean NOT NULL,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now(),
-  UNIQUE (user_id, app_id, policy_id)
-);
+### 2. Run History Dialog (new component)
 
-ALTER TABLE linting_policy_overrides ENABLE ROW LEVEL SECURITY;
--- Standard RLS: users can only manage their own overrides
-```
+**New component: `LintingRunHistory.tsx`**
 
-No changes to the existing `linting_policies` table.
+- Fetches all `linting_runs` for the app (not just the latest)
+- Shows a scrollable list of runs with: date/time, status, passed/failed/total counts, a progress bar
+- Clicking a run loads its results and shows the chapter grid for that specific run
+- The currently-viewed run is highlighted
 
-### Frontend Changes
+**Data**: Uses `useLintingRunsQuery` (new hook or extend existing) to fetch multiple runs ordered by `started_at desc`
 
-**1. App-level linting settings UI (new component: `AppLintingOverrides.tsx`)**
-- Shown inside the app settings dialog or AppCard expanded view
-- Lists all global rules, showing their effective state for this app
-- Each rule shows a visual indicator if it's overridden vs inherited
-- Toggle creates/deletes an override row (not modifying global)
-- "Reset to Global" button per rule (deletes the override)
-- "Reset All" button to clear all overrides for the app
+**UI**: Dialog with a two-panel layout:
+- Left: list of runs (date + summary)
+- Right: chapter grid for the selected run (reuses `LintingChapterGrid`)
 
-**2. Global settings page (`LintingSettings.tsx`)**
-- No changes needed -- continues to manage `linting_policies` as-is
+Or simpler: a list of runs, clicking one expands/navigates to its chapter details.
 
-### Edge Function / Query Logic
+---
 
-When running linting checks for an app, the effective rule set is resolved by:
+### 3. Details View for Long Results
 
-1. Fetch all global policies for the user
-2. Fetch any overrides for (user, app)
-3. Merge: if an override exists, use its `is_enabled`; otherwise use global `is_enabled`
-4. Only run rules where the effective `is_enabled` is `true`
+**Problem**: The `details` field can be 100s of lines (e.g., list of all microflows violating a rule). Currently shown as a single `<p>` with `font-mono`.
 
-This merge can be done either in the edge function before running checks, or as a database view/function.
+**Solution**: Enhance `LintingDetailsDialog` (the chapter drill-down):
 
-### Benefits
+- **Collapsed by default**: For failed/warning rules, show just the rule name + status. Click to expand.
+- **Expandable details**: Use a `Collapsible` component for each rule's details section
+- **Scrollable details block**: Wrap long details in a `ScrollArea` with a max height (e.g., 200px)
+- **Line count indicator**: Show "42 items found" above the details block so users know the scope before expanding
+- **Copy button**: Add a copy-to-clipboard button on the details block so users can paste into their IDE
 
-- **Minimal storage**: only stores differences, not a full copy per app
-- **Automatic inheritance**: new global rules immediately apply to all apps
-- **Easy reset**: delete the override row to revert to global
-- **Clear audit**: you can see exactly what was customized per app
-- **Global changes propagate**: if you enable/disable a rule globally, all apps without an override follow automatically
+**Files changed:**
+- `src/components/LintingDetailsDialog.tsx` -- add Collapsible for details, ScrollArea, copy button, line count
 
+---
+
+### Technical Details
+
+#### AppCard.tsx changes
+- Remove `<AppLintingOverrides appId={app.app_id} appName={app.app_name} />` from line 834
+- Add a gear icon `<Button>` next to the "Run Linting" button that opens a `<Dialog>` containing `<AppLintingOverrides>`
+- Add a clock icon `<Button>` that opens `<LintingRunHistory>`
+
+#### New: `src/components/LintingRunHistory.tsx`
+- Props: `appId`, `open`, `onOpenChange`
+- Fetches runs: `SELECT * FROM linting_runs WHERE app_id = ? AND user_id = ? ORDER BY started_at DESC LIMIT 20`
+- Each run row shows: date, status badge, "passed/total" count, progress bar
+- Clicking a run fetches its results and shows the chapter breakdown in a nested view
+- Clicking a chapter in the nested view opens the existing `LintingDetailsDialog`
+
+#### Enhanced: `src/components/LintingDetailsDialog.tsx`
+- Each `RuleRow` with status != "pass" gets a `Collapsible` wrapper
+- The details block is wrapped in `<ScrollArea className="max-h-[200px]">`
+- A line/item count is shown: parse details by newlines to count items
+- A "Copy" button in the top-right of the details block
+- Passed rules stay compact (no collapsible needed)
+
+#### Hook changes: `src/hooks/useLintingQuery.ts`
+- Add a new `useLintingRunsQuery(appId)` export that fetches multiple runs (without results) for the history view
+- Keep existing `useLintingQuery` for the latest run in the card
+
+### Summary of Changes
+
+| File | Action |
+|------|--------|
+| `AppCard.tsx` | Remove inline overrides, add gear + history buttons |
+| `LintingRunHistory.tsx` | New component for run history dialog |
+| `LintingDetailsDialog.tsx` | Add collapsible details, scroll area, copy button |
+| `useLintingQuery.ts` | Add `useLintingRunsQuery` hook |
