@@ -1,55 +1,63 @@
 
 
-## Plan: Fix Duplicate Credentials and Prevent Future Duplicates
+## Plan: Deduplicate Mendix Apps Across Credentials
 
-### Root Cause
+### Problem
+You have 60 app rows but only 31 unique projects. When two credentials share access to the same Mendix projects, each "Fetch Apps" call creates a separate row per credential, causing duplicates on the dashboard.
 
-The `MendixCredentials.tsx` component has a `useEffect` that migrates credentials from `localStorage` to the database. This migration logic has a race condition: it checks `credentials.length === 0` but the parent component's state hasn't been updated yet when React Query data arrives, causing it to run multiple times and insert duplicates.
+### Solution
 
-Additionally, the component does direct Supabase inserts alongside React Query, creating a dual-write pattern that can produce duplicates.
+#### 1. Change the upsert conflict key in `fetch-mendix-apps` edge function
 
-### What Happened
+Currently: `onConflict: 'app_id,credential_id'` -- allows same app from different credentials.
 
-- Your user (`fa7cf1c9-...`) has 4 credentials: 1 original "Erik" from September and 3 duplicates of "Erik 2" created today
-- Two duplicates were created at the exact same second, confirming a re-render triggered duplicate inserts
+Change to: `onConflict: 'project_id,user_id'` -- ensures one row per app per user, regardless of which credential fetched it.
 
-### OWASP Settings Status
+This requires:
+- Adding a unique constraint on `(project_id, user_id)` to `mendix_apps`
+- Updating the upsert call in the edge function
 
-Your OWASP items (A01-A10) are all present and correct. The "empty" appearance is because most categories have no validation steps configured yet (only A01 has 1 step: "Check public endpoints"). This is not a data loss issue -- it matches your screenshot.
+The `credential_id` column will store whichever credential last fetched the app (acceptable since the app data itself is identical).
 
-### Fix Steps
+#### 2. Do the same for environments
 
-#### 1. Clean up duplicate credentials (database)
+The environments table has `onConflict: 'environment_id,credential_id,user_id'`. Change to `onConflict: 'environment_id,user_id'` with a matching unique constraint, so environments are also deduplicated across credentials.
 
-Delete the 2 duplicate "Erik 2" entries, keeping only the oldest one:
+#### 3. Clean up existing duplicates (database migration)
+
+Delete duplicate rows, keeping the most recently updated one per `project_id`:
 
 ```sql
-DELETE FROM mendix_credentials
-WHERE id IN (
-  'e9cad285-4b3e-4300-8b40-bc5674e74f11',
-  'b052d186-d288-44a8-8b43-ef5739db8000'
-);
+-- Delete duplicate apps, keep newest per project_id + user_id
+DELETE FROM mendix_apps a
+USING mendix_apps b
+WHERE a.project_id = b.project_id
+  AND a.user_id = b.user_id
+  AND a.updated_at < b.updated_at;
+
+-- Same for environments
+DELETE FROM mendix_environments a
+USING mendix_environments b
+WHERE a.environment_id = b.environment_id
+  AND a.user_id = b.user_id
+  AND a.updated_at < b.updated_at;
 ```
 
-This leaves you with the original "Erik" and one "Erik 2".
+Then add the unique constraints.
 
-#### 2. Remove the localStorage migration code from MendixCredentials.tsx
+#### 4. No dashboard changes needed
 
-The migration `useEffect` (lines ~63-92) is no longer needed -- credentials are already stored in Supabase. Remove it entirely to prevent future duplicate inserts.
-
-#### 3. Add a unique constraint to prevent duplicates at the database level
-
-Add a unique constraint on `(user_id, name, username)` to the `mendix_credentials` table so the database itself rejects duplicate entries.
+The `useAppsQuery` hook fetches all apps -- once duplicates are gone and the constraint prevents new ones, the dashboard automatically shows unique apps only.
 
 ### Files to Modify
 
 | File | Change |
 |------|--------|
-| Database | Delete 2 duplicate credential rows |
-| Database | Add unique constraint on mendix_credentials |
-| `src/components/MendixCredentials.tsx` | Remove localStorage migration useEffect |
+| Database migration | Clean duplicates, add unique constraints on `(project_id, user_id)` and `(environment_id, user_id)` |
+| `supabase/functions/fetch-mendix-apps/index.ts` | Change upsert `onConflict` for apps to `project_id,user_id` and for environments to `environment_id,user_id` |
 
-### Technical Notes
+### Risk Assessment
 
-- The `useCredentialsQuery` hook already handles data fetching via React Query, so the migration code is redundant
-- The unique constraint uses `(user_id, name, username)` since a user shouldn't have two credentials with the same name and username
+- **Low risk**: The duplicate rows contain identical app data (same project, same name). Keeping the newest ensures latest status.
+- **Foreign keys**: `linting_results`, `owasp_checks`, etc. reference `app_id` (the text project ID), not the `mendix_apps.id` UUID, so deleting duplicate rows won't break references.
+
