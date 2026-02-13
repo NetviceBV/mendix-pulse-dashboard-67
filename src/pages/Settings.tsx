@@ -87,7 +87,7 @@ const Settings = () => {
       <div className="container mx-auto px-4 py-6">
         <div className="max-w-4xl mx-auto">
             <Tabs defaultValue="credentials" className="w-full">
-              <TabsList className="grid w-full grid-cols-8">
+              <TabsList className="flex flex-wrap h-auto gap-1 p-1 w-full">
                 <TabsTrigger value="credentials">Mendix Credentials</TabsTrigger>
                 <TabsTrigger value="webhooks">Webhook Settings</TabsTrigger>
                 <TabsTrigger value="emails">Email Management</TabsTrigger>
