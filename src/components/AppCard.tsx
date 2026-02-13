@@ -1117,7 +1117,7 @@ const AppCard = ({
 
       {/* Linting Overrides Dialog */}
       <Dialog open={isLintingOverridesOpen} onOpenChange={setIsLintingOverridesOpen}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>Linting Rule Overrides</DialogTitle>
             <DialogDescription>Override global linting rules for {app.app_name}</DialogDescription>

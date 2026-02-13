@@ -241,14 +241,14 @@ export function AppLintingOverrides({ appId, appName }: AppLintingOverridesProps
                 return (
                   <div
                     key={rule.id}
-                    className={`flex items-center justify-between py-2 px-3 rounded-md transition-colors ${
+                    className={`flex items-center justify-between py-2 px-3 rounded-md transition-colors overflow-hidden ${
                       overridden ? "bg-accent/50 border border-accent" : "hover:bg-muted/50"
                     }`}
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <code className="text-xs text-muted-foreground">{rule.rule_id}</code>
-                        <span className="text-sm font-medium truncate">{rule.title}</span>
+                        <span className="text-sm font-medium">{rule.title}</span>
                         {rule.severity && (
                           <Badge variant={severityColor(rule.severity)} className="text-xs">
                             {rule.severity}
@@ -261,7 +261,7 @@ export function AppLintingOverrides({ appId, appName }: AppLintingOverridesProps
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 ml-4">
+                    <div className="flex items-center gap-2 ml-4 shrink-0">
                       {overridden && (
                         <Button
                           variant="ghost"
