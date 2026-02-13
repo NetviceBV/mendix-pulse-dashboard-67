@@ -130,6 +130,7 @@ const AppCard = ({
   // Linting state
   const [selectedLintingChapter, setSelectedLintingChapter] = useState<string | null>(null);
   const [isLintingDialogOpen, setIsLintingDialogOpen] = useState(false);
+  const [activeSecurityTab, setActiveSecurityTab] = useState("owasp");
   const { data: lintingData, isLoading: lintingLoading } = useLintingQuery(app.app_id);
   
   const {
@@ -593,6 +594,13 @@ const AppCard = ({
     }
   };
 
+  const handleRunLintingChecks = async () => {
+    toast({
+      title: "Run Linting",
+      description: "Linting check execution coming soon...",
+    });
+  };
+
   const handleRunOwaspChecks = async () => {
     if (!app.app_id || !app.environments || runningOwaspChecks) return;
 
@@ -726,7 +734,7 @@ const AppCard = ({
       <CardContent className="pt-0">
         {/* Security & Quality Tabs */}
         <div className="mb-4 p-4 bg-muted/50 rounded-lg border">
-          <Tabs defaultValue="owasp">
+          <Tabs value={activeSecurityTab} onValueChange={setActiveSecurityTab}>
             <div className="flex items-center justify-between mb-3">
               <TabsList className="h-8">
                 <TabsTrigger value="owasp" className="text-xs px-3 py-1 gap-1.5">
@@ -741,11 +749,11 @@ const AppCard = ({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={handleRunOwaspChecks}
-                disabled={runningOwaspChecks || owaspLoading}
+                onClick={activeSecurityTab === "owasp" ? handleRunOwaspChecks : handleRunLintingChecks}
+                disabled={activeSecurityTab === "owasp" ? (runningOwaspChecks || owaspLoading) : false}
                 className="h-7"
               >
-                {runningOwaspChecks ? (
+                {runningOwaspChecks && activeSecurityTab === "owasp" ? (
                   <>
                     <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                     Running...
@@ -753,7 +761,7 @@ const AppCard = ({
                 ) : (
                   <>
                     <Play className="h-3 w-3 mr-1" />
-                    Run Checks
+                    {activeSecurityTab === "owasp" ? "Run OWASP" : "Run Linting"}
                   </>
                 )}
               </Button>
