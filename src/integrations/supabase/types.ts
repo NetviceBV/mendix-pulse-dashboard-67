@@ -194,6 +194,101 @@ export type Database = {
         }
         Relationships: []
       }
+      linting_results: {
+        Row: {
+          app_id: string
+          chapter: string
+          checked_at: string
+          created_at: string
+          details: string | null
+          id: string
+          rule_description: string | null
+          rule_name: string
+          run_id: string
+          severity: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          app_id: string
+          chapter: string
+          checked_at?: string
+          created_at?: string
+          details?: string | null
+          id?: string
+          rule_description?: string | null
+          rule_name: string
+          run_id: string
+          severity?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          app_id?: string
+          chapter?: string
+          checked_at?: string
+          created_at?: string
+          details?: string | null
+          id?: string
+          rule_description?: string | null
+          rule_name?: string
+          run_id?: string
+          severity?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "linting_results_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "linting_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      linting_runs: {
+        Row: {
+          app_id: string
+          completed_at: string | null
+          created_at: string
+          failed_rules: number | null
+          id: string
+          passed_rules: number | null
+          started_at: string
+          status: string
+          total_rules: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          app_id: string
+          completed_at?: string | null
+          created_at?: string
+          failed_rules?: number | null
+          id?: string
+          passed_rules?: number | null
+          started_at?: string
+          status?: string
+          total_rules?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          app_id?: string
+          completed_at?: string | null
+          created_at?: string
+          failed_rules?: number | null
+          id?: string
+          passed_rules?: number | null
+          started_at?: string
+          status?: string
+          total_rules?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       log_monitoring_alerts: {
         Row: {
           alert_type: string
