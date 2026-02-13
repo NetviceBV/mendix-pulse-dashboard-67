@@ -1,0 +1,1 @@
+ALTER TABLE public.linting_policies ADD COLUMN directory text;

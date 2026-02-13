@@ -15,6 +15,7 @@ interface LintingPolicy {
   description: string | null;
   severity: string | null;
   is_enabled: boolean;
+  directory: string | null;
 }
 
 const severityColor = (severity: string | null) => {
@@ -148,7 +149,11 @@ export default function LintingSettings() {
           </CardContent>
         </Card>
       ) : (
-        Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([category, rules]) => {
+        Object.entries(grouped).sort(([, aRules], [, bRules]) => {
+          const aDir = aRules[0]?.directory || '';
+          const bDir = bRules[0]?.directory || '';
+          return aDir.localeCompare(bDir);
+        }).map(([category, rules]) => {
           const allEnabled = rules.every(r => r.is_enabled);
           const noneEnabled = rules.every(r => !r.is_enabled);
 

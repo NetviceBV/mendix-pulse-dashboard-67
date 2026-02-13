@@ -199,6 +199,7 @@ export type Database = {
           category: string
           created_at: string | null
           description: string | null
+          directory: string | null
           id: string
           is_enabled: boolean
           rule_id: string
@@ -211,6 +212,7 @@ export type Database = {
           category: string
           created_at?: string | null
           description?: string | null
+          directory?: string | null
           id?: string
           is_enabled?: boolean
           rule_id: string
@@ -223,6 +225,7 @@ export type Database = {
           category?: string
           created_at?: string | null
           description?: string | null
+          directory?: string | null
           id?: string
           is_enabled?: boolean
           rule_id?: string
