@@ -1,175 +1,62 @@
 
 
-## Plan: Mendix Linting Feature - UI Architecture Design
+## Plan: Tab-Aware "Run Checks" Button
 
-### Current App Card Layout
+### Problem
+The "Run Checks" button currently sits outside the tabs and always triggers OWASP checks, regardless of which tab (OWASP or Linting) is selected.
 
-Each `AppCard` currently shows:
-1. App header (name, version, status)
-2. **OWASP Top 10 grid** (2-column grid of 10 status tiles with a "Run Checks" button)
-3. **Environment collapsibles** (with logs, microflows, vulnerability scan actions)
+### Solution
+Track the active tab and make the "Run Checks" button context-aware -- it runs OWASP checks when on the OWASP tab and linting checks when on the Linting tab.
 
-### Linting Data Structure
+### Changes (single file: `src/components/AppCard.tsx`)
 
-Linting results are hierarchical:
-
-```text
-App
-  +-- Chapter: Project Settings
-  |     +-- Rule: EmptyStringCheckNotComplete (pass/fail)
-  |     +-- Rule: SomeOtherRule (pass/fail)
-  +-- Chapter: Domain Model
-  |     +-- Rule: ...
-  +-- Chapter: Modules
-  +-- Chapter: Pages
-  +-- Chapter: Microflows
+**1. Add active tab state**
+Add a new state variable to track which tab is selected:
+```typescript
+const [activeSecurityTab, setActiveSecurityTab] = useState("owasp");
 ```
 
-This differs from OWASP which is a flat list of 10 items. Linting has **chapters as categories** with **many rules per chapter**.
+**2. Make Tabs controlled**
+Change from `defaultValue="owasp"` to `value={activeSecurityTab}` with `onValueChange={setActiveSecurityTab}`.
 
----
-
-### Proposed UI: Tabbed Security Section in AppCard
-
-Instead of stacking OWASP and Linting vertically (which would make the card very tall), use **tabs** within the existing security section:
-
-```text
-+-------------------------------------------+
-| App Name                          v1.2.3  |
-+-------------------------------------------+
-| [OWASP Top 10] [Linting]     [Run Checks] |
-|                                            |
-|  (tab content here)                        |
-|                                            |
-+-------------------------------------------+
-| > Sandbox  v1.2.3          Running        |
-| > Test     v1.2.3          Stopped        |
-| > Production v1.2.3        Running        |
-+-------------------------------------------+
+**3. Create a linting run handler**
+Add `handleRunLintingChecks` function (placeholder that shows a toast for now, since the linting edge function hasn't been built yet):
+```typescript
+const handleRunLintingChecks = async () => {
+  toast({
+    title: "Run Linting",
+    description: "Linting check execution coming soon...",
+  });
+};
 ```
 
-#### OWASP Tab (existing, unchanged)
-The current 2-column grid of A01-A10 status tiles.
+**4. Update the Run Checks button**
+Make the button's `onClick`, `disabled` state, and label respond to `activeSecurityTab`:
+- OWASP tab: calls `handleRunOwaspChecks` (existing behavior)
+- Linting tab: calls `handleRunLintingChecks`
 
-#### Linting Tab (new)
-Shows chapters as compact rows with aggregate pass/fail counts:
+The button label will show "Run OWASP" or "Run Linting" so the user always knows what will happen when they click.
 
-```text
-+-------------------------------------------+
-| Chapter              Rules   Pass   Fail  |
-|-------------------------------------------|
-| Project Settings      8/8     8      0   [green] |
-| Domain Model          5/7     5      2   [red]   |
-| Modules              12/12   12      0   [green] |
-| Pages                 9/10    9      1   [yellow]|
-| Microflows            6/8     6      2   [red]   |
-+-------------------------------------------+
-| Total: 40/45 rules passed (89%)           |
-+-------------------------------------------+
-```
-
-Clicking a chapter row opens a **Linting Details Dialog** showing all rules within that chapter:
+### Visual Result
 
 ```text
-+--------------------------------------------------+
-| Domain Model - Linting Rules            [x close] |
-|--------------------------------------------------|
-| [pass] EntityNamingConvention                     |
-|        Entity names should follow PascalCase      |
-|                                                   |
-| [fail] EmptyStringCheckNotComplete                |
-|        All string attributes should have...       |
-|        Details: Found 3 entities with empty...    |
-|                                                   |
-| [pass] AssociationNaming                          |
-|        Associations should be named...            |
-|                                                   |
-| [fail] UnusedEntities                             |
-|        Remove entities that are not referenced... |
-|        Details: Entity 'TempData' is unused       |
-+--------------------------------------------------+
+[OWASP Top 10] [Linting]          [Run OWASP]
+  (owasp grid content)
+
+-- or when Linting tab is active --
+
+[OWASP Top 10] [Linting]          [Run Linting]
+  (linting chapter grid)
 ```
 
----
+### Technical Details
 
-### Database Schema (New Tables)
+| What | Detail |
+|------|--------|
+| File modified | `src/components/AppCard.tsx` |
+| New state | `activeSecurityTab` (string) |
+| New function | `handleRunLintingChecks` (placeholder) |
+| Lines affected | ~729-759 (tabs + button area) |
 
-**`linting_runs`** - Tracks each linting execution per app
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| user_id | uuid | FK to auth.users |
-| app_id | text | Mendix project ID |
-| status | text | running, completed, failed |
-| total_rules | integer | Total rules checked |
-| passed_rules | integer | Rules that passed |
-| failed_rules | integer | Rules that failed |
-| started_at | timestamp | Run start time |
-| completed_at | timestamp | Run completion time |
-
-**`linting_results`** - Individual rule results per run
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid | Primary key |
-| user_id | uuid | FK to auth.users |
-| run_id | uuid | FK to linting_runs |
-| app_id | text | Mendix project ID |
-| chapter | text | Category (Project Settings, Domain Model, etc.) |
-| rule_name | text | Rule identifier (EmptyStringCheckNotComplete) |
-| rule_description | text | Human-readable description |
-| status | text | pass, fail, warning |
-| details | text | Failure details/context |
-| severity | text | error, warning, info |
-| checked_at | timestamp | When this rule was evaluated |
-
----
-
-### Component Architecture
-
-| Component | Purpose |
-|-----------|---------|
-| `AppCard.tsx` (modified) | Add Tabs wrapping OWASP grid and new Linting section |
-| `LintingChapterGrid.tsx` (new) | Chapter summary rows with pass/fail counts |
-| `LintingDetailsDialog.tsx` (new) | Rule-level details for a chapter |
-| `useLintingQuery.ts` (new) | React Query hook for fetching linting results |
-
----
-
-### Integration with Existing API
-
-The linting API call would be triggered similarly to OWASP checks:
-- A "Run Linting" button (or shared "Run Checks" button covering both)
-- An edge function (`run-linting-checks`) that calls your external linting API
-- Results stored in `linting_results` table
-- React Query hook fetches and caches results per app
-
----
-
-### Key Design Decisions
-
-1. **Tabs vs. Stacking**: Tabs keep the card compact. Users toggle between OWASP and Linting without scrolling.
-
-2. **Chapter-level summary in card, rule-level in dialog**: Keeps the card scannable while allowing deep-dive via click.
-
-3. **Separate from OWASP**: Linting and OWASP serve different purposes (code quality vs. security). Separate tabs + separate database tables keeps them cleanly decoupled.
-
-4. **Progress bar**: A small progress bar or percentage indicator gives instant visual feedback on overall linting health.
-
-5. **Run history**: The `linting_runs` table enables showing "last run" timestamps and comparing results over time (future enhancement).
-
----
-
-### Summary
-
-The recommended approach is:
-- **Tabbed UI** in AppCard: `[OWASP Top 10] [Linting]`
-- **Chapter-level summaries** as compact rows with pass/fail counts
-- **Click-to-expand** details dialog showing individual rules per chapter
-- **Dedicated database tables** for linting runs and results
-- **React Query hook** for data fetching with caching
-- **Edge function** to call your external linting API
-
-This keeps the UI consistent with existing patterns while accommodating the hierarchical nature of linting rules. Would you like to proceed with implementing this architecture?
+This is a small, focused change -- just wiring the button to the active tab. The actual linting edge function integration can be added later when the API details are provided.
 
