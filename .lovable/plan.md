@@ -1,62 +1,55 @@
 
 
-## Plan: Tab-Aware "Run Checks" Button
+## Plan: Fix Duplicate Credentials and Prevent Future Duplicates
 
-### Problem
-The "Run Checks" button currently sits outside the tabs and always triggers OWASP checks, regardless of which tab (OWASP or Linting) is selected.
+### Root Cause
 
-### Solution
-Track the active tab and make the "Run Checks" button context-aware -- it runs OWASP checks when on the OWASP tab and linting checks when on the Linting tab.
+The `MendixCredentials.tsx` component has a `useEffect` that migrates credentials from `localStorage` to the database. This migration logic has a race condition: it checks `credentials.length === 0` but the parent component's state hasn't been updated yet when React Query data arrives, causing it to run multiple times and insert duplicates.
 
-### Changes (single file: `src/components/AppCard.tsx`)
+Additionally, the component does direct Supabase inserts alongside React Query, creating a dual-write pattern that can produce duplicates.
 
-**1. Add active tab state**
-Add a new state variable to track which tab is selected:
-```typescript
-const [activeSecurityTab, setActiveSecurityTab] = useState("owasp");
+### What Happened
+
+- Your user (`fa7cf1c9-...`) has 4 credentials: 1 original "Erik" from September and 3 duplicates of "Erik 2" created today
+- Two duplicates were created at the exact same second, confirming a re-render triggered duplicate inserts
+
+### OWASP Settings Status
+
+Your OWASP items (A01-A10) are all present and correct. The "empty" appearance is because most categories have no validation steps configured yet (only A01 has 1 step: "Check public endpoints"). This is not a data loss issue -- it matches your screenshot.
+
+### Fix Steps
+
+#### 1. Clean up duplicate credentials (database)
+
+Delete the 2 duplicate "Erik 2" entries, keeping only the oldest one:
+
+```sql
+DELETE FROM mendix_credentials
+WHERE id IN (
+  'e9cad285-4b3e-4300-8b40-bc5674e74f11',
+  'b052d186-d288-44a8-8b43-ef5739db8000'
+);
 ```
 
-**2. Make Tabs controlled**
-Change from `defaultValue="owasp"` to `value={activeSecurityTab}` with `onValueChange={setActiveSecurityTab}`.
+This leaves you with the original "Erik" and one "Erik 2".
 
-**3. Create a linting run handler**
-Add `handleRunLintingChecks` function (placeholder that shows a toast for now, since the linting edge function hasn't been built yet):
-```typescript
-const handleRunLintingChecks = async () => {
-  toast({
-    title: "Run Linting",
-    description: "Linting check execution coming soon...",
-  });
-};
-```
+#### 2. Remove the localStorage migration code from MendixCredentials.tsx
 
-**4. Update the Run Checks button**
-Make the button's `onClick`, `disabled` state, and label respond to `activeSecurityTab`:
-- OWASP tab: calls `handleRunOwaspChecks` (existing behavior)
-- Linting tab: calls `handleRunLintingChecks`
+The migration `useEffect` (lines ~63-92) is no longer needed -- credentials are already stored in Supabase. Remove it entirely to prevent future duplicate inserts.
 
-The button label will show "Run OWASP" or "Run Linting" so the user always knows what will happen when they click.
+#### 3. Add a unique constraint to prevent duplicates at the database level
 
-### Visual Result
+Add a unique constraint on `(user_id, name, username)` to the `mendix_credentials` table so the database itself rejects duplicate entries.
 
-```text
-[OWASP Top 10] [Linting]          [Run OWASP]
-  (owasp grid content)
+### Files to Modify
 
--- or when Linting tab is active --
-
-[OWASP Top 10] [Linting]          [Run Linting]
-  (linting chapter grid)
-```
-
-### Technical Details
-
-| What | Detail |
+| File | Change |
 |------|--------|
-| File modified | `src/components/AppCard.tsx` |
-| New state | `activeSecurityTab` (string) |
-| New function | `handleRunLintingChecks` (placeholder) |
-| Lines affected | ~729-759 (tabs + button area) |
+| Database | Delete 2 duplicate credential rows |
+| Database | Add unique constraint on mendix_credentials |
+| `src/components/MendixCredentials.tsx` | Remove localStorage migration useEffect |
 
-This is a small, focused change -- just wiring the button to the active tab. The actual linting edge function integration can be added later when the API details are provided.
+### Technical Notes
 
+- The `useCredentialsQuery` hook already handles data fetching via React Query, so the migration code is redundant
+- The unique constraint uses `(user_id, name, username)` since a user shouldn't have two credentials with the same name and username
