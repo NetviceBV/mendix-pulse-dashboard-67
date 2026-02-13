@@ -60,9 +60,9 @@ Deno.serve(async (req) => {
     }
 
     const policiesData = await response.json()
-    console.log(`Received policies data with ${Object.keys(policiesData).length} categories`)
+    const categories = policiesData.categories || []
+    console.log(`Received ${categories.length} categories, totalRules: ${policiesData.totalRules}`)
 
-    // Parse the response: { "category_name": [{ id, title, description, severity }, ...], ... }
     const rows: Array<{
       user_id: string
       rule_id: string
@@ -73,13 +73,13 @@ Deno.serve(async (req) => {
       is_enabled: boolean
     }> = []
 
-    for (const [category, rules] of Object.entries(policiesData)) {
-      if (!Array.isArray(rules)) continue
-      for (const rule of rules as Array<{ id: string; title: string; description?: string; severity?: string }>) {
+    for (const cat of categories) {
+      const categoryId = cat.id
+      for (const rule of (cat.rules || [])) {
         rows.push({
           user_id: user.id,
           rule_id: rule.id,
-          category,
+          category: categoryId,
           title: rule.title,
           description: rule.description || null,
           severity: rule.severity || null,
