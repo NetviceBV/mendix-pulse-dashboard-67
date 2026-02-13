@@ -201,7 +201,7 @@ export default function LintingSettings() {
                         )}
                       </div>
                       {rule.description && (
-                        <p className="text-xs text-muted-foreground mt-0.5 truncate">{rule.description}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{rule.description}</p>
                       )}
                     </div>
                     <Switch
