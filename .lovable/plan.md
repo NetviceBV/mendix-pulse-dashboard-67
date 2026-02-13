@@ -1,402 +1,175 @@
 
-## Plan: Implement React Query for Data Fetching with Loading Skeletons
 
-### Problem Summary
-The application currently uses manual state management (`useState` + `useEffect`) for data fetching across multiple pages, which leads to:
-- No automatic caching or request deduplication
-- Manual loading state management
-- No automatic background refetching
-- Spinner-based loading states that cause layout shifts
+## Plan: Mendix Linting Feature - UI Architecture Design
 
-### Current Architecture
+### Current App Card Layout
 
-| Page/Component | Data Fetched | Current Pattern |
-|----------------|--------------|-----------------|
-| `Dashboard.tsx` | `mendix_apps`, `mendix_environments` | `useState` + `useEffect` + `fetchAppsData()` |
-| `CloudActions.tsx` | `cloud_actions`, `mendix_apps` | `useState` + `useEffect` + `load()` |
-| `Settings.tsx` | User auth check | `useState` + `useEffect` |
-| `MendixCredentials.tsx` | `mendix_credentials` | `useState` + `useEffect` |
-| `AppCard.tsx` | Error counts, OWASP data | `useState` + `useEffect` |
+Each `AppCard` currently shows:
+1. App header (name, version, status)
+2. **OWASP Top 10 grid** (2-column grid of 10 status tiles with a "Run Checks" button)
+3. **Environment collapsibles** (with logs, microflows, vulnerability scan actions)
 
-### Existing Infrastructure
-- **React Query is already installed** (`@tanstack/react-query ^5.56.2`)
-- **QueryClientProvider is configured** in `App.tsx` (line 14)
-- **Skeleton component exists** in `src/components/ui/skeleton.tsx`
+### Linting Data Structure
 
-### Solution Overview
+Linting results are hierarchical:
 
-1. **Create custom React Query hooks** for each data domain
-2. **Replace manual data fetching** with React Query hooks
-3. **Add skeleton components** for better perceived performance
-4. **Maintain real-time subscriptions** alongside React Query
+```text
+App
+  +-- Chapter: Project Settings
+  |     +-- Rule: EmptyStringCheckNotComplete (pass/fail)
+  |     +-- Rule: SomeOtherRule (pass/fail)
+  +-- Chapter: Domain Model
+  |     +-- Rule: ...
+  +-- Chapter: Modules
+  +-- Chapter: Pages
+  +-- Chapter: Microflows
+```
+
+This differs from OWASP which is a flat list of 10 items. Linting has **chapters as categories** with **many rules per chapter**.
 
 ---
 
-### Implementation Details
+### Proposed UI: Tabbed Security Section in AppCard
 
-#### Step 1: Create Query Key Constants
+Instead of stacking OWASP and Linting vertically (which would make the card very tall), use **tabs** within the existing security section:
 
-Create `src/lib/queryKeys.ts` to centralize query keys for cache management:
-
-```typescript
-export const queryKeys = {
-  apps: ['apps'] as const,
-  environments: ['environments'] as const,
-  appsWithEnvironments: ['apps-with-environments'] as const,
-  cloudActions: ['cloud-actions'] as const,
-  credentials: ['credentials'] as const,
-  webhookLogs: (appId: string, env: string) => ['webhook-logs', appId, env] as const,
-  owaspItems: (appId: string) => ['owasp-items', appId] as const,
-  vulnerabilities: (appId: string) => ['vulnerabilities', appId] as const,
-};
+```text
++-------------------------------------------+
+| App Name                          v1.2.3  |
++-------------------------------------------+
+| [OWASP Top 10] [Linting]     [Run Checks] |
+|                                            |
+|  (tab content here)                        |
+|                                            |
++-------------------------------------------+
+| > Sandbox  v1.2.3          Running        |
+| > Test     v1.2.3          Stopped        |
+| > Production v1.2.3        Running        |
++-------------------------------------------+
 ```
 
-#### Step 2: Create Custom Hooks
+#### OWASP Tab (existing, unchanged)
+The current 2-column grid of A01-A10 status tiles.
 
-**File: `src/hooks/useAppsQuery.ts`**
+#### Linting Tab (new)
+Shows chapters as compact rows with aggregate pass/fail counts:
 
-```typescript
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { queryKeys } from '@/lib/queryKeys';
-import { MendixApp } from '@/components/AppCard';
-
-export function useAppsQuery() {
-  return useQuery({
-    queryKey: queryKeys.appsWithEnvironments,
-    queryFn: async () => {
-      const [appsResult, environmentsResult] = await Promise.all([
-        supabase.from('mendix_apps').select('*').order('created_at', { ascending: false }),
-        supabase.from('mendix_environments').select('*')
-      ]);
-
-      if (appsResult.error) throw appsResult.error;
-
-      const appsData = appsResult.data || [];
-      const environmentsData = environmentsResult.data || [];
-
-      const environmentsByAppId = environmentsData.reduce((acc, env) => {
-        const appId = env.app_id;
-        if (!acc[appId]) acc[appId] = [];
-        acc[appId].push(env);
-        return acc;
-      }, {} as Record<string, typeof environmentsData>);
-
-      return appsData.map(app => ({
-        ...app,
-        environments: environmentsByAppId[app.project_id || ''] || []
-      })) as MendixApp[];
-    },
-    staleTime: 30_000, // Data fresh for 30 seconds
-    gcTime: 5 * 60_000, // Keep in cache for 5 minutes
-  });
-}
+```text
++-------------------------------------------+
+| Chapter              Rules   Pass   Fail  |
+|-------------------------------------------|
+| Project Settings      8/8     8      0   [green] |
+| Domain Model          5/7     5      2   [red]   |
+| Modules              12/12   12      0   [green] |
+| Pages                 9/10    9      1   [yellow]|
+| Microflows            6/8     6      2   [red]   |
++-------------------------------------------+
+| Total: 40/45 rules passed (89%)           |
++-------------------------------------------+
 ```
 
-**File: `src/hooks/useCloudActionsQuery.ts`**
+Clicking a chapter row opens a **Linting Details Dialog** showing all rules within that chapter:
 
-```typescript
-import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { queryKeys } from '@/lib/queryKeys';
-import { CloudActionRow, App } from '@/types/cloudActions';
-
-export function useCloudActionsQuery() {
-  return useQuery({
-    queryKey: queryKeys.cloudActions,
-    queryFn: async () => {
-      const [actionsResult, appsResult] = await Promise.all([
-        supabase.from('cloud_actions').select('*').order('created_at', { ascending: false }).limit(200),
-        supabase.from('mendix_apps').select('id, app_id, app_name, credential_id, project_id')
-      ]);
-
-      return {
-        actions: (actionsResult.data || []) as CloudActionRow[],
-        apps: (appsResult.data || []) as App[]
-      };
-    },
-    staleTime: 10_000,
-  });
-}
-```
-
-**File: `src/hooks/useCredentialsQuery.ts`**
-
-```typescript
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { queryKeys } from '@/lib/queryKeys';
-
-export function useCredentialsQuery() {
-  return useQuery({
-    queryKey: queryKeys.credentials,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('mendix_credentials')
-        .select('*')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data || [];
-    },
-  });
-}
-
-export function useAddCredentialMutation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (credential: { name: string; username: string; api_key: string; pat: string }) => {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) throw new Error('Not authenticated');
-      
-      const { data, error } = await supabase
-        .from('mendix_credentials')
-        .insert({ user_id: user.user.id, ...credential })
-        .select()
-        .single();
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.credentials });
-    },
-  });
-}
-```
-
-#### Step 3: Create Skeleton Components
-
-**File: `src/components/AppCardSkeleton.tsx`**
-
-```typescript
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-
-export function AppCardSkeleton() {
-  return (
-    <Card className="bg-gradient-card border-border">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Skeleton className="h-10 w-10 rounded-lg" />
-            <div className="space-y-2">
-              <Skeleton className="h-5 w-32" />
-              <Skeleton className="h-4 w-24" />
-            </div>
-          </div>
-          <Skeleton className="h-6 w-16 rounded-full" />
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Skeleton className="h-4 w-20" />
-            <Skeleton className="h-4 w-28" />
-          </div>
-          <div className="space-y-2">
-            <Skeleton className="h-4 w-20" />
-            <Skeleton className="h-4 w-24" />
-          </div>
-        </div>
-        <div className="space-y-2">
-          <Skeleton className="h-12 w-full rounded-lg" />
-          <Skeleton className="h-12 w-full rounded-lg" />
-        </div>
-        <div className="flex gap-2">
-          <Skeleton className="h-9 w-24" />
-          <Skeleton className="h-9 w-24" />
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-```
-
-**File: `src/components/CloudActionTableSkeleton.tsx`**
-
-```typescript
-import { TableRow, TableCell } from "@/components/ui/table";
-import { Skeleton } from "@/components/ui/skeleton";
-
-export function CloudActionTableSkeleton({ rows = 5 }: { rows?: number }) {
-  return (
-    <>
-      {Array.from({ length: rows }).map((_, i) => (
-        <TableRow key={i}>
-          <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-28" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-          <TableCell><Skeleton className="h-6 w-20 rounded" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-          <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-          <TableCell className="text-right">
-            <div className="flex justify-end gap-2">
-              <Skeleton className="h-8 w-16" />
-              <Skeleton className="h-8 w-20" />
-            </div>
-          </TableCell>
-        </TableRow>
-      ))}
-    </>
-  );
-}
-```
-
-**File: `src/components/DashboardSkeleton.tsx`**
-
-```typescript
-import { Skeleton } from "@/components/ui/skeleton";
-import { AppCardSkeleton } from "./AppCardSkeleton";
-
-export function DashboardSkeleton() {
-  return (
-    <div className="space-y-6">
-      {/* Search skeleton */}
-      <div className="relative max-w-md">
-        <Skeleton className="h-10 w-full" />
-      </div>
-      
-      {/* Tabs skeleton */}
-      <div className="space-y-4">
-        <Skeleton className="h-10 w-full max-w-md" />
-        
-        {/* Grid of app cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <AppCardSkeleton key={i} />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-```
-
-#### Step 4: Update Dashboard Component
-
-Replace the manual fetching with React Query:
-
-```typescript
-// Before
-const [apps, setApps] = useState<MendixApp[]>([]);
-const [loading, setLoading] = useState(true);
-
-useEffect(() => {
-  fetchAppsData(false);
-}, []);
-
-// After
-import { useAppsQuery } from "@/hooks/useAppsQuery";
-import { DashboardSkeleton } from "@/components/DashboardSkeleton";
-
-const { data: apps = [], isLoading, refetch } = useAppsQuery();
-
-// Remove fetchAppsData function
-// Replace loading spinner with skeleton
-if (isLoading) {
-  return (
-    <div className="min-h-screen bg-background">
-      <header>...</header>
-      <div className="container mx-auto px-4 py-6">
-        <DashboardSkeleton />
-      </div>
-    </div>
-  );
-}
-```
-
-#### Step 5: Update CloudActions Page
-
-```typescript
-// Before
-const [loading, setLoading] = useState(true);
-const [actions, setActions] = useState<CloudActionRow[]>([]);
-const [apps, setApps] = useState<App[]>([]);
-
-// After
-import { useCloudActionsQuery } from "@/hooks/useCloudActionsQuery";
-import { CloudActionTableSkeleton } from "@/components/CloudActionTableSkeleton";
-
-const { data, isLoading, refetch } = useCloudActionsQuery();
-const actions = data?.actions || [];
-const apps = data?.apps || [];
-
-// In table body
-{isLoading && <CloudActionTableSkeleton rows={5} />}
-```
-
-#### Step 6: Integrate with Real-time Subscriptions
-
-Real-time subscriptions will invalidate React Query cache on changes:
-
-```typescript
-useEffect(() => {
-  const channel = supabase
-    .channel('schema-db-changes')
-    .on('postgres_changes', {
-      event: '*',
-      schema: 'public',
-      table: 'mendix_apps'
-    }, () => {
-      // Invalidate cache to trigger refetch
-      queryClient.invalidateQueries({ queryKey: queryKeys.appsWithEnvironments });
-    })
-    .subscribe();
-
-  return () => supabase.removeChannel(channel);
-}, [queryClient]);
+```text
++--------------------------------------------------+
+| Domain Model - Linting Rules            [x close] |
+|--------------------------------------------------|
+| [pass] EntityNamingConvention                     |
+|        Entity names should follow PascalCase      |
+|                                                   |
+| [fail] EmptyStringCheckNotComplete                |
+|        All string attributes should have...       |
+|        Details: Found 3 entities with empty...    |
+|                                                   |
+| [pass] AssociationNaming                          |
+|        Associations should be named...            |
+|                                                   |
+| [fail] UnusedEntities                             |
+|        Remove entities that are not referenced... |
+|        Details: Entity 'TempData' is unused       |
++--------------------------------------------------+
 ```
 
 ---
 
-### Files to Create
+### Database Schema (New Tables)
 
-| File | Purpose |
-|------|---------|
-| `src/lib/queryKeys.ts` | Centralized query key management |
-| `src/hooks/useAppsQuery.ts` | Dashboard apps data fetching |
-| `src/hooks/useCloudActionsQuery.ts` | Cloud actions data fetching |
-| `src/hooks/useCredentialsQuery.ts` | Credentials CRUD operations |
-| `src/components/AppCardSkeleton.tsx` | App card loading skeleton |
-| `src/components/CloudActionTableSkeleton.tsx` | Cloud actions table skeleton |
-| `src/components/DashboardSkeleton.tsx` | Full dashboard loading skeleton |
+**`linting_runs`** - Tracks each linting execution per app
 
-### Files to Modify
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| user_id | uuid | FK to auth.users |
+| app_id | text | Mendix project ID |
+| status | text | running, completed, failed |
+| total_rules | integer | Total rules checked |
+| passed_rules | integer | Rules that passed |
+| failed_rules | integer | Rules that failed |
+| started_at | timestamp | Run start time |
+| completed_at | timestamp | Run completion time |
 
-| File | Changes |
-|------|---------|
-| `src/pages/Dashboard.tsx` | Replace manual fetching with `useAppsQuery`, add skeleton loading |
-| `src/pages/CloudActions.tsx` | Replace manual fetching with `useCloudActionsQuery`, add skeleton |
-| `src/components/MendixCredentials.tsx` | Replace manual fetching with `useCredentialsQuery` |
+**`linting_results`** - Individual rule results per run
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid | Primary key |
+| user_id | uuid | FK to auth.users |
+| run_id | uuid | FK to linting_runs |
+| app_id | text | Mendix project ID |
+| chapter | text | Category (Project Settings, Domain Model, etc.) |
+| rule_name | text | Rule identifier (EmptyStringCheckNotComplete) |
+| rule_description | text | Human-readable description |
+| status | text | pass, fail, warning |
+| details | text | Failure details/context |
+| severity | text | error, warning, info |
+| checked_at | timestamp | When this rule was evaluated |
 
 ---
 
-### Benefits
+### Component Architecture
 
-| Benefit | Description |
-|---------|-------------|
-| **Automatic Caching** | Data cached for 30 seconds, reducing redundant API calls |
-| **Request Deduplication** | Multiple components requesting same data share one request |
-| **Background Refetching** | Data refreshed automatically when returning to page |
-| **Better UX** | Skeleton loaders maintain layout during loading, no layout shifts |
-| **Simpler Code** | ~50% reduction in data fetching boilerplate per component |
-| **DevTools** | React Query DevTools available for debugging cache state |
+| Component | Purpose |
+|-----------|---------|
+| `AppCard.tsx` (modified) | Add Tabs wrapping OWASP grid and new Linting section |
+| `LintingChapterGrid.tsx` (new) | Chapter summary rows with pass/fail counts |
+| `LintingDetailsDialog.tsx` (new) | Rule-level details for a chapter |
+| `useLintingQuery.ts` (new) | React Query hook for fetching linting results |
 
-### Configuration
+---
 
-The QueryClient in `App.tsx` can be enhanced with default options:
+### Integration with Existing API
 
-```typescript
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 30_000, // 30 seconds
-      gcTime: 5 * 60_000, // 5 minutes
-      retry: 2,
-      refetchOnWindowFocus: true,
-    },
-  },
-});
-```
+The linting API call would be triggered similarly to OWASP checks:
+- A "Run Linting" button (or shared "Run Checks" button covering both)
+- An edge function (`run-linting-checks`) that calls your external linting API
+- Results stored in `linting_results` table
+- React Query hook fetches and caches results per app
+
+---
+
+### Key Design Decisions
+
+1. **Tabs vs. Stacking**: Tabs keep the card compact. Users toggle between OWASP and Linting without scrolling.
+
+2. **Chapter-level summary in card, rule-level in dialog**: Keeps the card scannable while allowing deep-dive via click.
+
+3. **Separate from OWASP**: Linting and OWASP serve different purposes (code quality vs. security). Separate tabs + separate database tables keeps them cleanly decoupled.
+
+4. **Progress bar**: A small progress bar or percentage indicator gives instant visual feedback on overall linting health.
+
+5. **Run history**: The `linting_runs` table enables showing "last run" timestamps and comparing results over time (future enhancement).
+
+---
+
+### Summary
+
+The recommended approach is:
+- **Tabbed UI** in AppCard: `[OWASP Top 10] [Linting]`
+- **Chapter-level summaries** as compact rows with pass/fail counts
+- **Click-to-expand** details dialog showing individual rules per chapter
+- **Dedicated database tables** for linting runs and results
+- **React Query hook** for data fetching with caching
+- **Edge function** to call your external linting API
+
+This keeps the UI consistent with existing patterns while accommodating the hierarchical nature of linting rules. Would you like to proceed with implementing this architecture?
+
