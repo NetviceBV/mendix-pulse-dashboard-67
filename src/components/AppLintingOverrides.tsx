@@ -260,6 +260,9 @@ export function AppLintingOverrides({ appId, appName }: AppLintingOverridesProps
                           </Badge>
                         )}
                       </div>
+                      {rule.description && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{rule.description}</p>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 ml-4 shrink-0">
                       {overridden && (
