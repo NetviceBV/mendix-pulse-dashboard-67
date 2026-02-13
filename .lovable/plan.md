@@ -1,49 +1,34 @@
 
 
-## Fix: Parse Correct API Response Structure for Linting Policies
+## Keep Linting Policies in Sync with Analyzer API
 
 ### Problem
-The edge function assumes the API returns `{ "category_name": [rules] }` but the actual response is nested differently:
-```json
-{
-  "totalRules": 22,
-  "categories": [
-    {
-      "id": "project_settings",
-      "rules": [
-        { "id": "001_0001", "title": "...", "description": "...", "severity": "HIGH", "category": "Security" }
-      ]
-    }
-  ]
-}
-```
+When rules are removed from the Analyzer API, they remain in the database as stale entries.
 
-### Fix
+### Solution
+After upserting the current rules from the API, delete any rules for this user that were NOT in the API response. This ensures the database is always a mirror of the API's rule set (with user's `is_enabled` preferences preserved for existing rules).
+
+### Technical Details
 
 **File: `supabase/functions/fetch-linting-policies/index.ts`**
 
-Replace the parsing logic (the `for` loop that iterates over `Object.entries(policiesData)`) with correct traversal of the `categories` array:
+After the upsert logic (around line 100, before fetching all policies), add a cleanup step:
 
 ```typescript
-const policiesData = await response.json()
-const categories = policiesData.categories || []
+// Remove rules that no longer exist in the API
+const currentRuleIds = rows.map(r => r.rule_id)
+if (currentRuleIds.length > 0) {
+  const { error: deleteError } = await supabase
+    .from('linting_policies')
+    .delete()
+    .eq('user_id', user.id)
+    .not('rule_id', 'in', `(${currentRuleIds.join(',')})`)
 
-const rows = []
-for (const cat of categories) {
-  const categoryId = cat.id  // e.g. "project_settings"
-  for (const rule of (cat.rules || [])) {
-    rows.push({
-      user_id: user.id,
-      rule_id: rule.id,           // e.g. "001_0001"
-      category: categoryId,       // e.g. "project_settings"
-      title: rule.title,
-      description: rule.description || null,
-      severity: rule.severity || null,
-      is_enabled: true,
-    })
+  if (deleteError) {
+    console.error('Cleanup error:', deleteError)
   }
 }
 ```
 
-No other files need to change. After deploying, the "Fetch Available Rules" button will correctly parse all 22 rules and display them grouped by category.
+This runs after every fetch, so the database always reflects exactly what the API returns. No other files need to change.
 
