@@ -1,34 +1,22 @@
 
 
-## Keep Linting Policies in Sync with Analyzer API
+## Sort Linting Rules by Directory (A-Z)
 
-### Problem
-When rules are removed from the Analyzer API, they remain in the database as stale entries.
+### What Changes
+The API response includes a `directory` field per category (e.g., `001_project_settings`, `002_domain_model`) which provides a natural sort order. We'll store this field and use it for sorting.
 
-### Solution
-After upserting the current rules from the API, delete any rules for this user that were NOT in the API response. This ensures the database is always a mirror of the API's rule set (with user's `is_enabled` preferences preserved for existing rules).
+### Steps
 
-### Technical Details
+1. **Add `directory` column to `linting_policies` table**
+   - Run migration: `ALTER TABLE linting_policies ADD COLUMN directory text;`
 
-**File: `supabase/functions/fetch-linting-policies/index.ts`**
+2. **Update edge function to store `directory`**
+   - In `supabase/functions/fetch-linting-policies/index.ts`, add `directory: cat.directory` to each row in the parsing loop
+   - Update the final query to order by `directory` then `rule_id`
 
-After the upsert logic (around line 100, before fetching all policies), add a cleanup step:
+3. **Update frontend sorting**
+   - In `src/components/LintingSettings.tsx`, the grouped categories are currently sorted alphabetically by category name. Update to sort by `directory` instead, so categories appear in the correct numeric order (001, 002, 003...).
 
-```typescript
-// Remove rules that no longer exist in the API
-const currentRuleIds = rows.map(r => r.rule_id)
-if (currentRuleIds.length > 0) {
-  const { error: deleteError } = await supabase
-    .from('linting_policies')
-    .delete()
-    .eq('user_id', user.id)
-    .not('rule_id', 'in', `(${currentRuleIds.join(',')})`)
-
-  if (deleteError) {
-    console.error('Cleanup error:', deleteError)
-  }
-}
-```
-
-This runs after every fetch, so the database always reflects exactly what the API returns. No other files need to change.
+### Result
+Categories will display in order: Project Settings, Domain Model, Modules, Pages, Microflows, Custom -- matching the API's directory numbering.
 
