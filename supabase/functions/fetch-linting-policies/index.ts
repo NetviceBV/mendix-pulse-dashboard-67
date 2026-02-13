@@ -71,10 +71,12 @@ Deno.serve(async (req) => {
       description: string | null
       severity: string | null
       is_enabled: boolean
+      directory: string | null
     }> = []
 
     for (const cat of categories) {
       const categoryId = cat.id
+      const categoryDirectory = cat.directory || null
       for (const rule of (cat.rules || [])) {
         rows.push({
           user_id: user.id,
@@ -84,6 +86,7 @@ Deno.serve(async (req) => {
           description: rule.description || null,
           severity: rule.severity || null,
           is_enabled: true,
+          directory: categoryDirectory,
         })
       }
     }
@@ -117,7 +120,7 @@ Deno.serve(async (req) => {
             // Update metadata only
             await supabase
               .from('linting_policies')
-              .update({ category: row.category, title: row.title, description: row.description, severity: row.severity })
+              .update({ category: row.category, title: row.title, description: row.description, severity: row.severity, directory: row.directory })
               .eq('id', existing.id)
           } else {
             // Insert new rule
@@ -146,7 +149,7 @@ Deno.serve(async (req) => {
       .from('linting_policies')
       .select('*')
       .eq('user_id', user.id)
-      .order('category')
+      .order('directory')
       .order('rule_id')
 
     if (fetchError) {
