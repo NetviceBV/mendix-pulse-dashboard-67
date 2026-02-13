@@ -57,43 +57,6 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
     }
   }, [queryCredentials, onCredentialsChange]);
 
-  // Migrate existing localStorage credentials to database
-  useEffect(() => {
-    const migrateLocalStorageCredentials = async () => {
-      const savedCredentials = localStorage.getItem('mendix-credentials');
-      if (savedCredentials && credentials.length === 0) {
-        try {
-          const localCredentials = JSON.parse(savedCredentials);
-          if (localCredentials.length > 0) {
-            // Migrate each credential to database
-            for (const cred of localCredentials) {
-              await supabase
-                .from('mendix_credentials')
-                .insert({
-                  user_id: (await supabase.auth.getUser()).data.user?.id,
-                  name: cred.name,
-                  username: cred.username,
-                  api_key: cred.apiKey,
-                  pat: cred.pat
-                });
-            }
-            // Clear localStorage after successful migration
-            localStorage.removeItem('mendix-credentials');
-            // Invalidate query to refetch
-            queryClient.invalidateQueries({ queryKey: queryKeys.credentials });
-            toast({
-              title: "Credentials migrated",
-              description: "Your existing credentials have been moved to secure storage"
-            });
-          }
-        } catch (error) {
-          console.error('Migration failed:', error);
-        }
-      }
-    };
-
-    migrateLocalStorageCredentials();
-  }, [credentials.length, queryClient, toast]);
 
   const handleAddCredential = async () => {
     if (!newCredential.name || !newCredential.username || !newCredential.api_key || !newCredential.pat) {
