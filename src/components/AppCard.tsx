@@ -752,16 +752,6 @@ const AppCard = ({
                 </TabsTrigger>
               </TabsList>
               <div className="flex items-center gap-1.5">
-                {activeSecurityTab === "linting" && (
-                  <>
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setIsLintingHistoryOpen(true)} title="Run History">
-                      <History className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setIsLintingOverridesOpen(true)} title="Linting Settings">
-                      <Settings2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </>
-                )}
                 <Button
                   size="sm"
                   variant="outline"
@@ -839,6 +829,14 @@ const AppCard = ({
 
             {/* Linting Tab Content */}
             <TabsContent value="linting" className="mt-0 space-y-4">
+              <div className="flex items-center justify-end gap-1.5 mb-2">
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setIsLintingHistoryOpen(true)} title="Run History">
+                  <History className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setIsLintingOverridesOpen(true)} title="Linting Settings">
+                  <Settings2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
               <LintingChapterGrid
                 data={lintingData || { run: null, results: [], chapters: [] }}
                 isLoading={lintingLoading}
