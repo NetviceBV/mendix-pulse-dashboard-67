@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
 import { supabase } from "@/integrations/supabase/client";
-import { Activity, AlertTriangle, CheckCircle, XCircle, ExternalLink, Clock, Users, Code, Loader2, ChevronDown, RefreshCw, FileText, Copy, Check, Shield, Play, FileCode } from "lucide-react";
+import { Activity, AlertTriangle, CheckCircle, XCircle, ExternalLink, Clock, Users, Code, Loader2, ChevronDown, RefreshCw, FileText, Copy, Check, Shield, Play, FileCode, Settings2, History } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import LogsViewer from "./LogsViewer";
@@ -15,11 +15,13 @@ import { useMendixOperations } from "@/hooks/useMendixOperations";
 import { MicroflowsDialog, type MicroflowsResponse } from "./MicroflowsDialog";
 import { toast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { OWASPDetailsDialog, OWASPItem } from "./OWASPDetailsDialog";
 import { useLintingQuery } from "@/hooks/useLintingQuery";
 import { LintingChapterGrid } from "./LintingChapterGrid";
 import { LintingDetailsDialog } from "./LintingDetailsDialog";
 import { AppLintingOverrides } from "./AppLintingOverrides";
+import { LintingRunHistory } from "./LintingRunHistory";
 export interface MendixEnvironment {
   id: string;
   environment_id: string | null;
@@ -131,6 +133,8 @@ const AppCard = ({
   // Linting state
   const [selectedLintingChapter, setSelectedLintingChapter] = useState<string | null>(null);
   const [isLintingDialogOpen, setIsLintingDialogOpen] = useState(false);
+  const [isLintingOverridesOpen, setIsLintingOverridesOpen] = useState(false);
+  const [isLintingHistoryOpen, setIsLintingHistoryOpen] = useState(false);
   const [activeSecurityTab, setActiveSecurityTab] = useState("owasp");
   const { data: lintingData, isLoading: lintingLoading } = useLintingQuery(app.app_id);
   
@@ -747,25 +751,37 @@ const AppCard = ({
                   Linting
                 </TabsTrigger>
               </TabsList>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={activeSecurityTab === "owasp" ? handleRunOwaspChecks : handleRunLintingChecks}
-                disabled={activeSecurityTab === "owasp" ? (runningOwaspChecks || owaspLoading) : false}
-                className="h-7"
-              >
-                {runningOwaspChecks && activeSecurityTab === "owasp" ? (
+              <div className="flex items-center gap-1.5">
+                {activeSecurityTab === "linting" && (
                   <>
-                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                    Running...
-                  </>
-                ) : (
-                  <>
-                    <Play className="h-3 w-3 mr-1" />
-                    {activeSecurityTab === "owasp" ? "Run OWASP" : "Run Linting"}
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setIsLintingHistoryOpen(true)} title="Run History">
+                      <History className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setIsLintingOverridesOpen(true)} title="Linting Settings">
+                      <Settings2 className="h-3.5 w-3.5" />
+                    </Button>
                   </>
                 )}
-              </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={activeSecurityTab === "owasp" ? handleRunOwaspChecks : handleRunLintingChecks}
+                  disabled={activeSecurityTab === "owasp" ? (runningOwaspChecks || owaspLoading) : false}
+                  className="h-7"
+                >
+                  {runningOwaspChecks && activeSecurityTab === "owasp" ? (
+                    <>
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      Running...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="h-3 w-3 mr-1" />
+                      {activeSecurityTab === "owasp" ? "Run OWASP" : "Run Linting"}
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
 
             {/* OWASP Tab Content */}
@@ -831,7 +847,6 @@ const AppCard = ({
                   setIsLintingDialogOpen(true);
                 }}
               />
-              <AppLintingOverrides appId={app.app_id} appName={app.app_name} />
             </TabsContent>
           </Tabs>
         </div>
@@ -1101,6 +1116,24 @@ const AppCard = ({
           results={lintingData?.results || []}
         />
       )}
+
+      {/* Linting Overrides Dialog */}
+      <Dialog open={isLintingOverridesOpen} onOpenChange={setIsLintingOverridesOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Linting Rule Overrides</DialogTitle>
+            <DialogDescription>Override global linting rules for {app.app_name}</DialogDescription>
+          </DialogHeader>
+          <AppLintingOverrides appId={app.app_id} appName={app.app_name} />
+        </DialogContent>
+      </Dialog>
+
+      {/* Linting Run History Dialog */}
+      <LintingRunHistory
+        appId={app.app_id}
+        open={isLintingHistoryOpen}
+        onOpenChange={setIsLintingHistoryOpen}
+      />
     </Card>;
 };
 export default AppCard;
