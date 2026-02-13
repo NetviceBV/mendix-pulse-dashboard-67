@@ -7,4 +7,5 @@ export const queryKeys = {
   webhookLogs: (appId: string, env: string) => ['webhook-logs', appId, env] as const,
   owaspItems: (appId: string) => ['owasp-items', appId] as const,
   vulnerabilities: (appId: string) => ['vulnerabilities', appId] as const,
+  linting: (appId: string) => ['linting', appId] as const,
 };
