@@ -138,7 +138,7 @@ const AppCard = ({
   const [isLintingHistoryOpen, setIsLintingHistoryOpen] = useState(false);
   const [activeSecurityTab, setActiveSecurityTab] = useState("owasp");
   const [runningLintingChecks, setRunningLintingChecks] = useState(false);
-  const { data: lintingData, isLoading: lintingLoading } = useLintingQuery(app.app_id);
+  const { data: lintingData, isLoading: lintingLoading } = useLintingQuery(app.project_id);
   const queryClient = useQueryClient();
   
   const {
@@ -646,8 +646,8 @@ const AppCard = ({
               title: "Linting Complete",
               description: `${runData.passed_rules} passed, ${runData.failed_rules} failed out of ${runData.total_rules} rules.`,
             });
-            queryClient.invalidateQueries({ queryKey: ['linting', app.app_id] });
-            queryClient.invalidateQueries({ queryKey: ['linting-runs', app.app_id] });
+            queryClient.invalidateQueries({ queryKey: ['linting', app.project_id] });
+            queryClient.invalidateQueries({ queryKey: ['linting-runs', app.project_id] });
           } else if (runData?.status === 'failed') {
             clearInterval(pollInterval);
             setRunningLintingChecks(false);
@@ -656,7 +656,7 @@ const AppCard = ({
               description: "The linting check failed during processing. Check logs for details.",
               variant: "destructive",
             });
-            queryClient.invalidateQueries({ queryKey: ['linting-runs', app.app_id] });
+            queryClient.invalidateQueries({ queryKey: ['linting-runs', app.project_id] });
           }
         } catch (e) {
           console.error('Poll iteration error:', e);
@@ -1202,7 +1202,7 @@ const AppCard = ({
 
       {/* Linting Run History Dialog */}
       <LintingRunHistory
-        appId={app.app_id}
+        appId={app.project_id}
         open={isLintingHistoryOpen}
         onOpenChange={setIsLintingHistoryOpen}
       />
