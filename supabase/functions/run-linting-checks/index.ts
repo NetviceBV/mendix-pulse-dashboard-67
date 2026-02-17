@@ -110,160 +110,169 @@ Deno.serve(async (req) => {
       throw new Error(`Failed to create linting run: ${runError?.message}`)
     }
 
-    // 4. Try Git first, fallback to SVN
-    const baseUrl = analyzerBaseUrl.replace(/\/$/, '')
-    let analyzerResponse: any = null
-    let usedEndpoint = ''
-
-    // Try Git first (if pat is available)
-    if (credential.pat) {
+    // 4. Return immediate response and process in background
+    const backgroundTask = (async () => {
       try {
-        console.log('Trying Git endpoint...')
-        const gitRes = await fetch(`${baseUrl}/analyze-mpr/git`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-API-Key': analyzerApiKey,
-          },
-          body: JSON.stringify({
-            projectId: appId,
-            username: credential.username,
-            pat: credential.pat,
-            reportFormat: 'json',
-            policies: enabledRuleIds,
-          }),
+        const baseUrl = analyzerBaseUrl.replace(/\/$/, '')
+        let analyzerResponse: any = null
+        let usedEndpoint = ''
+
+        // Try Git first (if pat is available)
+        if (credential.pat) {
+          try {
+            console.log('Trying Git endpoint...')
+            const gitRes = await fetch(`${baseUrl}/analyze-mpr/git`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-API-Key': analyzerApiKey,
+              },
+              body: JSON.stringify({
+                projectId: appId,
+                username: credential.username,
+                pat: credential.pat,
+                reportFormat: 'json',
+                policies: enabledRuleIds,
+              }),
+            })
+
+            if (gitRes.ok) {
+              analyzerResponse = await gitRes.json()
+              usedEndpoint = 'git'
+              console.log('Git endpoint succeeded')
+            } else {
+              const errText = await gitRes.text()
+              console.log(`Git endpoint failed (${gitRes.status}): ${errText}, falling back to SVN`)
+            }
+          } catch (e) {
+            console.log(`Git endpoint error: ${getErrorMessage(e)}, falling back to SVN`)
+          }
+        } else {
+          console.log('No PAT available, skipping Git endpoint')
+        }
+
+        // SVN fallback
+        if (!analyzerResponse) {
+          console.log('Trying SVN endpoint...')
+          const svnRes = await fetch(`${baseUrl}/analyze-mpr/svn`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-API-Key': analyzerApiKey,
+            },
+            body: JSON.stringify({
+              projectId: appId,
+              username: credential.username,
+              password: credential.api_key,
+              reportFormat: 'json',
+              policies: enabledRuleIds,
+            }),
+          })
+
+          if (!svnRes.ok) {
+            const errText = await svnRes.text()
+            console.error(`SVN endpoint failed (${svnRes.status}): ${errText}`)
+
+            await supabase
+              .from('linting_runs')
+              .update({ status: 'failed', completed_at: new Date().toISOString() })
+              .eq('id', run.id)
+
+            return
+          }
+
+          analyzerResponse = await svnRes.json()
+          usedEndpoint = 'svn'
+          console.log('SVN endpoint succeeded')
+        }
+
+        // 5. Parse response and store results
+        const mxlint = analyzerResponse.mxlint
+        if (!mxlint) {
+          await supabase
+            .from('linting_runs')
+            .update({ status: 'failed', completed_at: new Date().toISOString() })
+            .eq('id', run.id)
+          return
+        }
+
+        // Build set of violated rule numbers
+        const violatedRules = new Map<string, string>()
+        mxlint.violations?.forEach((v: any) => {
+          const pathMatch = v.rule?.match(/(\d{3}_\d{4})/)
+          if (pathMatch) {
+            violatedRules.set(pathMatch[1], v.message || '')
+          }
         })
 
-        if (gitRes.ok) {
-          analyzerResponse = await gitRes.json()
-          usedEndpoint = 'git'
-          console.log('Git endpoint succeeded')
-        } else {
-          const errText = await gitRes.text()
-          console.log(`Git endpoint failed (${gitRes.status}): ${errText}, falling back to SVN`)
+        // Map rules to linting_results rows
+        const resultRows = (mxlint.rules || []).map((rule: any) => {
+          const isFailed = violatedRules.has(rule.ruleNumber)
+          const pathMatch = rule.path?.match(/\/(\d{3}_[^/]+)\//)
+          const chapter = pathMatch ? pathMatch[1] : rule.category || 'unknown'
+
+          return {
+            run_id: run.id,
+            app_id: appId,
+            user_id: user.id,
+            rule_name: rule.title,
+            rule_description: rule.description || null,
+            severity: rule.severity || null,
+            status: isFailed ? 'fail' : 'pass',
+            details: isFailed ? violatedRules.get(rule.ruleNumber) || null : null,
+            chapter,
+            checked_at: new Date().toISOString(),
+          }
+        })
+
+        if (resultRows.length > 0) {
+          const { error: insertError } = await supabase
+            .from('linting_results')
+            .insert(resultRows)
+
+          if (insertError) {
+            console.error('Error inserting linting results:', insertError)
+          }
         }
-      } catch (e) {
-        console.log(`Git endpoint error: ${getErrorMessage(e)}, falling back to SVN`)
-      }
-    } else {
-      console.log('No PAT available, skipping Git endpoint')
-    }
 
-    // SVN fallback
-    if (!analyzerResponse) {
-      console.log('Trying SVN endpoint...')
-      const svnRes = await fetch(`${baseUrl}/analyze-mpr/svn`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': analyzerApiKey,
-        },
-        body: JSON.stringify({
-          projectId: appId,
-          username: credential.username,
-          password: credential.api_key,
-          reportFormat: 'json',
-          policies: enabledRuleIds,
-        }),
-      })
+        // 6. Update linting_runs with summary
+        const summary = mxlint.summary || {}
+        await supabase
+          .from('linting_runs')
+          .update({
+            status: 'completed',
+            completed_at: new Date().toISOString(),
+            passed_rules: summary.passed ?? 0,
+            failed_rules: summary.failed ?? 0,
+            total_rules: summary.total ?? resultRows.length,
+          })
+          .eq('id', run.id)
 
-      if (!svnRes.ok) {
-        const errText = await svnRes.text()
-        console.error(`SVN endpoint failed (${svnRes.status}): ${errText}`)
-
+        console.log(`Linting completed: ${summary.passed} passed, ${summary.failed} failed (${usedEndpoint})`)
+      } catch (error) {
+        console.error('Background linting task failed:', error)
         await supabase
           .from('linting_runs')
           .update({ status: 'failed', completed_at: new Date().toISOString() })
           .eq('id', run.id)
-
-        return new Response(JSON.stringify({ error: `Analyzer API failed: ${errText}` }), {
-          status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
       }
+    })()
 
-      analyzerResponse = await svnRes.json()
-      usedEndpoint = 'svn'
-      console.log('SVN endpoint succeeded')
+    // Use EdgeRuntime.waitUntil if available, otherwise fire-and-forget
+    try {
+      // @ts-ignore - EdgeRuntime may not be typed
+      if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime.waitUntil) {
+        // @ts-ignore
+        EdgeRuntime.waitUntil(backgroundTask)
+      }
+    } catch {
+      // fire-and-forget fallback - the promise continues running
     }
-
-    // 5. Parse response and store results
-    const mxlint = analyzerResponse.mxlint
-    if (!mxlint) {
-      await supabase
-        .from('linting_runs')
-        .update({ status: 'failed', completed_at: new Date().toISOString() })
-        .eq('id', run.id)
-
-      return new Response(JSON.stringify({ error: 'Invalid analyzer response: missing mxlint data' }), {
-        status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    // Build set of violated rule numbers
-    const violatedRules = new Map<string, string>()
-    mxlint.violations?.forEach((v: any) => {
-      // Extract rule number from the path (e.g. 001_0002 from the path)
-      const pathMatch = v.rule?.match(/(\d{3}_\d{4})/)
-      if (pathMatch) {
-        violatedRules.set(pathMatch[1], v.message || '')
-      }
-    })
-
-    // Map rules to linting_results rows
-    const resultRows = (mxlint.rules || []).map((rule: any) => {
-      const isFailed = violatedRules.has(rule.ruleNumber)
-      // Extract chapter from path directory prefix (e.g. "001_project_settings")
-      const pathMatch = rule.path?.match(/\/(\d{3}_[^/]+)\//)
-      const chapter = pathMatch ? pathMatch[1] : rule.category || 'unknown'
-
-      return {
-        run_id: run.id,
-        app_id: appId,
-        user_id: user.id,
-        rule_name: rule.title,
-        rule_description: rule.description || null,
-        severity: rule.severity || null,
-        status: isFailed ? 'fail' : 'pass',
-        details: isFailed ? violatedRules.get(rule.ruleNumber) || null : null,
-        chapter,
-        checked_at: new Date().toISOString(),
-      }
-    })
-
-    if (resultRows.length > 0) {
-      const { error: insertError } = await supabase
-        .from('linting_results')
-        .insert(resultRows)
-
-      if (insertError) {
-        console.error('Error inserting linting results:', insertError)
-      }
-    }
-
-    // 6. Update linting_runs with summary
-    const summary = mxlint.summary || {}
-    await supabase
-      .from('linting_runs')
-      .update({
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-        passed_rules: summary.passed ?? 0,
-        failed_rules: summary.failed ?? 0,
-        total_rules: summary.total ?? resultRows.length,
-      })
-      .eq('id', run.id)
-
-    console.log(`Linting completed: ${summary.passed} passed, ${summary.failed} failed (${usedEndpoint})`)
 
     return new Response(JSON.stringify({
       success: true,
       runId: run.id,
-      endpoint: usedEndpoint,
-      summary: {
-        passed: summary.passed ?? 0,
-        failed: summary.failed ?? 0,
-        total: summary.total ?? resultRows.length,
-      },
+      status: 'started',
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

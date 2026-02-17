@@ -609,7 +609,7 @@ const AppCard = ({
       setRunningLintingChecks(true);
       toast({
         title: "Running Linting Checks",
-        description: "Analyzing your Mendix project...",
+        description: "Analyzing your Mendix project. This may take 1-2 minutes...",
       });
 
       const { data, error } = await supabase.functions.invoke('run-linting-checks', {
@@ -622,23 +622,61 @@ const AppCard = ({
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      toast({
-        title: "Linting Complete",
-        description: `${data.summary.passed} passed, ${data.summary.failed} failed out of ${data.summary.total} rules.`,
-      });
+      const runId = data?.runId;
+      if (!runId) throw new Error('No run ID returned');
 
-      // Invalidate linting queries to refresh results
-      queryClient.invalidateQueries({ queryKey: ['linting', app.app_id] });
-      queryClient.invalidateQueries({ queryKey: ['linting-runs', app.app_id] });
+      // Poll for completion every 5 seconds
+      const pollInterval = setInterval(async () => {
+        try {
+          const { data: runData, error: pollError } = await supabase
+            .from('linting_runs')
+            .select('status, passed_rules, failed_rules, total_rules')
+            .eq('id', runId)
+            .single();
+
+          if (pollError) {
+            console.error('Polling error:', pollError);
+            return;
+          }
+
+          if (runData?.status === 'completed') {
+            clearInterval(pollInterval);
+            setRunningLintingChecks(false);
+            toast({
+              title: "Linting Complete",
+              description: `${runData.passed_rules} passed, ${runData.failed_rules} failed out of ${runData.total_rules} rules.`,
+            });
+            queryClient.invalidateQueries({ queryKey: ['linting', app.app_id] });
+            queryClient.invalidateQueries({ queryKey: ['linting-runs', app.app_id] });
+          } else if (runData?.status === 'failed') {
+            clearInterval(pollInterval);
+            setRunningLintingChecks(false);
+            toast({
+              title: "Linting Failed",
+              description: "The linting check failed during processing. Check logs for details.",
+              variant: "destructive",
+            });
+            queryClient.invalidateQueries({ queryKey: ['linting-runs', app.app_id] });
+          }
+        } catch (e) {
+          console.error('Poll iteration error:', e);
+        }
+      }, 5000);
+
+      // Safety timeout: stop polling after 3 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        setRunningLintingChecks(false);
+      }, 180000);
+
     } catch (error: any) {
       console.error('Error running linting checks:', error);
+      setRunningLintingChecks(false);
       toast({
         title: "Linting Failed",
         description: error.message || "Failed to run linting checks. Please try again.",
         variant: "destructive",
       });
-    } finally {
-      setRunningLintingChecks(false);
     }
   };
 

@@ -1,0 +1,1 @@
+UPDATE linting_runs SET status = 'failed', completed_at = NOW() WHERE status = 'running' AND started_at < NOW() - INTERVAL '5 minutes';
