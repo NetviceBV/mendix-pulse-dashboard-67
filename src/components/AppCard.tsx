@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { format, differenceInMonths, subMonths } from "date-fns";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -136,7 +137,9 @@ const AppCard = ({
   const [isLintingOverridesOpen, setIsLintingOverridesOpen] = useState(false);
   const [isLintingHistoryOpen, setIsLintingHistoryOpen] = useState(false);
   const [activeSecurityTab, setActiveSecurityTab] = useState("owasp");
+  const [runningLintingChecks, setRunningLintingChecks] = useState(false);
   const { data: lintingData, isLoading: lintingLoading } = useLintingQuery(app.app_id);
+  const queryClient = useQueryClient();
   
   const {
     loading,
@@ -600,10 +603,43 @@ const AppCard = ({
   };
 
   const handleRunLintingChecks = async () => {
-    toast({
-      title: "Run Linting",
-      description: "Linting check execution coming soon...",
-    });
+    if (!app.project_id || !app.credential_id || runningLintingChecks) return;
+
+    try {
+      setRunningLintingChecks(true);
+      toast({
+        title: "Running Linting Checks",
+        description: "Analyzing your Mendix project...",
+      });
+
+      const { data, error } = await supabase.functions.invoke('run-linting-checks', {
+        body: {
+          credentialId: app.credential_id,
+          appId: app.project_id,
+        },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      toast({
+        title: "Linting Complete",
+        description: `${data.summary.passed} passed, ${data.summary.failed} failed out of ${data.summary.total} rules.`,
+      });
+
+      // Invalidate linting queries to refresh results
+      queryClient.invalidateQueries({ queryKey: ['linting', app.app_id] });
+      queryClient.invalidateQueries({ queryKey: ['linting-runs', app.app_id] });
+    } catch (error: any) {
+      console.error('Error running linting checks:', error);
+      toast({
+        title: "Linting Failed",
+        description: error.message || "Failed to run linting checks. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setRunningLintingChecks(false);
+    }
   };
 
   const handleRunOwaspChecks = async () => {
@@ -756,10 +792,10 @@ const AppCard = ({
                   size="sm"
                   variant="outline"
                   onClick={activeSecurityTab === "owasp" ? handleRunOwaspChecks : handleRunLintingChecks}
-                  disabled={activeSecurityTab === "owasp" ? (runningOwaspChecks || owaspLoading) : false}
+                  disabled={activeSecurityTab === "owasp" ? (runningOwaspChecks || owaspLoading) : runningLintingChecks}
                   className="h-7"
                 >
-                  {runningOwaspChecks && activeSecurityTab === "owasp" ? (
+                  {(runningOwaspChecks && activeSecurityTab === "owasp") || (runningLintingChecks && activeSecurityTab === "linting") ? (
                     <>
                       <Loader2 className="h-3 w-3 mr-1 animate-spin" />
                       Running...
