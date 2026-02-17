@@ -1,53 +1,32 @@
 
-
-## Improve Violation Details Readability
+## Strip Redundant Prefix from Violation Messages
 
 ### Problem
 
-When a rule has many violations (e.g., 50+ microflows exceeding 30 actions), they are currently crammed into a small `<pre>` block with a 200px max height inside the chapter dialog. This makes it hard to read and navigate through the list.
+Each violation message stored in the database starts with a redundant prefix like `[MEDIUM, Maintainability, 005_0003]` followed by the actual message. Since the rule name, severity, and chapter are already displayed in the rule row header, this prefix wastes space and makes messages harder to read.
 
-### Solution
+Current: `[MEDIUM, Maintainability, 005_0003] Microflow PostGetWorkDaysInfo has 36 actions which is more than 30 erik`
+Desired: `Microflow PostGetWorkDaysInfo has 36 actions which is more than 30 erik`
 
-Replace the raw `<pre>` block with a structured, searchable list view inside an expanded dialog:
+### Fix
 
-1. **Widen the details dialog** from `max-w-lg` to `max-w-2xl` so there is more room
-2. **Replace the `<pre>` block** with a proper table/list where each violation is its own row, making them individually scannable
-3. **Add a search/filter box** above the violations list so users can quickly find specific microflow names
-4. **Increase the scroll area** from 200px to 400px max height for the violations list
-5. **Show violation count prominently** in a badge next to the rule name (e.g., "36 violations")
+Strip the `[...] ` prefix when collecting violation messages in the edge function.
 
-### Technical Changes
+### Technical Change
 
-**`src/components/LintingDetailsDialog.tsx`**
+**`supabase/functions/run-linting-checks/index.ts`** (line 206)
 
-- Change `max-w-lg` to `max-w-2xl` on `DialogContent` (line 25) for more horizontal space
-- In the `RuleRow` component, replace the `<pre>` block (lines 131-134) with a structured list:
-  - Split `rule.details` by newline into individual violation items
-  - Render each as a separate row with alternating background for readability
-  - Each row shows the violation message in a clean, readable format
-- Add a local search `<Input>` above the violations list that filters items by text
-- Increase `max-h-[200px]` to `max-h-[400px]` on the violations ScrollArea
-- Keep the copy-to-clipboard button (copies all violations)
+Change the message push to strip the leading bracket prefix:
 
-### What the user will see
+```typescript
+// Before:
+violatedRules.get(key)!.push(v.message || '')
 
-```text
-005_0003 - Microflows should not exceed 30 actions    [error]  [36 violations]
-                                                               [v chevron]
-  Search violations...  [_______________]               [copy icon]
-
-  | Microflow PostGetWorkDaysInfo has 36 actions which is more than 30   |
-  | Microflow ACT_ProcessOrder has 42 actions which is more than 30     |
-  | Microflow SUB_ValidateInput has 31 actions which is more than 30    |
-  | ...                                                                  |
+// After:
+const msg = (v.message || '').replace(/^\[.*?\]\s*/, '')
+violatedRules.get(key)!.push(msg)
 ```
 
-### Edge function fix (prerequisite)
+This regex removes everything from the start up to and including the first `]` plus any trailing space, leaving just the meaningful part of the message.
 
-The `run-linting-checks` edge function must also be updated to collect all violations per rule (not just the last one). This was identified in the previous conversation:
-
-- Change `violatedRules` from `Map<string, string>` to `Map<string, string[]>` to accumulate all messages
-- Join them with newlines when storing in the `details` column
-
-Both changes (edge function + UI) will be implemented together.
-
+No UI changes needed -- the `LintingDetailsDialog` already displays the messages cleanly. After this fix and a re-run, all violations will show clean messages like "Microflow ChangeStatuswijzigingVoorBellijstCheck has 53 actions which is more than 30 erik".
