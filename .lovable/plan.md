@@ -1,29 +1,27 @@
 
 
-## Fix: Linting Results Not Displaying
+## Fix: Linting Overrides Not Applied During Checks
 
 ### Problem
 
-The linting check completes successfully (14,276 passed, 2,021 failed, 26 rules stored in database), but results never appear in the UI.
+There is an identifier mismatch in the linting overrides flow:
+- The `AppLintingOverrides` component saves overrides with `app_id = app.app_id` (Mendix app name, e.g., `"prikklbackoffice"`)
+- The `run-linting-checks` edge function queries overrides using `app_id = appId` where `appId` is the Mendix **project_id** UUID (e.g., `"73fcfab5-..."`)
+- Result: the override query returns zero rows, so all 26 globally enabled rules run instead of just the 1 overridden rule (001_0001)
 
-**Root cause**: There is a mismatch between identifiers:
-- The edge function stores results with `app_id = project_id` (UUID like `73fcfab5-e311-4eb5-8174-537f1b89edd0`)
-- The frontend calls `useLintingQuery(app.app_id)` where `app.app_id` is the Mendix app name (like `prikklbackoffice`)
-- The query filters `WHERE app_id = 'prikklbackoffice'` but the database has `app_id = '73fcfab5-...'`, so zero results are returned
+Your overrides table currently has 26 rows for `prikklbackoffice`, most disabling rules. But the edge function never finds them because it searches by UUID.
 
 ### Fix
 
-Change the frontend to use `app.project_id` instead of `app.app_id` for all linting-related queries and cache keys. This matches what the edge function stores.
+Update `AppLintingOverrides` to use `app.project_id` instead of `app.app_id`, consistent with how the edge function and all other linting queries work. Then migrate existing override data to use the correct identifier.
 
 ### Technical Changes
 
-**`src/components/AppCard.tsx`**
+**1. `src/components/AppCard.tsx`**
+- Change line 1199: `<AppLintingOverrides appId={app.app_id}` to `<AppLintingOverrides appId={app.project_id}`
 
-Three changes:
-1. Line 141: Change `useLintingQuery(app.app_id)` to `useLintingQuery(app.project_id)`
-2. Line 649: Change `queryClient.invalidateQueries({ queryKey: ['linting', app.app_id] })` to use `app.project_id`
-3. Line 650: Change `queryClient.invalidateQueries({ queryKey: ['linting-runs', app.app_id] })` to use `app.project_id`
+**2. Database migration**
+- Update existing `linting_policy_overrides` rows: replace `app_id = 'prikklbackoffice'` with the correct project_id UUID (`73fcfab5-e311-4eb5-8174-537f1b89edd0`) so existing overrides are preserved
 
-Also check any other linting-related references passing `app.app_id` (e.g., LintingRunHistory) and update them to `app.project_id`.
+No edge function changes needed -- it already queries by the correct project_id.
 
-No edge function or database changes needed -- the stored data is already correct.
