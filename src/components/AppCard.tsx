@@ -1196,7 +1196,7 @@ const AppCard = ({
             <DialogTitle>Linting Rule Overrides</DialogTitle>
             <DialogDescription>Override global linting rules for {app.app_name}</DialogDescription>
           </DialogHeader>
-          <AppLintingOverrides appId={app.app_id} appName={app.app_name} />
+          <AppLintingOverrides appId={app.project_id} appName={app.app_name} />
         </DialogContent>
       </Dialog>
 
