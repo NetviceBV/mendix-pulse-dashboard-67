@@ -71,3 +71,6 @@ verify_jwt = false
 
 [functions.fetch-linting-policies]
 verify_jwt = false
+
+[functions.run-linting-checks]
+verify_jwt = false
