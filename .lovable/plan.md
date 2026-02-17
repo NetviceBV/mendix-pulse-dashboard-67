@@ -1,74 +1,73 @@
 
 
-## Implement Linting Check Execution
+## Fix: Linting Check Timing Out
 
-### Overview
-Replace the placeholder "coming soon" toast with actual linting execution via a new edge function that calls the Mendix Analyzer API.
+### Problem
 
-### SVN vs Git Detection
-The user clarified: try Git endpoint first (`/analyze-mpr/git`), and if it fails, retry with SVN (`/analyze-mpr/svn`). This avoids needing to determine the Mendix version upfront.
+The linting check was triggered and the edge function started successfully ("Running linting for app ... with 26 rules", "Trying Git endpoint..."). However, the Mendix Analyzer API takes a long time to process (it downloads the full MPR file and runs all rules), causing the Supabase Edge Function to time out (~25-30s limit). This leaves:
+- A `linting_runs` row stuck in `running` status with no results
+- A "Failed to fetch" error shown to the user
 
-### Changes
+### Solution
 
-**1. New edge function: `supabase/functions/run-linting-checks/index.ts`**
+Split into two parts:
 
-Accepts POST with `{ credentialId, appId }` (appId = Mendix project ID).
+**Part 1: Increase edge function resilience (immediate fix)**
 
-Steps:
-1. Authenticate user via JWT
-2. Fetch credential from `mendix_credentials` by `credentialId`
-3. Collect enabled rule IDs:
-   - Query `linting_policies` where `user_id` matches and `is_enabled = true`
-   - Query `linting_policy_overrides` for this `appId` to apply per-app overrides (override `is_enabled` takes precedence)
-   - Build final list of rule_id strings (e.g. `["001_0001", "002_0003"]`)
-4. Create a `linting_runs` row with status `"running"`
-5. Try Git endpoint first:
-   - POST to `{MENDIX_ANALYZER_BASE_URL}/analyze-mpr/git` with body `{ projectId, username, pat, reportFormat: "json", policies: [...] }`
-   - If `pat` is empty/null, or if the call returns an error, fall back to SVN
-6. SVN fallback:
-   - POST to `{MENDIX_ANALYZER_BASE_URL}/analyze-mpr/svn` with body `{ projectId, username, password: api_key, reportFormat: "json", policies: [...] }`
-7. Parse the response:
-   - Map each item in `rules[]` to a `linting_results` row
-   - Determine pass/fail by checking if the rule's `ruleNumber` appears in `violations[]`
-   - Extract chapter from the rule's path directory prefix (e.g. `001_project_settings`)
-   - Store: `rule_name` = title, `rule_description` = description, `severity`, `status` = "pass"/"fail", `details` = violation message if failed, `chapter` = category/directory
-8. Update `linting_runs` with `passed_rules`, `failed_rules`, `total_rules`, status `"completed"`, and `completed_at`
-9. On any error, update `linting_runs` to status `"failed"`
+The `run-linting-checks` edge function currently waits synchronously for the Analyzer API response and returns it to the browser. Since the analyzer can take 60-120+ seconds, this will always time out.
 
-Authentication header for Analyzer API: `X-API-Key: {MENDIX_ANALYZER_API_KEY}` (matching the pattern in `fetch-linting-policies`).
+**Fix approach**: Return an immediate response to the browser after creating the `linting_runs` row, then continue processing in the background using `waitUntil`-style pattern (EdgeRuntime.waitUntil or a background promise). This way:
+- The user sees "Linting started" immediately
+- The edge function continues processing the analyzer call in the background
+- Results are written to the database when ready
+- The UI polls or uses real-time subscription to detect completion
 
-**2. Update `supabase/config.toml`**
+**Part 2: Frontend polling for results**
 
-Add:
-```toml
-[functions.run-linting-checks]
-verify_jwt = false
+Since the edge function now returns immediately, the frontend needs to poll for the run status:
+- After starting linting, poll the `linting_runs` table every 5 seconds
+- Stop polling when status changes from `running` to `completed` or `failed`
+- Then invalidate queries to show results
+- Show a progress indicator while waiting
+
+### Technical Changes
+
+**`supabase/functions/run-linting-checks/index.ts`**
+- Return a 200 response immediately after creating the `linting_runs` row and validating inputs
+- Move the Analyzer API call and result processing into a background task
+- Wrap the background task in try/catch to mark the run as `failed` on errors
+
+**`src/components/AppCard.tsx`**
+- After calling the edge function successfully, start polling `linting_runs` for the run ID
+- Poll every 5 seconds until status is no longer `running`
+- On `completed`: show success toast, invalidate queries
+- On `failed`: show error toast
+- Show a spinning indicator on the button during the entire process
+
+**Cleanup the stuck run**
+- Update the existing stuck `linting_runs` row (id: `e91f12cb-...`) to status `failed` so it does not confuse the UI
+
+### Flow After Fix
+
+```text
+User clicks "Run Linting"
+    |
+    v
+Edge function creates linting_runs (status: running)
+Edge function returns { runId, status: "started" }
+Edge function continues in background...
+    |                                    |
+    v                                    v
+Frontend starts polling              Analyzer API processes
+linting_runs every 5s                (can take 60-120s)
+    |                                    |
+    v                                    v
+Status still "running"...           Results come back
+    |                                    |
+    v                                    v
+Poll detects "completed"  <-----  Edge fn writes results
+    |                                & updates run status
+    v
+Invalidate queries, show results
 ```
-
-**3. Update `src/components/AppCard.tsx`**
-
-- Add `runningLintingChecks` state (boolean)
-- Replace `handleRunLintingChecks` placeholder with:
-  - Call the `run-linting-checks` edge function with `credentialId` and `appId` (project_id)
-  - Show loading spinner on the Run Linting button while running
-  - On success: show success toast, invalidate linting queries to refresh results
-  - On failure: show error toast
-- Disable the Run Linting button while `runningLintingChecks` is true
-
-### Response-to-Database Mapping
-
-| API Response Field | DB Column (`linting_results`) |
-|---|---|
-| `rules[].title` | `rule_name` |
-| `rules[].description` | `rule_description` |
-| `rules[].severity` | `severity` |
-| `rules[].ruleNumber` in `violations[]`? | `status` ("fail" / "pass") |
-| `violations[].message` | `details` (when failed) |
-| directory from rule path | `chapter` |
-
-| API Response Field | DB Column (`linting_runs`) |
-|---|---|
-| `summary.passed` | `passed_rules` |
-| `summary.failed` | `failed_rules` |
-| `summary.total` | `total_rules` |
 
