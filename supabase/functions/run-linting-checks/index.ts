@@ -197,11 +197,13 @@ Deno.serve(async (req) => {
         }
 
         // Build set of violated rule numbers
-        const violatedRules = new Map<string, string>()
+        const violatedRules = new Map<string, string[]>()
         mxlint.violations?.forEach((v: any) => {
           const pathMatch = v.rule?.match(/(\d{3}_\d{4})/)
           if (pathMatch) {
-            violatedRules.set(pathMatch[1], v.message || '')
+            const key = pathMatch[1]
+            if (!violatedRules.has(key)) violatedRules.set(key, [])
+            violatedRules.get(key)!.push(v.message || '')
           }
         })
 
@@ -219,7 +221,7 @@ Deno.serve(async (req) => {
             rule_description: rule.description || null,
             severity: rule.severity || null,
             status: isFailed ? 'fail' : 'pass',
-            details: isFailed ? violatedRules.get(rule.ruleNumber) || null : null,
+            details: isFailed ? (violatedRules.get(rule.ruleNumber) || []).join('\n') || null : null,
             chapter,
             checked_at: new Date().toISOString(),
           }
