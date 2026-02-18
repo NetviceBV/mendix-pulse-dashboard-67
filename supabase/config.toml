@@ -74,3 +74,6 @@ verify_jwt = false
 
 [functions.run-linting-checks]
 verify_jwt = false
+
+[functions.linting-webhook]
+verify_jwt = false
