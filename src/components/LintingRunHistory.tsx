@@ -44,9 +44,9 @@ export function LintingRunHistory({ appId, open, onOpenChange }: LintingRunHisto
               No linting runs found.
             </div>
           ) : (
-            <div className="flex gap-4 min-h-[300px]">
+            <div className="flex gap-4 min-h-[300px] max-h-[60vh]">
               {/* Left: Run list */}
-              <ScrollArea className="w-[220px] shrink-0 border-r pr-3">
+              <ScrollArea className="w-[220px] shrink-0 border-r pr-3 h-full">
                 <div className="space-y-1.5">
                   {runs.map((run) => (
                     <RunRow
