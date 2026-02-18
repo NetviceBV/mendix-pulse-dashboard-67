@@ -46,7 +46,9 @@ function RuleRow({ rule }: { rule: LintingResult }) {
   const [copied, setCopied] = useState(false);
   const [search, setSearch] = useState("");
   const hasDetails = rule.details && rule.status !== "pass";
-  const allItems = hasDetails ? rule.details!.split("\n").filter(Boolean) : [];
+  const allItems = hasDetails
+    ? rule.details!.split("\n").filter(Boolean).map(item => item.replace(/^(\[.*?\]\s*)+/, ''))
+    : [];
   const filteredItems = search
     ? allItems.filter((item) => item.toLowerCase().includes(search.toLowerCase()))
     : allItems;
