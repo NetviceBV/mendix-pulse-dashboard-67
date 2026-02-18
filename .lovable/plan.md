@@ -1,62 +1,36 @@
 
 
-## Add Railway Health/Wake-up Ping Before Every Railway API Call
+## Fix: Strip All Bracketed Prefixes from Linting Violation Messages
 
 ### Problem
 
-The Railway container hosting the Mendix Analyzer sleeps after inactivity. When a request hits a sleeping container, it can time out or return errors (like 404). We need to wake it up before every call.
+As visible in the screenshot, some violation messages still display bracketed metadata like `[MEDIUM, Microflows, 999_0001]` before the actual message text. The current regex only removes the first `[...]` group, so when a message has multiple leading brackets or when one bracket group remains after stripping, it shows through in the UI.
 
 ### Solution
 
-Create a shared helper function in `supabase/functions/_shared/railway-utils.ts` and call it before every Railway API request across all 4 edge functions.
+Update one line in the linting webhook to use a regex that removes **all** consecutive leading `[...]` groups.
 
-### Technical Changes
+### Technical Change
 
-**1. New file: `supabase/functions/_shared/railway-utils.ts`**
+**File: `supabase/functions/linting-webhook/index.ts`** (line 85)
 
-Create a reusable wake-up helper:
-
+Replace:
 ```typescript
-export async function pingRailwayHealth(baseUrl: string, apiKey?: string): Promise<void> {
-  const healthUrl = `${baseUrl.replace(/\/$/, '')}/health`
-  console.log(`[Railway] Pinging health endpoint: ${healthUrl}`)
-  try {
-    const res = await fetch(healthUrl, {
-      method: 'GET',
-      headers: apiKey ? { 'X-API-Key': apiKey } : {},
-    })
-    console.log(`[Railway] Health check response: ${res.status}`)
-  } catch (e) {
-    console.log(`[Railway] Health ping failed (container may be waking): ${e}`)
-  }
-}
+const msg = (v.message || '').replace(/^\[.*?\]\s*/, '')
 ```
 
-**2. `supabase/functions/fetch-linting-policies/index.ts`**
+With:
+```typescript
+const msg = (v.message || '').replace(/^(\[.*?\]\s*)+/, '')
+```
 
-- Import `pingRailwayHealth` from shared utils
-- Call it before the `/policies` fetch (before line 46)
+The `()+` quantifier matches one or more consecutive `[...]` blocks at the start, stripping them all in one pass.
 
-**3. `supabase/functions/run-linting-checks/index.ts`**
+### Example
 
-- Import `pingRailwayHealth` from shared utils
-- Call it before the Git/SVN analyzer calls (before line 132, the `let accepted = false` line)
+- Input: `[MEDIUM, Microflows, 999_0001] Microflow 'OnClickDossierAfhandelen' has unused parameter 'FoutieveTerugbelafspraakLoggingHelper'`
+- Output: `Microflow 'OnClickDossierAfhandelen' has unused parameter 'FoutieveTerugbelafspraakLoggingHelper'`
 
-**4. `supabase/functions/run-owasp-checks/index.ts`**
+### Deployment
 
-- Import `pingRailwayHealth` from shared utils
-- Call it inside `fetchAndCacheRailwayAnalysis()` before the `fetch(RAILWAY_ANALYZER_URL, ...)` call (before line 134)
-- Use base URL derived from `RAILWAY_ANALYZER_URL` constant (strip `/analyze` path)
-
-**5. `supabase/functions/owasp-check-railway-anonymous-entity/index.ts`**
-
-- Import `pingRailwayHealth` from shared utils
-- Call it inside the direct Railway fallback path, before the `fetch(RAILWAY_ANALYZER_URL, ...)` call (before line 111)
-- Same base URL derivation as above
-
-### Notes
-
-- The health ping is non-blocking in terms of errors -- if it fails, we still proceed with the real request
-- If the Railway app has no `/health` route, the request still wakes the container (even a 404 response means the process is running)
-- Using a shared helper keeps this DRY and makes it easy to adjust the health endpoint path later
-
+The `linting-webhook` edge function will be redeployed. Only future linting runs are affected -- existing stored results remain unchanged (you would need to re-run linting to get clean messages for those).
