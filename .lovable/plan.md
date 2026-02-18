@@ -1,39 +1,30 @@
 
 
-## Fix: All 64 violations visible but only 13 showing
+## Fix: Preserve `is_enabled` state when fetching rules
 
 ### Problem
 
-The violations list uses nested Radix `ScrollArea` components with `max-h` constraints. Radix ScrollArea requires a definite height to calculate its scrollbar — `max-h` alone causes the content to overflow and get clipped without a scrollbar appearing.
+When you click "Fetch Available Rules", the `fetch-linting-policies` edge function uses Supabase `upsert` with `is_enabled: true` for every rule. Since upsert updates ALL columns on conflict (including `is_enabled`), every rule gets reset to enabled -- even ones you previously disabled.
+
+The code has a comment acknowledging this ("Supabase upsert will update all columns on conflict, so we need a different approach"), but the fallback logic only runs when the upsert itself errors out, which it doesn't -- it succeeds and overwrites your settings.
 
 ### Solution
 
-Replace the inner `ScrollArea` with a plain `div` using `overflow-y-auto` and `max-h-[400px]`. This uses native browser scrolling which works reliably with `max-h`. The outer dialog `ScrollArea` stays as-is since it wraps all rules.
+Replace the upsert with explicit check-then-insert/update logic for every rule:
+
+- **Existing rules**: Update only metadata fields (`category`, `title`, `description`, `severity`, `directory`) -- leave `is_enabled` untouched
+- **New rules**: Insert with `is_enabled: true` (default)
 
 ### Technical Changes
 
-**`src/components/LintingDetailsDialog.tsx`**
+**`supabase/functions/fetch-linting-policies/index.ts`**
 
-Line 153: Change the inner ScrollArea to a native scrollable div:
+Replace the upsert block (lines 96-131) with:
 
-```tsx
-// Before
-<ScrollArea className="max-h-[400px]">
+1. Fetch all existing rule IDs for this user in one query
+2. Split rows into "existing" and "new" lists
+3. For existing rules: batch update metadata only (no `is_enabled`)
+4. For new rules: batch insert with `is_enabled: true`
 
-// After
-<div className="max-h-[400px] overflow-y-auto">
-```
-
-And the matching closing tag (line ~163):
-```tsx
-// Before
-</ScrollArea>
-
-// After
-</div>
-```
-
-Remove `ScrollArea` from the imports if no longer used elsewhere in the file (it is still used on line 35 for the outer scroll, so keep the import).
-
-This is a one-line fix that ensures all 64 violations are scrollable.
+This is efficient (2-3 queries instead of N individual queries) and guarantees user toggle choices are never overwritten.
 
