@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { pingRailwayHealth } from '../_shared/railway-utils.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -99,6 +100,10 @@ Deno.serve(async (req) => {
           { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+
+      // Wake up Railway container before making the real request
+      const railwayBaseUrl = RAILWAY_ANALYZER_URL.replace(/\/analyze$/, '');
+      await pingRailwayHealth(railwayBaseUrl);
 
       // Call Railway API with timeout
       console.log(`[A01 Railway Check] Making direct call to Railway API: ${RAILWAY_ANALYZER_URL}`);

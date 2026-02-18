@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { getErrorMessage } from '../_shared/error-utils.ts'
+import { pingRailwayHealth } from '../_shared/railway-utils.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -128,6 +129,9 @@ Deno.serve(async (req) => {
     // 5. Build webhook URL and send request to Analyzer API
     const webhookUrl = `${supabaseUrl}/functions/v1/linting-webhook?secret=${encodeURIComponent(webhookSecret)}&runId=${run.id}`
     const baseUrl = analyzerBaseUrl.replace(/\/$/, '')
+
+    // Wake up Railway container before making the real request
+    await pingRailwayHealth(baseUrl, analyzerApiKey)
 
     let accepted = false
 
