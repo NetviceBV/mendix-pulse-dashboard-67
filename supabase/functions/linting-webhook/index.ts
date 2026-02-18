@@ -82,7 +82,7 @@ Deno.serve(async (req) => {
       if (pathMatch) {
         const key = pathMatch[1]
         if (!violatedRules.has(key)) violatedRules.set(key, [])
-        const msg = (v.message || '').replace(/^\[.*?\]\s*/, '')
+        const msg = (v.message || '').replace(/^(\[.*?\]\s*)+/, '')
         violatedRules.get(key)!.push(msg)
       }
     })
