@@ -150,7 +150,7 @@ function RuleRow({ rule }: { rule: LintingResult }) {
                 Showing {filteredItems.length} of {allItems.length}
               </span>
             )}
-            <ScrollArea className="max-h-[400px]">
+            <div className="max-h-[400px] overflow-y-auto">
               <div className="space-y-0.5">
                 {filteredItems.map((item, i) => (
                   <div
@@ -167,7 +167,7 @@ function RuleRow({ rule }: { rule: LintingResult }) {
                   <p className="text-xs text-muted-foreground py-2 text-center">No matches found</p>
                 )}
               </div>
-            </ScrollArea>
+            </div>
           </div>
         </CollapsibleContent>
       </div>
