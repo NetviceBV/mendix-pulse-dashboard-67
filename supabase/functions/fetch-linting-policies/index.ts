@@ -94,38 +94,48 @@ Deno.serve(async (req) => {
     console.log(`Parsed ${rows.length} total rules`)
 
     if (rows.length > 0) {
-      // Upsert rules - new rules default to enabled, existing rules keep their is_enabled state
-      const { error: upsertError } = await supabase
+      // Fetch all existing rule_ids for this user in one query
+      const { data: existingRules, error: fetchExistingError } = await supabase
         .from('linting_policies')
-        .upsert(rows, {
-          onConflict: 'user_id,rule_id',
-          ignoreDuplicates: false,
-        })
-        // Only update metadata fields, NOT is_enabled (preserve user's toggle choice)
-        // Supabase upsert will update all columns on conflict, so we need a different approach
+        .select('rule_id')
+        .eq('user_id', user.id)
 
-      if (upsertError) {
-        console.error('Upsert error:', upsertError)
-        // Try individual upserts to preserve is_enabled for existing rows
-        for (const row of rows) {
-          // Check if rule exists
-          const { data: existing } = await supabase
-            .from('linting_policies')
-            .select('id')
-            .eq('user_id', user.id)
-            .eq('rule_id', row.rule_id)
-            .maybeSingle()
+      if (fetchExistingError) {
+        console.error('Error fetching existing rules:', fetchExistingError)
+      }
 
-          if (existing) {
-            // Update metadata only
-            await supabase
-              .from('linting_policies')
-              .update({ category: row.category, title: row.title, description: row.description, severity: row.severity, directory: row.directory })
-              .eq('id', existing.id)
-          } else {
-            // Insert new rule
-            await supabase.from('linting_policies').insert(row)
-          }
+      const existingRuleIds = new Set((existingRules || []).map(r => r.rule_id))
+
+      const newRows = rows.filter(r => !existingRuleIds.has(r.rule_id))
+      const existingRows = rows.filter(r => existingRuleIds.has(r.rule_id))
+
+      console.log(`New rules: ${newRows.length}, Existing rules to update metadata: ${existingRows.length}`)
+
+      // Insert new rules with is_enabled: true (default)
+      if (newRows.length > 0) {
+        const { error: insertError } = await supabase
+          .from('linting_policies')
+          .insert(newRows)
+        if (insertError) {
+          console.error('Insert error:', insertError)
+        }
+      }
+
+      // Update existing rules: metadata only, preserve is_enabled
+      for (const row of existingRows) {
+        const { error: updateError } = await supabase
+          .from('linting_policies')
+          .update({
+            category: row.category,
+            title: row.title,
+            description: row.description,
+            severity: row.severity,
+            directory: row.directory,
+          })
+          .eq('user_id', user.id)
+          .eq('rule_id', row.rule_id)
+        if (updateError) {
+          console.error(`Update error for ${row.rule_id}:`, updateError)
         }
       }
     }
