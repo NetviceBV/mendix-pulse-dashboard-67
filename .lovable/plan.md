@@ -1,46 +1,39 @@
 
 
-## Fix: Persistent Bracketed Prefixes in Linting Violations
+## Fix: Linting Run History List Overflow
 
 ### Problem
 
-Despite updating the regex in the linting webhook, the latest run still contains violation messages with `[MEDIUM, Microflows, 999_0001]` prefixes. The deployed edge function may not have picked up the code change.
+The left-side run list in the Linting Run History dialog overflows the dialog boundaries. The `ScrollArea` component wrapping the run list has no explicit height, so it expands with its content instead of scrolling.
 
-### Solution (Two-Pronged)
+### Solution
 
-Apply the fix at **both** the storage layer and the display layer for maximum reliability.
+Add a max-height constraint to the run list `ScrollArea` and ensure the flex container properly constrains both panels within the dialog.
 
-**1. Redeploy the `linting-webhook` edge function**
+### Technical Change
 
-Force a fresh deployment to ensure the updated regex `^(\[.*?\]\s*)+` is actually running.
+**File: `src/components/LintingRunHistory.tsx`**
 
-**2. Add UI-side stripping in `LintingDetailsDialog.tsx`**
+1. Add a fixed max-height to the flex container holding both panels (e.g., `max-h-[60vh]`)
+2. Ensure the `ScrollArea` on the left properly scrolls within that constraint
 
-As a safety net, also strip bracketed prefixes when displaying violation messages. This handles both old stored data and any edge case where the webhook regex doesn't catch everything.
-
-### Technical Changes
-
-**File: `src/components/LintingDetailsDialog.tsx`**
-
-In the `RuleRow` component, when splitting violation details into display items, apply the same bracket-stripping regex:
-
+Change the flex container (around line 46):
 ```typescript
-// Current (line ~57):
-const allItems = hasDetails ? rule.details!.split("\n").filter(Boolean) : [];
+// From:
+<div className="flex gap-4 min-h-[300px]">
 
-// Updated:
-const allItems = hasDetails
-  ? rule.details!.split("\n").filter(Boolean).map(item => item.replace(/^(\[.*?\]\s*)+/, ''))
-  : [];
+// To:
+<div className="flex gap-4 min-h-[300px] max-h-[60vh]">
 ```
 
-**File: `supabase/functions/linting-webhook/index.ts`**
+And add a height class to the ScrollArea (around line 48):
+```typescript
+// From:
+<ScrollArea className="w-[220px] shrink-0 border-r pr-3">
 
-No code change needed (already updated) -- just a forced redeployment to ensure the latest version is live.
+// To:
+<ScrollArea className="w-[220px] shrink-0 border-r pr-3 h-full">
+```
 
-### Why Both?
-
-- The webhook fix prevents brackets from being stored in future runs
-- The UI fix cleans up any existing stored data AND acts as a fallback if the webhook ever misses something
-- This ensures a clean display regardless of when the data was written
+This ensures the run list scrolls within the dialog instead of pushing content outside its boundaries.
 
