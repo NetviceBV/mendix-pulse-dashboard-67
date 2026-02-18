@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { pingRailwayHealth } from '../_shared/railway-utils.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -131,6 +132,10 @@ async function fetchAndCacheRailwayAnalysis(
   const timeoutId = setTimeout(() => controller.abort(), RAILWAY_TIMEOUT_MS);
 
   try {
+    // Wake up Railway container before making the real request
+    const railwayBaseUrl = RAILWAY_ANALYZER_URL.replace(/\/analyze$/, '');
+    await pingRailwayHealth(railwayBaseUrl);
+
     const startTime = Date.now();
     const response = await fetch(RAILWAY_ANALYZER_URL, {
       method: 'POST',
