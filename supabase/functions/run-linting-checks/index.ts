@@ -68,7 +68,22 @@ Deno.serve(async (req) => {
       })
     }
 
-    // 2. Collect enabled rule IDs (global policies + per-app overrides)
+    // 2. Look up app version to determine Git vs SVN
+    const { data: appRow } = await supabase
+      .from('mendix_apps')
+      .select('version')
+      .eq('project_id', appId)
+      .eq('user_id', user.id)
+      .single()
+
+    function hasGitHash(ver?: string): boolean {
+      if (!ver) return false
+      return /[a-f0-9]{6,}$/i.test(ver)
+    }
+
+    const gitBased = hasGitHash(appRow?.version ?? undefined)
+
+    // 3. Collect enabled rule IDs (global policies + per-app overrides)
     const { data: policies, error: polError } = await supabase
       .from('linting_policies')
       .select('id, rule_id, is_enabled')
@@ -134,9 +149,13 @@ Deno.serve(async (req) => {
     await pingRailwayHealth(baseUrl, analyzerApiKey)
 
     let accepted = false
+    const useGitFirst = gitBased && !!credential.pat
+    const useSvnOnly = !gitBased && appRow?.version // pure numeric version → SVN directly
 
-    // Try Git first (if pat is available)
-    if (credential.pat) {
+    console.log(`App version: ${appRow?.version ?? 'unknown'}, git-based: ${gitBased}, strategy: ${useSvnOnly ? 'SVN-only' : useGitFirst ? 'Git-first' : 'fallback (try Git if PAT, else SVN)'}`)
+
+    // Try Git first when version indicates git-based repo
+    if (useGitFirst) {
       try {
         console.log('Trying Git endpoint with webhook...')
         const gitRes = await fetch(`${baseUrl}/analyze-mpr/git`, {
@@ -165,13 +184,43 @@ Deno.serve(async (req) => {
       } catch (e) {
         console.log(`Git endpoint error: ${getErrorMessage(e)}, falling back to SVN`)
       }
+    } else if (!useSvnOnly && credential.pat) {
+      // No version found → fall back to current behavior: try Git if PAT exists
+      try {
+        console.log('No version info, trying Git endpoint with webhook...')
+        const gitRes = await fetch(`${baseUrl}/analyze-mpr/git`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': analyzerApiKey,
+          },
+          body: JSON.stringify({
+            projectId: appId,
+            username: credential.username,
+            pat: credential.pat,
+            reportFormat: 'json',
+            policies: enabledRuleIds,
+            webhookUrl,
+          }),
+        })
+
+        if (gitRes.ok) {
+          accepted = true
+          console.log('Git endpoint accepted request')
+        } else {
+          const errText = await gitRes.text()
+          console.log(`Git endpoint failed (${gitRes.status}): ${errText}, falling back to SVN`)
+        }
+      } catch (e) {
+        console.log(`Git endpoint error: ${getErrorMessage(e)}, falling back to SVN`)
+      }
     } else {
-      console.log('No PAT available, skipping Git endpoint')
+      console.log(useSvnOnly ? 'MX9 numeric version detected, skipping Git' : 'No PAT available, skipping Git endpoint')
     }
 
-    // SVN fallback
+    // SVN fallback (or direct SVN for MX9 numeric versions)
     if (!accepted) {
-      console.log('Trying SVN endpoint with webhook...')
+      console.log('Using SVN endpoint with webhook...')
       const svnRes = await fetch(`${baseUrl}/analyze-mpr/svn`, {
         method: 'POST',
         headers: {
@@ -195,7 +244,6 @@ Deno.serve(async (req) => {
         const errText = await svnRes.text()
         console.error(`SVN endpoint failed (${svnRes.status}): ${errText}`)
 
-        // Mark run as failed immediately
         await supabase
           .from('linting_runs')
           .update({ status: 'failed', completed_at: new Date().toISOString() })
