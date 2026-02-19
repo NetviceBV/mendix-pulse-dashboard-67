@@ -1,112 +1,28 @@
 
 
-## Fix Git/SVN Routing by Fetching Real Version Before Linting
+## Fix: Redeploy run-linting-checks Edge Function
 
 ### Problem
-Every app has `version: '1.0.0'` hardcoded in `fetch-mendix-apps` (line 129), so the `hasGitHash()` check in `run-linting-checks` always picks SVN. The real version info (`modelVersion`) is already fetched for environments but never written back to the app's `version` column.
+The version-refresh code is present in the source file but the **deployed** edge function is still running the old code. The logs clearly show:
+- `App version: 1.0.0` with no refresh attempt logged
+- No "Refreshed app version", "Version refresh API returned", or "Version refresh failed" log lines appear
+
+This means the previous deployment did not succeed or was not picked up.
 
 ### Solution
-Add a lightweight version-refresh step inside `run-linting-checks` before the Git/SVN routing decision. This calls the Mendix API for the specific app's environments to get the real `modelVersion`.
+Force a redeployment of both modified edge functions:
 
-### Changes
+1. **`run-linting-checks`** - Contains the version-refresh logic that should call the Mendix API before routing
+2. **`linting-webhook`** - Should also be redeployed to ensure consistency
 
-**1. `supabase/functions/run-linting-checks/index.ts`**
+No code changes are needed — the source files already contain the correct logic. This is purely a deployment action.
 
-After fetching the credential and before the Git/SVN routing logic, add a step that:
-- Calls the Mendix V4 API: `GET /api/v4/apps/{appId}/environments` using the credential's PAT
-- Picks the first environment's `modelVersion` (e.g. `10.21.0.12345.abcdef1`)
-- Updates the `mendix_apps.version` column for that app with the real version
-- Uses this fresh version for the `hasGitHash()` check instead of the stale DB value
+### After Deployment
+Run linting on "Prikkl Backoffice" again. The logs should now show one of:
+- `Refreshed app version to: <real version>` (success - version fetched and Git routing used)
+- `Version refresh API returned <status>` (API call failed - need to check credentials)
+- `Version refresh failed` (network error)
 
-This is a targeted, lightweight call (one HTTP request) rather than re-running the full fetch-all-apps flow.
-
-```text
-Existing flow:
-  1. Authenticate user
-  2. Fetch credential
-  3. Read app version from DB  <-- always '1.0.0'
-  4. hasGitHash() decides routing
-  5. Call analyzer
-
-New flow:
-  1. Authenticate user
-  2. Fetch credential
-  3. Read app version from DB
-  4. [NEW] If version looks stale ('1.0.0' or missing):
-     a. Call Mendix API for environment details
-     b. Extract modelVersion from first environment
-     c. Update mendix_apps.version in DB
-     d. Use fresh version for routing
-  5. hasGitHash() decides routing
-  6. Call analyzer
-```
-
-**2. `supabase/functions/fetch-mendix-apps/index.ts`**
-
-Also fix the root cause: after upserting environments, update each app's `version` column with the `modelVersion` from its first environment (e.g. Production). This prevents future staleness.
-
-- After the environment upsert loop, build a map of `app_id -> modelVersion` from the environment results
-- Update `mendix_apps.version` for each app that has a known `modelVersion`
-
-### Technical Details
-
-Version refresh snippet for `run-linting-checks`:
-```typescript
-// After fetching appRow, refresh version if it looks like the default
-let appVersion = appRow?.version;
-if (!appVersion || appVersion === '1.0.0') {
-  try {
-    const envHeaders: Record<string, string> = {};
-    if (credential.pat) {
-      envHeaders['Authorization'] = `MxToken ${credential.pat}`;
-    }
-    const envRes = await fetch(
-      `https://cloud.home.mendix.com/api/v4/apps/${appId}/environments`,
-      { headers: envHeaders }
-    );
-    if (envRes.ok) {
-      const envData = await envRes.json();
-      const envs = envData.Environments || envData.environments || [];
-      const firstModel = envs.find((e: any) => e.modelVersion)?.modelVersion;
-      if (firstModel) {
-        appVersion = firstModel;
-        // Persist so future runs don't need this call
-        await supabase
-          .from('mendix_apps')
-          .update({ version: firstModel })
-          .eq('project_id', appId)
-          .eq('user_id', user.id);
-        console.log(`Refreshed app version to: ${firstModel}`);
-      }
-    }
-  } catch (e) {
-    console.log(`Version refresh failed, proceeding with existing: ${e}`);
-  }
-}
-```
-
-For `fetch-mendix-apps`, after the environment upsert succeeds, update app versions:
-```typescript
-// Build version map from environment modelVersions
-const appVersionMap = new Map<string, string>();
-for (const env of validatedResults) {
-  if (env.model_version && !appVersionMap.has(env.app_id)) {
-    appVersionMap.set(env.app_id, env.model_version);
-  }
-}
-// Update app versions
-for (const [appId, version] of appVersionMap) {
-  await supabase
-    .from('mendix_apps')
-    .update({ version })
-    .eq('project_id', appId)
-    .eq('user_id', user.id);
-}
-```
-
-### What stays the same
-- The `hasGitHash()` detection logic (it works correctly when given a real version string)
-- The Git-first/SVN-fallback strategy
-- The webhook callback architecture
-- All other edge functions
+### Additional Diagnostic Step
+If the version refresh succeeds but the analyzer still fails, the `linting-webhook` logs will show "No mxlint data" again. At that point, implementing the error_message column plan (logging the full webhook payload) would be the next step to understand what the analyzer is returning.
 
