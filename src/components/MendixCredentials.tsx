@@ -117,8 +117,38 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
   const handleDeleteCredential = async (id: string) => {
     const credential = credentials.find(c => c.id === id);
     
+    // Check if any apps reference this credential
+    const { data: appsUsingCred } = await supabase
+      .from('mendix_apps')
+      .select('id')
+      .eq('credential_id', id);
+
+    const otherCredentials = credentials.filter(c => c.id !== id);
+
+    if (appsUsingCred && appsUsingCred.length > 0 && otherCredentials.length === 0) {
+      toast({
+        title: "Cannot delete",
+        description: `${appsUsingCred.length} app(s) use this credential and no other credential exists to reassign them to. Add another credential first.`,
+        variant: "destructive"
+      });
+      return;
+    }
+
     setLoading(true);
     try {
+      // Reassign apps and environments to another credential if needed
+      if (appsUsingCred && appsUsingCred.length > 0 && otherCredentials.length > 0) {
+        const newCredId = otherCredentials[0].id;
+        await supabase
+          .from('mendix_apps')
+          .update({ credential_id: newCredId })
+          .eq('credential_id', id);
+        await supabase
+          .from('mendix_environments')
+          .update({ credential_id: newCredId })
+          .eq('credential_id', id);
+      }
+
       const { error } = await supabase
         .from('mendix_credentials')
         .delete()
@@ -130,10 +160,11 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
       
       // Invalidate query cache
       queryClient.invalidateQueries({ queryKey: queryKeys.credentials });
+      queryClient.invalidateQueries({ queryKey: queryKeys.apps });
       
       toast({
         title: "Credential removed",
-        description: `${credential?.name} has been removed`
+        description: `${credential?.name} has been removed${appsUsingCred && appsUsingCred.length > 0 ? `. ${appsUsingCred.length} app(s) reassigned to ${otherCredentials[0]?.name}.` : ''}`
       });
     } catch (error) {
       console.error('Error deleting credential:', error);
