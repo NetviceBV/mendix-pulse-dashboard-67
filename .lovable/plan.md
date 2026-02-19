@@ -1,28 +1,35 @@
 
 
-## Fix: Redeploy run-linting-checks Edge Function
+## Force Deployment of run-linting-checks with a Visible Code Change
 
 ### Problem
-The version-refresh code is present in the source file but the **deployed** edge function is still running the old code. The logs clearly show:
-- `App version: 1.0.0` with no refresh attempt logged
-- No "Refreshed app version", "Version refresh API returned", or "Version refresh failed" log lines appear
-
-This means the previous deployment did not succeed or was not picked up.
+The version-refresh logic has been in the source code for multiple deployment cycles, but the deployed edge function is **still running old code**. Every log entry shows `App version: 1.0.0` with no refresh attempt — meaning the deployment tool is either silently failing or caching a previous build.
 
 ### Solution
-Force a redeployment of both modified edge functions:
+Make a small but meaningful change to the edge function source to force a completely fresh deployment. This also improves the logging so we can clearly tell which version of the code is running.
 
-1. **`run-linting-checks`** - Contains the version-refresh logic that should call the Mendix API before routing
-2. **`linting-webhook`** - Should also be redeployed to ensure consistency
+### Changes
 
-No code changes are needed — the source files already contain the correct logic. This is purely a deployment action.
+**`supabase/functions/run-linting-checks/index.ts`**
 
-### After Deployment
-Run linting on "Prikkl Backoffice" again. The logs should now show one of:
-- `Refreshed app version to: <real version>` (success - version fetched and Git routing used)
-- `Version refresh API returned <status>` (API call failed - need to check credentials)
-- `Version refresh failed` (network error)
+1. Add a startup/version banner log at the top of the request handler (right after the OPTIONS check):
+   ```typescript
+   console.log('[run-linting-checks] v2 - with version refresh')
+   ```
+   This way, we can immediately tell from logs whether the new code is deployed.
 
-### Additional Diagnostic Step
-If the version refresh succeeds but the analyzer still fails, the `linting-webhook` logs will show "No mxlint data" again. At that point, implementing the error_message column plan (logging the full webhook payload) would be the next step to understand what the analyzer is returning.
+2. Add more defensive logging around the version refresh block:
+   ```typescript
+   console.log(`DB version for app ${appId}: ${appRow?.version ?? 'null'}, will refresh: ${!appVersion || appVersion === '1.0.0'}`)
+   ```
 
+3. Redeploy `run-linting-checks` after the change.
+
+### Expected Outcome
+After deployment, the logs should show:
+- `[run-linting-checks] v2 - with version refresh` (confirms new code is running)
+- `DB version for app ...: 1.0.0, will refresh: true`
+- Either `Refreshed app version to: <real version>` or an error explaining why the refresh failed
+
+### If Deployment Still Fails
+If even after this change the logs don't show the "v2" banner, the issue is at the deployment infrastructure level and we'll need to investigate the Supabase deployment pipeline further (e.g., checking if there's a build cache or deployment error we're not seeing).
