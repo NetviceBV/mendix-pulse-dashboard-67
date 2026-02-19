@@ -80,35 +80,35 @@ Deno.serve(async (req) => {
     let appVersion = appRow?.version ?? undefined
     console.log(`[run-linting-checks] v3 - simplified routing. DB version: ${appVersion ?? 'null'}`)
 
-    // Refresh version from Mendix API if it looks stale
-    if (!appVersion || appVersion === '1.0.0') {
-      try {
-        const envHeaders: Record<string, string> = {}
-        if (credential.pat) {
-          envHeaders['Authorization'] = `MxToken ${credential.pat}`
-        }
-        const envRes = await fetch(
-          `https://cloud.home.mendix.com/api/v4/apps/${appId}/environments`,
-          { headers: envHeaders }
-        )
-        if (envRes.ok) {
-          const envData = await envRes.json()
-          const envs = envData.Environments || envData.environments || []
-          const firstModel = envs.find((e: any) => e.modelVersion)?.modelVersion
-          if (firstModel) {
-            appVersion = firstModel
-            await supabase
-              .from('mendix_apps')
-              .update({ version: firstModel })
-              .eq('project_id', appId)
-              .eq('user_id', user.id)
-            console.log(`Refreshed app version to: ${firstModel}`)
+    // Refresh version from Repository API commits (mendixVersion field)
+    if ((!appVersion || appVersion === '1.0.0') && credential.pat) {
+      console.log('Version is stale, fetching mendixVersion from latest mainline commit...')
+      const branchNames = ['main', 'trunk']
+      for (const branch of branchNames) {
+        try {
+          const commitUrl = `https://repository.api.mendix.com/v1/repositories/${appId}/branches/${encodeURIComponent(branch)}/commits?limit=1`
+          const commitRes = await fetch(commitUrl, {
+            headers: { 'Authorization': `MxToken ${credential.pat}`, 'Accept': 'application/json' }
+          })
+          if (commitRes.ok) {
+            const commitData = await commitRes.json()
+            const items = commitData.items || []
+            if (items.length > 0 && items[0].mendixVersion) {
+              appVersion = items[0].mendixVersion
+              await supabase
+                .from('mendix_apps')
+                .update({ version: appVersion })
+                .eq('project_id', appId)
+                .eq('user_id', user.id)
+              console.log(`Got mendixVersion from branch '${branch}': ${appVersion}`)
+              break
+            }
+          } else {
+            console.log(`Commits API for branch '${branch}' returned ${commitRes.status}, trying next...`)
           }
-        } else {
-          console.log(`Version refresh API returned ${envRes.status}`)
+        } catch (e) {
+          console.log(`Commits fetch for branch '${branch}' failed: ${e}`)
         }
-      } catch (e) {
-        console.log(`Version refresh failed: ${e}`)
       }
     }
 
