@@ -1,46 +1,125 @@
-## Version-Based Git/SVN Selection for Linting
+
+
+## Fix Git/SVN Detection Using Commits API `mendixVersion`
 
 ### Problem
-
-The `run-linting-checks` edge function currently decides between Git and SVN based solely on whether a PAT exists. This is unreliable -- an MX9 project with a PAT would incorrectly try Git first.
+The environment API never returns `modelVersion`, so the version stays `1.0.0` and every app routes to SVN. We need a reliable source for the Mendix version.
 
 ### Solution
+Use the Repository API commits endpoint (`/v1/repositories/{appId}/branches/{branchName}/commits?limit=1`) which returns `mendixVersion` per commit (e.g., `"8.18.5.18651"` or `"10.21.0.xxxxx"`). Fetch the latest commit from the mainline branch, extract the major version, and route accordingly.
 
-Look up the app's version from `mendix_apps` and use it to pick the right API. The key insight: if the version contains a git hash (6+ hex characters at the end), the project uses Git. Otherwise it uses SVN. However, MX9 projects can sometimes also have a git hash -- in that case, still use Git since the repo is Git-accessible.
+### Changes
 
-**Decision logic:**
+**`supabase/functions/run-linting-checks/index.ts`**
 
-- Version has a git hash AND PAT exists --> use Git endpoint (with SVN fallback)
-- Version has no git hash (pure numeric like `1.1.1234`) --> use SVN endpoint directly
-- No version found --> fall back to current behavior (try Git if git fails try SVN)
-  &nbsp;
+Replace the version refresh block (lines 83-113) and `getMajorVersion` function with:
 
-### Technical Changes
+1. **Try to get `mendixVersion` from the latest mainline commit** (requires PAT):
+   - Try branch name `main` first (MX10+ convention)
+   - If that returns 404, try `trunk` (MX9 convention)
+   - Take `mendixVersion` from the first (latest) commit
+   - Update `mendix_apps.version` in the DB with the real version
 
-**File: `supabase/functions/run-linting-checks/index.ts**`
+2. **Parse the major version** from the `mendixVersion` string and route:
+   - Major >= 10 --> GIT
+   - Major < 10 --> SVN
 
-1. **Add version lookup** after fetching the credential (after line 69):
-  ```typescript
-   const { data: appRow } = await supabase
-     .from('mendix_apps')
-     .select('version')
-     .eq('project_id', appId)
-     .eq('user_id', user.id)
-     .single();
-  ```
-2. **Add helper function** to detect git-based versions:
-  ```typescript
-   function hasGitHash(ver?: string): boolean {
-     if (!ver) return false;
-     return /[a-f0-9]{6,}$/i.test(ver);
-   }
-  ```
-3. **Replace the Git/SVN decision logic** (lines 136-208). Instead of checking `credential.pat`, use version-based detection:
-  - If `hasGitHash(appRow?.version)` AND `credential.pat` --> try Git first, fall back to SVN
-  - If no git hash (MX9 numeric version) --> go straight to SVN
-  - Add logging: `App version: X, git-based: Y, using: Z`
-4. **Keep the existing SVN fallback** if Git fails -- this safety net remains unchanged.
+### Pseudocode
 
-### No Other Files Affected
+```text
+if (!appVersion || appVersion === '1.0.0') AND credential.pat:
+  for branchName in ['main', 'trunk']:
+    GET /v1/repositories/{appId}/branches/{branchName}/commits?limit=1
+    if 200:
+      mendixVersion = items[0].mendixVersion   // e.g. "10.21.0.12345"
+      update mendix_apps.version = mendixVersion
+      break
+    if 404:
+      try next branch name
 
-This is entirely within the `run-linting-checks` edge function. No frontend or database changes needed.
+parse major version from appVersion
+major >= 10 -> GIT endpoint
+major < 10  -> SVN endpoint
+```
+
+### Code Detail
+
+The version refresh block becomes:
+
+```typescript
+// Refresh version from Repository API commits (mendixVersion field)
+if ((!appVersion || appVersion === '1.0.0') && credential.pat) {
+  console.log('Version is stale, fetching mendixVersion from latest mainline commit...')
+  const branchNames = ['main', 'trunk']
+  for (const branch of branchNames) {
+    try {
+      const commitUrl = `https://repository.api.mendix.com/v1/repositories/${appId}/branches/${encodeURIComponent(branch)}/commits?limit=1`
+      const commitRes = await fetch(commitUrl, {
+        headers: { 'Authorization': `MxToken ${credential.pat}`, 'Accept': 'application/json' }
+      })
+      if (commitRes.ok) {
+        const commitData = await commitRes.json()
+        const items = commitData.items || []
+        if (items.length > 0 && items[0].mendixVersion) {
+          appVersion = items[0].mendixVersion
+          await supabase
+            .from('mendix_apps')
+            .update({ version: appVersion })
+            .eq('project_id', appId)
+            .eq('user_id', user.id)
+          console.log(`Got mendixVersion from branch '${branch}': ${appVersion}`)
+          break
+        }
+      } else {
+        console.log(`Commits API for branch '${branch}' returned ${commitRes.status}, trying next...`)
+      }
+    } catch (e) {
+      console.log(`Commits fetch for branch '${branch}' failed: ${e}`)
+    }
+  }
+}
+```
+
+The `getMajorVersion` function and the routing logic after it stay exactly the same:
+
+```typescript
+function getMajorVersion(ver?: string): number {
+  if (!ver) return 0
+  const match = ver.match(/^(\d+)\./)
+  return match ? parseInt(match[1], 10) : 0
+}
+
+const majorVersion = getMajorVersion(appVersion)
+const useGit = majorVersion >= 10
+console.log(`App version: ${appVersion ?? 'unknown'}, major: ${majorVersion}, routing: ${useGit ? 'GIT' : 'SVN'}`)
+```
+
+### What Changes
+- Version refresh block (lines 83-113): replaced with Repository API commits call
+- Everything else stays identical
+
+### What Gets Removed
+- The environment API call to `cloud.home.mendix.com` (never returned modelVersion)
+
+### What Stays
+- `getMajorVersion()` function
+- Major version routing logic (>= 10 = GIT, < 10 = SVN)
+- All authentication, policy collection, webhook, Railway ping code
+
+### Expected Logs After Deployment
+For Prikkl Backoffice (Mendix 10+):
+```
+Version is stale, fetching mendixVersion from latest mainline commit...
+Got mendixVersion from branch 'main': 10.21.0.12345
+App version: 10.21.0.12345, major: 10, routing: GIT
+Using GIT endpoint...
+```
+
+For a Mendix 9 app:
+```
+Version is stale, fetching mendixVersion from latest mainline commit...
+Commits API for branch 'main' returned 404, trying next...
+Got mendixVersion from branch 'trunk': 9.24.1.54321
+App version: 9.24.1.54321, major: 9, routing: SVN
+Using SVN endpoint...
+```

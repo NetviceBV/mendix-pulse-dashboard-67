@@ -13,6 +13,7 @@ Deno.serve(async (req) => {
   }
 
   try {
+    console.log('[run-linting-checks] v2 - with version refresh')
     // Authenticate user
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
@@ -68,7 +69,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    // 2. Look up app version to determine Git vs SVN
+    // 2. Look up app version and refresh if stale
     const { data: appRow } = await supabase
       .from('mendix_apps')
       .select('version')
@@ -76,12 +77,46 @@ Deno.serve(async (req) => {
       .eq('user_id', user.id)
       .single()
 
-    function hasGitHash(ver?: string): boolean {
-      if (!ver) return false
-      return /[a-f0-9]{6,}$/i.test(ver)
+    let appVersion = appRow?.version ?? undefined
+    console.log(`[run-linting-checks] v3 - simplified routing. DB version: ${appVersion ?? 'null'}`)
+
+    // Refresh version from Repository API commits (mendixVersion field)
+    if ((!appVersion || appVersion === '1.0.0') && credential.pat) {
+      console.log('Version is stale, fetching mendixVersion from latest mainline commit...')
+      const branchNames = ['main', 'trunk']
+      for (const branch of branchNames) {
+        try {
+          const commitUrl = `https://repository.api.mendix.com/v1/repositories/${appId}/branches/${encodeURIComponent(branch)}/commits?limit=1`
+          const commitRes = await fetch(commitUrl, {
+            headers: { 'Authorization': `MxToken ${credential.pat}`, 'Accept': 'application/json' }
+          })
+          if (commitRes.ok) {
+            const commitData = await commitRes.json()
+            const items = commitData.items || []
+            if (items.length > 0 && items[0].mendixVersion) {
+              appVersion = items[0].mendixVersion
+              await supabase
+                .from('mendix_apps')
+                .update({ version: appVersion })
+                .eq('project_id', appId)
+                .eq('user_id', user.id)
+              console.log(`Got mendixVersion from branch '${branch}': ${appVersion}`)
+              break
+            }
+          } else {
+            console.log(`Commits API for branch '${branch}' returned ${commitRes.status}, trying next...`)
+          }
+        } catch (e) {
+          console.log(`Commits fetch for branch '${branch}' failed: ${e}`)
+        }
+      }
     }
 
-    const gitBased = hasGitHash(appRow?.version ?? undefined)
+    function getMajorVersion(ver?: string): number {
+      if (!ver) return 0
+      const match = ver.match(/^(\d+)\./)
+      return match ? parseInt(match[1], 10) : 0
+    }
 
     // 3. Collect enabled rule IDs (global policies + per-app overrides)
     const { data: policies, error: polError } = await supabase
@@ -114,7 +149,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    // 3. Mark stale runs as failed (safety net for runs that never got a callback)
+    // Mark stale runs as failed
     await supabase
       .from('linting_runs')
       .update({ status: 'failed', completed_at: new Date().toISOString() })
@@ -148,108 +183,58 @@ Deno.serve(async (req) => {
     // Wake up Railway container before making the real request
     await pingRailwayHealth(baseUrl, analyzerApiKey)
 
+    // Simple routing: Mendix 9 = SVN, Mendix 10+ = GIT
+    const majorVersion = getMajorVersion(appVersion)
+    const useGit = majorVersion >= 10
+
+    console.log(`App version: ${appVersion ?? 'unknown'}, major: ${majorVersion}, routing: ${useGit ? 'GIT' : 'SVN'}`)
+
     let accepted = false
-    const useGitFirst = gitBased && !!credential.pat
-    const useSvnOnly = !gitBased && appRow?.version // pure numeric version → SVN directly
 
-    console.log(`App version: ${appRow?.version ?? 'unknown'}, git-based: ${gitBased}, strategy: ${useSvnOnly ? 'SVN-only' : useGitFirst ? 'Git-first' : 'fallback (try Git if PAT, else SVN)'}`)
-
-    // Try Git first when version indicates git-based repo
-    if (useGitFirst) {
-      try {
-        console.log('Trying Git endpoint with webhook...')
-        const gitRes = await fetch(`${baseUrl}/analyze-mpr/git`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-API-Key': analyzerApiKey,
-          },
-          body: JSON.stringify({
-            projectId: appId,
-            username: credential.username,
-            pat: credential.pat,
-            reportFormat: 'json',
-            policies: enabledRuleIds,
-            webhookUrl,
-          }),
+    if (useGit) {
+      if (!credential.pat) {
+        await supabase.from('linting_runs').update({ status: 'failed', completed_at: new Date().toISOString() }).eq('id', run.id)
+        return new Response(JSON.stringify({ error: 'Mendix 10+ requires a PAT. Add one in Settings > Credentials.' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
-
-        if (gitRes.ok) {
-          accepted = true
-          console.log('Git endpoint accepted request')
-        } else {
-          const errText = await gitRes.text()
-          console.log(`Git endpoint failed (${gitRes.status}): ${errText}, falling back to SVN`)
-        }
-      } catch (e) {
-        console.log(`Git endpoint error: ${getErrorMessage(e)}, falling back to SVN`)
       }
-    } else if (!useSvnOnly && credential.pat) {
-      // No version found → fall back to current behavior: try Git if PAT exists
-      try {
-        console.log('No version info, trying Git endpoint with webhook...')
-        const gitRes = await fetch(`${baseUrl}/analyze-mpr/git`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-API-Key': analyzerApiKey,
-          },
-          body: JSON.stringify({
-            projectId: appId,
-            username: credential.username,
-            pat: credential.pat,
-            reportFormat: 'json',
-            policies: enabledRuleIds,
-            webhookUrl,
-          }),
-        })
-
-        if (gitRes.ok) {
-          accepted = true
-          console.log('Git endpoint accepted request')
-        } else {
-          const errText = await gitRes.text()
-          console.log(`Git endpoint failed (${gitRes.status}): ${errText}, falling back to SVN`)
-        }
-      } catch (e) {
-        console.log(`Git endpoint error: ${getErrorMessage(e)}, falling back to SVN`)
-      }
-    } else {
-      console.log(useSvnOnly ? 'MX9 numeric version detected, skipping Git' : 'No PAT available, skipping Git endpoint')
-    }
-
-    // SVN fallback (or direct SVN for MX9 numeric versions)
-    if (!accepted) {
-      console.log('Using SVN endpoint with webhook...')
-      const svnRes = await fetch(`${baseUrl}/analyze-mpr/svn`, {
+      console.log('Using GIT endpoint...')
+      const gitRes = await fetch(`${baseUrl}/analyze-mpr/git`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': analyzerApiKey,
-        },
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': analyzerApiKey },
         body: JSON.stringify({
-          projectId: appId,
-          username: credential.username,
-          password: credential.api_key,
-          reportFormat: 'json',
-          policies: enabledRuleIds,
-          webhookUrl,
+          projectId: appId, username: credential.username, pat: credential.pat,
+          reportFormat: 'json', policies: enabledRuleIds, webhookUrl,
         }),
       })
-
+      if (gitRes.ok) {
+        accepted = true
+      } else {
+        const errText = await gitRes.text()
+        console.error(`GIT endpoint failed (${gitRes.status}): ${errText}`)
+        await supabase.from('linting_runs').update({ status: 'failed', completed_at: new Date().toISOString() }).eq('id', run.id)
+        return new Response(JSON.stringify({ error: `Analyzer error: ${errText}` }), {
+          status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+    } else {
+      console.log('Using SVN endpoint...')
+      const svnRes = await fetch(`${baseUrl}/analyze-mpr/svn`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': analyzerApiKey },
+        body: JSON.stringify({
+          projectId: appId, username: credential.username,
+          password: credential.password || credential.api_key,
+          reportFormat: 'json', policies: enabledRuleIds, webhookUrl,
+        }),
+      })
       if (svnRes.ok) {
         accepted = true
-        console.log('SVN endpoint accepted request')
       } else {
         const errText = await svnRes.text()
         console.error(`SVN endpoint failed (${svnRes.status}): ${errText}`)
-
-        await supabase
-          .from('linting_runs')
-          .update({ status: 'failed', completed_at: new Date().toISOString() })
-          .eq('id', run.id)
-
-        return new Response(JSON.stringify({ error: `Analyzer API error: ${errText}` }), {
+        await supabase.from('linting_runs').update({ status: 'failed', completed_at: new Date().toISOString() }).eq('id', run.id)
+        return new Response(JSON.stringify({ error: `Analyzer error: ${errText}` }), {
           status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         })
       }
