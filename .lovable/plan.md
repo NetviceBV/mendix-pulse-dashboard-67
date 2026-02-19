@@ -1,46 +1,33 @@
-## Version-Based Git/SVN Selection for Linting
 
-### Problem
 
-The `run-linting-checks` edge function currently decides between Git and SVN based solely on whether a PAT exists. This is unreliable -- an MX9 project with a PAT would incorrectly try Git first.
+## Add Mendix Password Field to Credentials
 
-### Solution
+### What Changes
+A new `password` field will be added to Mendix credentials. This is the Mendix account password used specifically for SVN authentication (the linting analyzer's SVN endpoint). Currently, the SVN endpoint incorrectly sends `api_key` as the password.
 
-Look up the app's version from `mendix_apps` and use it to pick the right API. The key insight: if the version contains a git hash (6+ hex characters at the end), the project uses Git. Otherwise it uses SVN. However, MX9 projects can sometimes also have a git hash -- in that case, still use Git since the repo is Git-accessible.
+### Changes Required
 
-**Decision logic:**
+**1. Database Migration**
+- Add a `password` column (text, nullable) to the `mendix_credentials` table
+- Nullable so existing credentials continue to work without requiring immediate updates
 
-- Version has a git hash AND PAT exists --> use Git endpoint (with SVN fallback)
-- Version has no git hash (pure numeric like `1.1.1234`) --> use SVN endpoint directly
-- No version found --> fall back to current behavior (try Git if git fails try SVN)
-  &nbsp;
+**2. Frontend - `src/components/MendixCredentials.tsx`**
+- Add a `password` field to the add/edit forms (with a Lock icon, type="password")
+- Update the `MendixCredential` interface to include `password?: string`
+- Update all state objects (`newCredential`, `editCredential`) to include `password`
+- Update insert/update/edit handlers to include the password field
+- Password is optional -- validation will not require it (unlike name, username, api_key, pat)
 
-### Technical Changes
+**3. Credentials Query Hook - `src/hooks/useCredentialsQuery.ts`**
+- No changes needed -- it uses `select('*')` so the new column will be included automatically
 
-**File: `supabase/functions/run-linting-checks/index.ts**`
+**4. Edge Function - `supabase/functions/run-linting-checks/index.ts`**
+- Update the SVN endpoint call to use `credential.password` instead of `credential.api_key` as the password field
+- Add a fallback: if `password` is not set, fall back to `credential.api_key` for backward compatibility
 
-1. **Add version lookup** after fetching the credential (after line 69):
-  ```typescript
-   const { data: appRow } = await supabase
-     .from('mendix_apps')
-     .select('version')
-     .eq('project_id', appId)
-     .eq('user_id', user.id)
-     .single();
-  ```
-2. **Add helper function** to detect git-based versions:
-  ```typescript
-   function hasGitHash(ver?: string): boolean {
-     if (!ver) return false;
-     return /[a-f0-9]{6,}$/i.test(ver);
-   }
-  ```
-3. **Replace the Git/SVN decision logic** (lines 136-208). Instead of checking `credential.pat`, use version-based detection:
-  - If `hasGitHash(appRow?.version)` AND `credential.pat` --> try Git first, fall back to SVN
-  - If no git hash (MX9 numeric version) --> go straight to SVN
-  - Add logging: `App version: X, git-based: Y, using: Z`
-4. **Keep the existing SVN fallback** if Git fails -- this safety net remains unchanged.
+**5. Supabase Types - `src/integrations/supabase/types.ts`**
+- Add `password` to the `mendix_credentials` table type definitions (Row, Insert, Update)
 
-### No Other Files Affected
+### No Other Edge Functions Affected
+The Mendix Deploy API endpoints (start/stop/fetch/download) use `Mendix-ApiKey` header authentication, which is separate from the SVN password. Only the Railway linting analyzer SVN call uses a password field.
 
-This is entirely within the `run-linting-checks` edge function. No frontend or database changes needed.
