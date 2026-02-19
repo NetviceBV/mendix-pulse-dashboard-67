@@ -13,6 +13,7 @@ Deno.serve(async (req) => {
   }
 
   try {
+    console.log('[run-linting-checks] v2 - with version refresh')
     // Authenticate user
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
@@ -78,6 +79,7 @@ Deno.serve(async (req) => {
 
     // Refresh version from Mendix API if it looks stale (default '1.0.0' or missing)
     let appVersion = appRow?.version ?? undefined
+    console.log(`DB version for app ${appId}: ${appRow?.version ?? 'null'}, will refresh: ${!appVersion || appVersion === '1.0.0'}`)
     if (!appVersion || appVersion === '1.0.0') {
       try {
         const envHeaders: Record<string, string> = {}
