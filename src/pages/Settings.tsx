@@ -8,6 +8,7 @@ import EmailManagement from "@/components/EmailManagement";
 import { EmailTemplates } from "@/components/EmailTemplates";
 import { OWASPSettings } from "@/components/OWASPSettings";
 import { OWASPRunsHistory } from "@/components/OWASPRunsHistory";
+import LintingSettings from "@/components/LintingSettings";
 import { ArrowLeft, Settings as SettingsIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -31,22 +32,10 @@ const Settings = () => {
     });
   }, [navigate]);
 
-  // Load credentials from localStorage on mount
-  useEffect(() => {
-    const savedCredentials = localStorage.getItem('mendix-credentials');
-    if (savedCredentials) {
-      try {
-        setMendixCredentials(JSON.parse(savedCredentials));
-      } catch (error) {
-        console.error('Failed to parse saved credentials:', error);
-      }
-    }
-  }, []);
-
-  // Save credentials to localStorage whenever they change
+  // Credentials are managed by MendixCredentials component via Supabase
+  // State is kept here only for prop drilling
   const handleCredentialsChange = (credentials: MendixCredential[]) => {
     setMendixCredentials(credentials);
-    localStorage.setItem('mendix-credentials', JSON.stringify(credentials));
   };
 
   const handleSignOut = async () => {
@@ -98,7 +87,7 @@ const Settings = () => {
       <div className="container mx-auto px-4 py-6">
         <div className="max-w-4xl mx-auto">
             <Tabs defaultValue="credentials" className="w-full">
-              <TabsList className="grid w-full grid-cols-7">
+              <TabsList className="flex flex-wrap h-auto gap-1 p-1 w-full">
                 <TabsTrigger value="credentials">Mendix Credentials</TabsTrigger>
                 <TabsTrigger value="webhooks">Webhook Settings</TabsTrigger>
                 <TabsTrigger value="emails">Email Management</TabsTrigger>
@@ -106,6 +95,7 @@ const Settings = () => {
                 <TabsTrigger value="monitoring">Log Monitoring</TabsTrigger>
                 <TabsTrigger value="owasp">OWASP Security</TabsTrigger>
                 <TabsTrigger value="owasp-history">OWASP History</TabsTrigger>
+                <TabsTrigger value="linting">Linting Rules</TabsTrigger>
               </TabsList>
             
             <TabsContent value="credentials" className="mt-6">
@@ -137,6 +127,10 @@ const Settings = () => {
             
             <TabsContent value="owasp-history" className="mt-6">
               <OWASPRunsHistory />
+            </TabsContent>
+            
+            <TabsContent value="linting" className="mt-6">
+              <LintingSettings />
             </TabsContent>
           </Tabs>
         </div>

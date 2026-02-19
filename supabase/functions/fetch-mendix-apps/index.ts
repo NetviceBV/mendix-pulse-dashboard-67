@@ -162,7 +162,7 @@ serve(async (req) => {
       const { error: upsertError } = await supabase
         .from('mendix_apps')
         .upsert(appResults, { 
-          onConflict: 'app_id,credential_id',
+          onConflict: 'project_id,user_id',
           ignoreDuplicates: false 
         });
 
@@ -343,7 +343,7 @@ serve(async (req) => {
           const { data: upsertedData, error: envUpsertError } = await supabase
             .from('mendix_environments')
             .upsert(validatedResults, { 
-              onConflict: 'environment_id,credential_id,user_id',
+              onConflict: 'environment_id,user_id',
               ignoreDuplicates: false 
             })
             .select();

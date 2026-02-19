@@ -6,6 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Trash2, Key, User, Shield, Edit2, Save, X, Download } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { useCredentialsQuery } from "@/hooks/useCredentialsQuery";
+import { queryKeys } from "@/lib/queryKeys";
+import { CredentialsSkeleton } from "@/components/CredentialsSkeleton";
 
 export interface MendixCredential {
   id: string;
@@ -41,71 +45,18 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
   const [isAdding, setIsAdding] = useState(false);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  // Migrate existing localStorage credentials to database
+  // Use React Query for initial data fetching
+  const { data: queryCredentials, isLoading: isQueryLoading } = useCredentialsQuery();
+
+  // Sync React Query data with parent component
   useEffect(() => {
-    const migrateLocalStorageCredentials = async () => {
-      const savedCredentials = localStorage.getItem('mendix-credentials');
-      if (savedCredentials && credentials.length === 0) {
-        try {
-          const localCredentials = JSON.parse(savedCredentials);
-          if (localCredentials.length > 0) {
-            // Migrate each credential to database
-            for (const cred of localCredentials) {
-              await supabase
-                .from('mendix_credentials')
-                .insert({
-                  user_id: (await supabase.auth.getUser()).data.user?.id,
-                  name: cred.name,
-                  username: cred.username,
-                  api_key: cred.apiKey,
-                  pat: cred.pat
-                });
-            }
-            // Clear localStorage after successful migration
-            localStorage.removeItem('mendix-credentials');
-            // Refresh credentials
-            fetchCredentials();
-            toast({
-              title: "Credentials migrated",
-              description: "Your existing credentials have been moved to secure storage"
-            });
-          }
-        } catch (error) {
-          console.error('Migration failed:', error);
-        }
-      }
-    };
-
-    migrateLocalStorageCredentials();
-  }, [credentials.length]);
-
-  const fetchCredentials = async () => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('mendix_credentials')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      onCredentialsChange(data || []);
-    } catch (error) {
-      console.error('Error fetching credentials:', error);
-      toast({
-        title: "Error loading credentials",
-        description: "Failed to load your credentials from the database",
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
+    if (queryCredentials && queryCredentials.length > 0) {
+      onCredentialsChange(queryCredentials);
     }
-  };
+  }, [queryCredentials, onCredentialsChange]);
 
-  // Fetch credentials on component mount
-  useEffect(() => {
-    fetchCredentials();
-  }, []);
 
   const handleAddCredential = async () => {
     if (!newCredential.name || !newCredential.username || !newCredential.api_key || !newCredential.pat) {
@@ -140,6 +91,9 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
       setNewCredential({ name: "", username: "", api_key: "", pat: "" });
       setIsAdding(false);
       
+      // Invalidate query cache
+      queryClient.invalidateQueries({ queryKey: queryKeys.credentials });
+      
       toast({
         title: "Credential added",
         description: `${newCredential.name} has been added successfully`
@@ -169,6 +123,9 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
       if (error) throw error;
 
       onCredentialsChange(credentials.filter(c => c.id !== id));
+      
+      // Invalidate query cache
+      queryClient.invalidateQueries({ queryKey: queryKeys.credentials });
       
       toast({
         title: "Credential removed",
@@ -206,6 +163,9 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
       ));
       setEditingId(null);
       
+      // Invalidate query cache
+      queryClient.invalidateQueries({ queryKey: queryKeys.credentials });
+      
       toast({
         title: "Credential updated",
         description: "Changes have been saved successfully"
@@ -231,6 +191,9 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
 
       if (error) throw error;
 
+      // Invalidate apps query to refetch
+      queryClient.invalidateQueries({ queryKey: queryKeys.appsWithEnvironments });
+
       toast({
         title: "Apps fetched successfully",
         description: data?.message || "Applications have been retrieved and saved",
@@ -247,20 +210,9 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
     }
   };
 
-  if (loading && credentials.length === 0) {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Mendix Credentials</h3>
-        </div>
-        <Card className="bg-gradient-card border-border">
-          <CardContent className="text-center py-12">
-            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-            <p className="text-muted-foreground">Loading credentials...</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
+  // Show skeleton while loading
+  if (isQueryLoading && credentials.length === 0) {
+    return <CredentialsSkeleton count={2} />;
   }
 
   return (
@@ -377,7 +329,7 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
         </Card>
       )}
 
-      {credentials.length === 0 && !isAdding && !loading && (
+      {credentials.length === 0 && !isAdding && !loading && !isQueryLoading && (
         <Card className="bg-gradient-card border-border">
           <CardContent className="text-center py-12">
             <Shield className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
@@ -495,21 +447,21 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
                 </div>
                 <div className="flex gap-2">
                   <Button
-                    variant="ghost"
+                    variant="outline"
                     size="sm"
                     onClick={() => handleFetchApps(credential.id)}
-                    disabled={loading || editingId !== null || fetchingApps !== null}
-                    title="Fetch Applications"
+                    disabled={fetchingApps === credential.id}
                   >
                     {fetchingApps === credential.id ? (
-                      <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                      <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin mr-2" />
                     ) : (
-                      <Download className="w-4 h-4" />
+                      <Download className="w-4 h-4 mr-2" />
                     )}
+                    Fetch Apps
                   </Button>
                   <Button
-                    variant="ghost"
-                    size="sm"
+                    variant="outline"
+                    size="icon"
                     onClick={() => {
                       setEditingId(credential.id);
                       setEditCredential({
@@ -519,16 +471,16 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
                         pat: credential.pat || ""
                       });
                     }}
-                    disabled={loading || editingId !== null || fetchingApps !== null}
+                    disabled={loading}
                   >
                     <Edit2 className="w-4 h-4" />
                   </Button>
                   <Button
-                    variant="ghost"
-                    size="sm"
+                    variant="outline"
+                    size="icon"
                     onClick={() => handleDeleteCredential(credential.id)}
+                    disabled={loading}
                     className="text-destructive hover:text-destructive"
-                    disabled={loading || editingId !== null || fetchingApps !== null}
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>

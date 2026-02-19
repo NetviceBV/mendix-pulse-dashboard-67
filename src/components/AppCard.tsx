@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { format, differenceInMonths, subMonths } from "date-fns";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { HoverCard, HoverCardTrigger, HoverCardContent } from "@/components/ui/hover-card";
 import { supabase } from "@/integrations/supabase/client";
-import { Activity, AlertTriangle, CheckCircle, XCircle, ExternalLink, Clock, Users, Code, Loader2, ChevronDown, RefreshCw, FileText, Copy, Check, Shield, Play } from "lucide-react";
+import { Activity, AlertTriangle, CheckCircle, XCircle, ExternalLink, Clock, Users, Code, Loader2, ChevronDown, RefreshCw, FileText, Copy, Check, Shield, Play, FileCode, Settings2, History } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import LogsViewer from "./LogsViewer";
 import { VulnerabilityScanDialog } from "./VulnerabilityScanDialog";
@@ -14,7 +16,13 @@ import { useMendixOperations } from "@/hooks/useMendixOperations";
 import { MicroflowsDialog, type MicroflowsResponse } from "./MicroflowsDialog";
 import { toast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { OWASPDetailsDialog, OWASPItem } from "./OWASPDetailsDialog";
+import { useLintingQuery } from "@/hooks/useLintingQuery";
+import { LintingChapterGrid } from "./LintingChapterGrid";
+import { LintingDetailsDialog } from "./LintingDetailsDialog";
+import { AppLintingOverrides } from "./AppLintingOverrides";
+import { LintingRunHistory } from "./LintingRunHistory";
 export interface MendixEnvironment {
   id: string;
   environment_id: string | null;
@@ -122,6 +130,16 @@ const AppCard = ({
   const [isOwaspDialogOpen, setIsOwaspDialogOpen] = useState(false);
   const [runningOwaspChecks, setRunningOwaspChecks] = useState(false);
   const [owaspReloadTrigger, setOwaspReloadTrigger] = useState(0);
+  
+  // Linting state
+  const [selectedLintingChapter, setSelectedLintingChapter] = useState<string | null>(null);
+  const [isLintingDialogOpen, setIsLintingDialogOpen] = useState(false);
+  const [isLintingOverridesOpen, setIsLintingOverridesOpen] = useState(false);
+  const [isLintingHistoryOpen, setIsLintingHistoryOpen] = useState(false);
+  const [activeSecurityTab, setActiveSecurityTab] = useState("owasp");
+  const [runningLintingChecks, setRunningLintingChecks] = useState(false);
+  const { data: lintingData, isLoading: lintingLoading } = useLintingQuery(app.project_id);
+  const queryClient = useQueryClient();
   
   const {
     loading,
@@ -584,6 +602,84 @@ const AppCard = ({
     }
   };
 
+  const handleRunLintingChecks = async () => {
+    if (!app.project_id || !app.credential_id || runningLintingChecks) return;
+
+    try {
+      setRunningLintingChecks(true);
+      toast({
+        title: "Running Linting Checks",
+        description: "Analyzing your Mendix project. This may take 1-2 minutes...",
+      });
+
+      const { data, error } = await supabase.functions.invoke('run-linting-checks', {
+        body: {
+          credentialId: app.credential_id,
+          appId: app.project_id,
+        },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const runId = data?.runId;
+      if (!runId) throw new Error('No run ID returned');
+
+      // Poll for completion every 5 seconds
+      const pollInterval = setInterval(async () => {
+        try {
+          const { data: runData, error: pollError } = await supabase
+            .from('linting_runs')
+            .select('status, passed_rules, failed_rules, total_rules')
+            .eq('id', runId)
+            .single();
+
+          if (pollError) {
+            console.error('Polling error:', pollError);
+            return;
+          }
+
+          if (runData?.status === 'completed') {
+            clearInterval(pollInterval);
+            setRunningLintingChecks(false);
+            toast({
+              title: "Linting Complete",
+              description: `${runData.passed_rules} passed, ${runData.failed_rules} failed out of ${runData.total_rules} rules.`,
+            });
+            queryClient.invalidateQueries({ queryKey: ['linting', app.project_id] });
+            queryClient.invalidateQueries({ queryKey: ['linting-runs', app.project_id] });
+          } else if (runData?.status === 'failed') {
+            clearInterval(pollInterval);
+            setRunningLintingChecks(false);
+            toast({
+              title: "Linting Failed",
+              description: "The linting check failed during processing. Check logs for details.",
+              variant: "destructive",
+            });
+            queryClient.invalidateQueries({ queryKey: ['linting-runs', app.project_id] });
+          }
+        } catch (e) {
+          console.error('Poll iteration error:', e);
+        }
+      }, 5000);
+
+      // Safety timeout: stop polling after 3 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        setRunningLintingChecks(false);
+      }, 180000);
+
+    } catch (error: any) {
+      console.error('Error running linting checks:', error);
+      setRunningLintingChecks(false);
+      toast({
+        title: "Linting Failed",
+        description: error.message || "Failed to run linting checks. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleRunOwaspChecks = async () => {
     if (!app.app_id || !app.environments || runningOwaspChecks) return;
 
@@ -715,82 +811,116 @@ const AppCard = ({
       </CardHeader>
 
       <CardContent className="pt-0">
-        {/* OWASP Top 10 Grid */}
+        {/* Security & Quality Tabs */}
         <div className="mb-4 p-4 bg-muted/50 rounded-lg border">
-          <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-medium flex items-center gap-2">
-              <Shield className="h-4 w-4" />
-              OWASP Top 10 Checks
-            </h4>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleRunOwaspChecks}
-              disabled={runningOwaspChecks || owaspLoading}
-              className="h-7"
-            >
-              {runningOwaspChecks ? (
-                <>
-                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                  Running...
-                </>
-              ) : (
-                <>
-                  <Play className="h-3 w-3 mr-1" />
-                  Run Checks
-                </>
-              )}
-            </Button>
-          </div>
-          {owaspLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : owaspItems.length === 0 ? (
-            <div className="text-center py-6 text-sm text-muted-foreground">
-              No OWASP checks configured. Configure them in Settings.
-            </div>
-          ) : (
-          <div className="grid grid-cols-2 gap-2">
-            {owaspItems.map((item) => {
-              const effectiveStatus = getOwaspEffectiveStatus(item);
-              return (
-              <button
-                key={item.id}
-                onClick={() => handleOwaspItemClick(item)}
-                disabled={effectiveStatus === 'unknown' || !item.steps || item.steps.length === 0}
-                className={cn(
-                  "flex items-start gap-2 p-2 rounded-md border text-left transition-colors",
-                  effectiveStatus !== 'unknown' && item.steps && item.steps.length > 0 && "hover:bg-accent cursor-pointer",
-                  (effectiveStatus === 'unknown' || !item.steps || item.steps.length === 0) && "cursor-default",
-                  effectiveStatus === 'pass' && "bg-green-500/5 border-green-500/20",
-                  effectiveStatus === 'fail' && "bg-red-500/5 border-red-500/20",
-                  effectiveStatus === 'warning' && "bg-yellow-500/5 border-yellow-500/20",
-                  effectiveStatus === 'pending' && "bg-blue-500/5 border-blue-500/20",
-                  effectiveStatus === 'unknown' && "bg-background"
-                )}
-              >
-                <div className="mt-0.5">
-                  {getOwaspStatusIcon(item)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-medium text-foreground truncate">
-                    {item.id}
-                  </div>
-                  <div className="text-xs text-muted-foreground truncate">
-                    {item.title}
-                  </div>
-                  {item.checkDate && (
-                    <div className="text-[10px] text-muted-foreground mt-0.5">
-                      {format(item.checkDate, 'MMM d')}
-                    </div>
+          <Tabs value={activeSecurityTab} onValueChange={setActiveSecurityTab}>
+            <div className="flex items-center justify-between mb-3">
+              <TabsList className="h-8">
+                <TabsTrigger value="owasp" className="text-xs px-3 py-1 gap-1.5">
+                  <Shield className="h-3.5 w-3.5" />
+                  OWASP Top 10
+                </TabsTrigger>
+                <TabsTrigger value="linting" className="text-xs px-3 py-1 gap-1.5">
+                  <FileCode className="h-3.5 w-3.5" />
+                  Linting
+                </TabsTrigger>
+              </TabsList>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={activeSecurityTab === "owasp" ? handleRunOwaspChecks : handleRunLintingChecks}
+                  disabled={activeSecurityTab === "owasp" ? (runningOwaspChecks || owaspLoading) : runningLintingChecks}
+                  className="h-7"
+                >
+                  {(runningOwaspChecks && activeSecurityTab === "owasp") || (runningLintingChecks && activeSecurityTab === "linting") ? (
+                    <>
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                      Running...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="h-3 w-3 mr-1" />
+                      {activeSecurityTab === "owasp" ? "Run OWASP" : "Run Linting"}
+                    </>
                   )}
+                </Button>
+              </div>
+            </div>
+
+            {/* OWASP Tab Content */}
+            <TabsContent value="owasp" className="mt-0">
+              {owaspLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
-              </button>
-              );
-            })}
-          </div>
-          )}
+              ) : owaspItems.length === 0 ? (
+                <div className="text-center py-6 text-sm text-muted-foreground">
+                  No OWASP checks configured. Configure them in Settings.
+                </div>
+              ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {owaspItems.map((item) => {
+                  const effectiveStatus = getOwaspEffectiveStatus(item);
+                  return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleOwaspItemClick(item)}
+                    disabled={effectiveStatus === 'unknown' || !item.steps || item.steps.length === 0}
+                    className={cn(
+                      "flex items-start gap-2 p-2 rounded-md border text-left transition-colors",
+                      effectiveStatus !== 'unknown' && item.steps && item.steps.length > 0 && "hover:bg-accent cursor-pointer",
+                      (effectiveStatus === 'unknown' || !item.steps || item.steps.length === 0) && "cursor-default",
+                      effectiveStatus === 'pass' && "bg-green-500/5 border-green-500/20",
+                      effectiveStatus === 'fail' && "bg-red-500/5 border-red-500/20",
+                      effectiveStatus === 'warning' && "bg-yellow-500/5 border-yellow-500/20",
+                      effectiveStatus === 'pending' && "bg-blue-500/5 border-blue-500/20",
+                      effectiveStatus === 'unknown' && "bg-background"
+                    )}
+                  >
+                    <div className="mt-0.5">
+                      {getOwaspStatusIcon(item)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium text-foreground truncate">
+                        {item.id}
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {item.title}
+                      </div>
+                      {item.checkDate && (
+                        <div className="text-[10px] text-muted-foreground mt-0.5">
+                          {format(item.checkDate, 'MMM d')}
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                  );
+                })}
+              </div>
+              )}
+            </TabsContent>
+
+            {/* Linting Tab Content */}
+            <TabsContent value="linting" className="mt-0 space-y-4">
+              <div className="flex items-center justify-end gap-1.5 mb-2">
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setIsLintingHistoryOpen(true)} title="Run History">
+                  <History className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setIsLintingOverridesOpen(true)} title="Linting Settings">
+                  <Settings2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              <LintingChapterGrid
+                data={lintingData || { run: null, results: [], chapters: [] }}
+                isLoading={lintingLoading}
+                onChapterClick={(chapter) => {
+                  setSelectedLintingChapter(chapter);
+                  setIsLintingDialogOpen(true);
+                }}
+              />
+            </TabsContent>
+          </Tabs>
         </div>
 
         {app.environments && app.environments.length > 0 && <div className="space-y-2">
@@ -1047,6 +1177,34 @@ const AppCard = ({
         onOpenChange={setIsOwaspDialogOpen}
         owaspItem={selectedOwaspItem}
         onVerificationComplete={() => setOwaspReloadTrigger(prev => prev + 1)}
+      />
+
+      {/* Linting Details Dialog */}
+      {selectedLintingChapter && (
+        <LintingDetailsDialog
+          open={isLintingDialogOpen}
+          onOpenChange={setIsLintingDialogOpen}
+          chapter={selectedLintingChapter}
+          results={lintingData?.results || []}
+        />
+      )}
+
+      {/* Linting Overrides Dialog */}
+      <Dialog open={isLintingOverridesOpen} onOpenChange={setIsLintingOverridesOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto overflow-x-hidden">
+          <DialogHeader>
+            <DialogTitle>Linting Rule Overrides</DialogTitle>
+            <DialogDescription>Override global linting rules for {app.app_name}</DialogDescription>
+          </DialogHeader>
+          <AppLintingOverrides appId={app.project_id} appName={app.app_name} />
+        </DialogContent>
+      </Dialog>
+
+      {/* Linting Run History Dialog */}
+      <LintingRunHistory
+        appId={app.project_id}
+        open={isLintingHistoryOpen}
+        onOpenChange={setIsLintingHistoryOpen}
       />
     </Card>;
 };
