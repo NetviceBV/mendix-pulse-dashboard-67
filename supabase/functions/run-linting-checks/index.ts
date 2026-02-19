@@ -230,7 +230,7 @@ Deno.serve(async (req) => {
         body: JSON.stringify({
           projectId: appId,
           username: credential.username,
-          password: credential.api_key,
+          password: credential.password || credential.api_key,
           reportFormat: 'json',
           policies: enabledRuleIds,
           webhookUrl,

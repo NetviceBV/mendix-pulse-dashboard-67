@@ -1,0 +1,1 @@
+ALTER TABLE public.mendix_credentials ADD COLUMN password text;

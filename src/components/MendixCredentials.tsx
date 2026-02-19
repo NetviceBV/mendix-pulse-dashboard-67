@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, Key, User, Shield, Edit2, Save, X, Download } from "lucide-react";
+import { Plus, Trash2, Key, User, Shield, Edit2, Save, X, Download, Lock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCredentialsQuery } from "@/hooks/useCredentialsQuery";
@@ -17,6 +17,7 @@ export interface MendixCredential {
   username: string;
   api_key?: string;
   pat?: string;
+  password?: string;
   user_id?: string;
   created_at?: string;
   updated_at?: string;
@@ -34,13 +35,15 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
     name: "",
     username: "",
     api_key: "",
-    pat: ""
+    pat: "",
+    password: ""
   });
   const [newCredential, setNewCredential] = useState({
     name: "",
     username: "",
     api_key: "",
-    pat: ""
+    pat: "",
+    password: ""
   });
   const [isAdding, setIsAdding] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -80,7 +83,8 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
           name: newCredential.name,
           username: newCredential.username,
           api_key: newCredential.api_key,
-          pat: newCredential.pat
+          pat: newCredential.pat,
+          password: newCredential.password || null
         })
         .select()
         .single();
@@ -88,7 +92,7 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
       if (error) throw error;
 
       onCredentialsChange([data, ...credentials]);
-      setNewCredential({ name: "", username: "", api_key: "", pat: "" });
+      setNewCredential({ name: "", username: "", api_key: "", pat: "", password: "" });
       setIsAdding(false);
       
       // Invalidate query cache
@@ -152,7 +156,8 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
           name: updatedCredential.name,
           username: updatedCredential.username,
           api_key: updatedCredential.api_key,
-          pat: updatedCredential.pat
+          pat: updatedCredential.pat,
+          password: updatedCredential.password || null
         })
         .eq('id', id);
 
@@ -304,6 +309,24 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
               </div>
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="new-password" className="text-sm font-medium">
+                Mendix Password (optional, for SVN)
+              </Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                <Input
+                  id="new-password"
+                  type="password"
+                  placeholder="Enter your Mendix password"
+                  value={newCredential.password}
+                  onChange={(e) => setNewCredential({ ...newCredential, password: e.target.value })}
+                  className="pl-10"
+                  disabled={loading}
+                />
+              </div>
+            </div>
+
             <div className="flex gap-2">
               <Button 
                 onClick={handleAddCredential} 
@@ -317,7 +340,7 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
                 variant="outline" 
                 onClick={() => {
                   setIsAdding(false);
-                  setNewCredential({ name: "", username: "", api_key: "", pat: "" });
+                  setNewCredential({ name: "", username: "", api_key: "", pat: "", password: "" });
                 }}
                 disabled={loading}
               >
@@ -411,6 +434,24 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
                   </div>
                 </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor={`edit-password-${credential.id}`} className="text-sm font-medium">
+                    Mendix Password (optional, for SVN)
+                  </Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id={`edit-password-${credential.id}`}
+                      type="password"
+                      placeholder="Enter your Mendix password"
+                      value={editCredential.password}
+                      onChange={(e) => setEditCredential({ ...editCredential, password: e.target.value })}
+                      className="pl-10"
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
+
                 <div className="flex gap-2">
                   <Button 
                     onClick={() => handleEditCredential(credential.id, editCredential)} 
@@ -424,7 +465,7 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
                     variant="outline" 
                     onClick={() => {
                       setEditingId(null);
-                      setEditCredential({ name: "", username: "", api_key: "", pat: "" });
+                      setEditCredential({ name: "", username: "", api_key: "", pat: "", password: "" });
                     }}
                     disabled={loading}
                   >
@@ -468,7 +509,8 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
                         name: credential.name,
                         username: credential.username,
                         api_key: credential.api_key || "",
-                        pat: credential.pat || ""
+                        pat: credential.pat || "",
+                        password: credential.password || ""
                       });
                     }}
                     disabled={loading}
