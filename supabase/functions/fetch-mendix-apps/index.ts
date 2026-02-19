@@ -375,6 +375,24 @@ serve(async (req) => {
               app_id: upsertedData[0].app_id,
               status: upsertedData[0].status
             } : 'None');
+
+            // Update app versions from environment modelVersions
+            const appVersionMap = new Map<string, string>();
+            for (const env of validatedResults) {
+              if (env.model_version && !appVersionMap.has(env.app_id)) {
+                appVersionMap.set(env.app_id, env.model_version);
+              }
+            }
+            if (appVersionMap.size > 0) {
+              console.log(`Updating versions for ${appVersionMap.size} apps from environment modelVersions`);
+              for (const [appId, version] of appVersionMap) {
+                await supabase
+                  .from('mendix_apps')
+                  .update({ version })
+                  .eq('project_id', appId)
+                  .eq('user_id', user.id);
+              }
+            }
           }
         } catch (insertionError) {
           console.error('Unexpected error during environment insertion:', insertionError);

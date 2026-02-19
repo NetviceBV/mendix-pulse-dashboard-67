@@ -76,12 +76,46 @@ Deno.serve(async (req) => {
       .eq('user_id', user.id)
       .single()
 
+    // Refresh version from Mendix API if it looks stale (default '1.0.0' or missing)
+    let appVersion = appRow?.version ?? undefined
+    if (!appVersion || appVersion === '1.0.0') {
+      try {
+        const envHeaders: Record<string, string> = {}
+        if (credential.pat) {
+          envHeaders['Authorization'] = `MxToken ${credential.pat}`
+        }
+        const envRes = await fetch(
+          `https://cloud.home.mendix.com/api/v4/apps/${appId}/environments`,
+          { headers: envHeaders }
+        )
+        if (envRes.ok) {
+          const envData = await envRes.json()
+          const envs = envData.Environments || envData.environments || []
+          const firstModel = envs.find((e: any) => e.modelVersion)?.modelVersion
+          if (firstModel) {
+            appVersion = firstModel
+            // Persist so future runs don't need this call
+            await supabase
+              .from('mendix_apps')
+              .update({ version: firstModel })
+              .eq('project_id', appId)
+              .eq('user_id', user.id)
+            console.log(`Refreshed app version to: ${firstModel}`)
+          }
+        } else {
+          console.log(`Version refresh API returned ${envRes.status}, proceeding with existing version`)
+        }
+      } catch (e) {
+        console.log(`Version refresh failed, proceeding with existing: ${e}`)
+      }
+    }
+
     function hasGitHash(ver?: string): boolean {
       if (!ver) return false
       return /[a-f0-9]{6,}$/i.test(ver)
     }
 
-    const gitBased = hasGitHash(appRow?.version ?? undefined)
+    const gitBased = hasGitHash(appVersion)
 
     // 3. Collect enabled rule IDs (global policies + per-app overrides)
     const { data: policies, error: polError } = await supabase
@@ -150,9 +184,9 @@ Deno.serve(async (req) => {
 
     let accepted = false
     const useGitFirst = gitBased && !!credential.pat
-    const useSvnOnly = !gitBased && appRow?.version // pure numeric version → SVN directly
+    const useSvnOnly = !gitBased && !!appVersion // pure numeric version → SVN directly
 
-    console.log(`App version: ${appRow?.version ?? 'unknown'}, git-based: ${gitBased}, strategy: ${useSvnOnly ? 'SVN-only' : useGitFirst ? 'Git-first' : 'fallback (try Git if PAT, else SVN)'}`)
+    console.log(`App version: ${appVersion ?? 'unknown'}, git-based: ${gitBased}, strategy: ${useSvnOnly ? 'SVN-only' : useGitFirst ? 'Git-first' : 'fallback (try Git if PAT, else SVN)'}`)
 
     // Try Git first when version indicates git-based repo
     if (useGitFirst) {
