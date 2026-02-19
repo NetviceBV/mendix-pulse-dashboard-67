@@ -1,35 +1,130 @@
 
 
-## Force Deployment of run-linting-checks with a Visible Code Change
+## Simplify Git/SVN Routing: Mendix 9 = SVN, Mendix 10+ = GIT
 
 ### Problem
-The version-refresh logic has been in the source code for multiple deployment cycles, but the deployed edge function is **still running old code**. Every log entry shows `App version: 1.0.0` with no refresh attempt — meaning the deployment tool is either silently failing or caching a previous build.
-
-### Solution
-Make a small but meaningful change to the edge function source to force a completely fresh deployment. This also improves the logging so we can clearly tell which version of the code is running.
+The current routing logic uses `hasGitHash()` regex matching, version refresh API calls, and multiple fallback strategies — all of which have been unreliable and hard to debug. The rule is actually simple:
+- Mendix 9.x --> SVN
+- Mendix 10+ --> GIT
 
 ### Changes
 
 **`supabase/functions/run-linting-checks/index.ts`**
 
-1. Add a startup/version banner log at the top of the request handler (right after the OPTIONS check):
-   ```typescript
-   console.log('[run-linting-checks] v2 - with version refresh')
-   ```
-   This way, we can immediately tell from logs whether the new code is deployed.
+Replace the entire version detection and routing block (lines 72-254) with a simple major-version check:
 
-2. Add more defensive logging around the version refresh block:
-   ```typescript
-   console.log(`DB version for app ${appId}: ${appRow?.version ?? 'null'}, will refresh: ${!appVersion || appVersion === '1.0.0'}`)
-   ```
+1. **Remove** the `hasGitHash()` function entirely
+2. **Remove** the version refresh API call (lines 83-113) — no longer needed
+3. **Remove** the complex `useGitFirst` / `useSvnOnly` / fallback strategy (lines 187-255)
+4. **Replace with** a simple function:
 
-3. Redeploy `run-linting-checks` after the change.
+```typescript
+function getMajorVersion(ver?: string): number {
+  if (!ver) return 0
+  const match = ver.match(/^(\d+)\./)
+  return match ? parseInt(match[1], 10) : 0
+}
+```
 
-### Expected Outcome
-After deployment, the logs should show:
-- `[run-linting-checks] v2 - with version refresh` (confirms new code is running)
-- `DB version for app ...: 1.0.0, will refresh: true`
-- Either `Refreshed app version to: <real version>` or an error explaining why the refresh failed
+5. **Routing becomes**:
 
-### If Deployment Still Fails
-If even after this change the logs don't show the "v2" banner, the issue is at the deployment infrastructure level and we'll need to investigate the Supabase deployment pipeline further (e.g., checking if there's a build cache or deployment error we're not seeing).
+```typescript
+const majorVersion = getMajorVersion(appVersion)
+const useGit = majorVersion >= 10
+console.log(`App version: ${appVersion ?? 'unknown'}, major: ${majorVersion}, routing: ${useGit ? 'GIT' : 'SVN'}`)
+```
+
+6. **If `useGit`**: call `/analyze-mpr/git` with `pat` credential. If it fails, return error (no SVN fallback).
+7. **If not `useGit`** (Mendix 9 or unknown): call `/analyze-mpr/svn` with `password`/`api_key`. If it fails, return error.
+
+**Keep the version refresh block** (lines 83-113) since we still need a real version number to parse the major version from. The DB might still have `1.0.0`.
+
+### Simplified flow
+
+```text
+1. Authenticate user
+2. Fetch credential
+3. Read app version from DB
+4. If version is '1.0.0' or missing:
+   - Call Mendix API to get real modelVersion
+   - Update DB
+5. Parse major version number (e.g. "10.21.0..." -> 10)
+6. If major >= 10 -> call GIT endpoint (requires PAT)
+   If major < 10  -> call SVN endpoint (uses password/api_key)
+7. Done — no fallback, no hash detection
+```
+
+### What gets removed
+- `hasGitHash()` function
+- `useGitFirst` / `useSvnOnly` variables
+- The duplicated Git fetch block (lines 223-252)
+- The "No PAT available" / "fallback" logic
+- All the complex strategy logging
+
+### What stays
+- Version refresh from Mendix API (still needed to get a real version)
+- Webhook callback architecture
+- Railway health ping
+- Error handling for analyzer failures
+
+### Technical Details
+
+The routing section (lines 187-292) will be replaced with approximately:
+
+```typescript
+const majorVersion = getMajorVersion(appVersion)
+const useGit = majorVersion >= 10
+
+console.log(`App version: ${appVersion ?? 'unknown'}, major: ${majorVersion}, routing: ${useGit ? 'GIT' : 'SVN'}`)
+
+let accepted = false
+
+if (useGit) {
+  if (!credential.pat) {
+    await supabase.from('linting_runs').update({ status: 'failed', completed_at: new Date().toISOString() }).eq('id', run.id)
+    return new Response(JSON.stringify({ error: 'Mendix 10+ requires a PAT. Add one in Settings > Credentials.' }), {
+      status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+  console.log('Using GIT endpoint...')
+  const gitRes = await fetch(`${baseUrl}/analyze-mpr/git`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': analyzerApiKey },
+    body: JSON.stringify({
+      projectId: appId, username: credential.username, pat: credential.pat,
+      reportFormat: 'json', policies: enabledRuleIds, webhookUrl,
+    }),
+  })
+  if (gitRes.ok) {
+    accepted = true
+  } else {
+    const errText = await gitRes.text()
+    console.error(`GIT endpoint failed (${gitRes.status}): ${errText}`)
+    await supabase.from('linting_runs').update({ status: 'failed', completed_at: new Date().toISOString() }).eq('id', run.id)
+    return new Response(JSON.stringify({ error: `Analyzer error: ${errText}` }), {
+      status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+} else {
+  console.log('Using SVN endpoint...')
+  const svnRes = await fetch(`${baseUrl}/analyze-mpr/svn`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': analyzerApiKey },
+    body: JSON.stringify({
+      projectId: appId, username: credential.username,
+      password: credential.password || credential.api_key,
+      reportFormat: 'json', policies: enabledRuleIds, webhookUrl,
+    }),
+  })
+  if (svnRes.ok) {
+    accepted = true
+  } else {
+    const errText = await svnRes.text()
+    console.error(`SVN endpoint failed (${svnRes.status}): ${errText}`)
+    await supabase.from('linting_runs').update({ status: 'failed', completed_at: new Date().toISOString() }).eq('id', run.id)
+    return new Response(JSON.stringify({ error: `Analyzer error: ${errText}` }), {
+      status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+}
+```
