@@ -35,6 +35,7 @@ const Index = () => {
   };
 
   const handleSignOut = async () => {
+    sessionStorage.removeItem('mendix-apps-synced');
     await supabase.auth.signOut();
   };
 
