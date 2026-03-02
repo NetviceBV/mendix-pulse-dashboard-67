@@ -36,6 +36,65 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
   // Use React Query for data fetching
   const { data: apps = [], isLoading, refetch, isRefetching } = useAppsQuery();
 
+  // Auto-sync apps from Mendix API on first mount (fresh login)
+  useEffect(() => {
+    const syncApps = async () => {
+      if (sessionStorage.getItem('mendix-apps-synced')) return;
+
+      try {
+        const { data: credentials, error } = await supabase
+          .from('mendix_credentials')
+          .select('id');
+
+        if (error || !credentials || credentials.length === 0) {
+          sessionStorage.setItem('mendix-apps-synced', 'true');
+          return;
+        }
+
+        toast({
+          title: "Syncing applications",
+          description: "Fetching latest data from Mendix..."
+        });
+
+        const results = await Promise.allSettled(
+          credentials.map(cred =>
+            supabase.functions.invoke('fetch-mendix-apps', {
+              body: { credentialId: cred.id }
+            })
+          )
+        );
+
+        const failures = results.filter(r => r.status === 'rejected');
+
+        queryClient.invalidateQueries({ queryKey: queryKeys.appsWithEnvironments });
+
+        if (failures.length > 0) {
+          toast({
+            title: "Sync partially failed",
+            description: `${failures.length} credential(s) could not be synced`,
+            variant: "destructive"
+          });
+        } else {
+          toast({
+            title: "Applications synced",
+            description: "All apps are up to date"
+          });
+        }
+      } catch (err) {
+        console.error('Auto-sync failed:', err);
+        toast({
+          title: "Sync failed",
+          description: "Could not sync applications from Mendix",
+          variant: "destructive"
+        });
+      } finally {
+        sessionStorage.setItem('mendix-apps-synced', 'true');
+      }
+    };
+
+    syncApps();
+  }, [toast, queryClient]);
+
   // Helper functions to categorize apps
   const isSandboxOnlyApp = (app: MendixApp) => {
     return app.environments && app.environments.length > 0 && 
