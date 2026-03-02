@@ -116,8 +116,9 @@ const Settings = () => {
 
       <div className="container mx-auto px-4 py-6">
         <div className="max-w-4xl mx-auto">
-            <Tabs defaultValue="credentials" className="w-full">
+            <Tabs defaultValue="general" className="w-full">
               <TabsList className="flex flex-wrap h-auto gap-1 p-1 w-full">
+                <TabsTrigger value="general">General</TabsTrigger>
                 <TabsTrigger value="credentials">Mendix Credentials</TabsTrigger>
                 <TabsTrigger value="webhooks">Webhook Settings</TabsTrigger>
                 <TabsTrigger value="emails">Email Management</TabsTrigger>
@@ -128,6 +129,10 @@ const Settings = () => {
                 <TabsTrigger value="linting">Linting Rules</TabsTrigger>
               </TabsList>
             
+            <TabsContent value="general" className="mt-6">
+              <GeneralSettings />
+            </TabsContent>
+
             <TabsContent value="credentials" className="mt-6">
               <MendixCredentials 
                 credentials={mendixCredentials}
