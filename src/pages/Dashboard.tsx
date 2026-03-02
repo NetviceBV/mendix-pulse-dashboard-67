@@ -26,6 +26,7 @@ interface DashboardProps {
 }
 
 const Dashboard = ({ onSignOut }: DashboardProps) => {
+  const brand = useBrandLogo();
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("production");
   const { toast } = useToast();
