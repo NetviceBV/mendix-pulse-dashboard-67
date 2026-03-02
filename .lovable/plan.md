@@ -1,52 +1,125 @@
 
 
-## Domain-Based Logo Branding
+## Fix Git/SVN Detection Using Commits API `mendixVersion`
 
-### Overview
-Display the Prikkl or Netvice logo based on the browser's subdomain, with a fallback to the existing Activity (graph) icon for other domains (including Lovable preview).
+### Problem
+The environment API never returns `modelVersion`, so the version stays `1.0.0` and every app routes to SVN. We need a reliable source for the Mendix version.
 
-### Assets
-- Copy `prikkl_logo_1.svg` to `src/assets/prikkl_logo.svg`
-- Copy `Netvice_Logo_Wit.webp` to `src/assets/netvice_logo.webp`
+### Solution
+Use the Repository API commits endpoint (`/v1/repositories/{appId}/branches/{branchName}/commits?limit=1`) which returns `mendixVersion` per commit (e.g., `"8.18.5.18651"` or `"10.21.0.xxxxx"`). Fetch the latest commit from the mainline branch, extract the major version, and route accordingly.
 
-### New Utility: `src/hooks/useBrandLogo.ts`
-A small hook that reads `window.location.hostname` and returns branding info:
-- `ops.prikkl.nl` --> Prikkl logo + "Prikkl" name
-- `ops.netvice.nl` --> Netvice logo + "Netvice" name
-- Anything else --> `null` (use default Activity icon)
+### Changes
 
-### Component Changes
+**`supabase/functions/run-linting-checks/index.ts`**
 
-**`src/pages/SignIn.tsx`**
-- Replace the Shield icon above the form with the branded logo (or keep Shield as fallback)
-- Logo displayed at ~120px width, centered above the card title
+Replace the version refresh block (lines 83-113) and `getMajorVersion` function with:
 
-**`src/pages/Dashboard.tsx`**
-- Replace the Activity icon in the header with the branded logo (or keep Activity as fallback)
-- Logo sized to fit the header (~32px height)
+1. **Try to get `mendixVersion` from the latest mainline commit** (requires PAT):
+   - Try branch name `main` first (MX10+ convention)
+   - If that returns 404, try `trunk` (MX9 convention)
+   - Take `mendixVersion` from the first (latest) commit
+   - Update `mendix_apps.version` in the DB with the real version
 
-### Technical Detail
+2. **Parse the major version** from the `mendixVersion` string and route:
+   - Major >= 10 --> GIT
+   - Major < 10 --> SVN
+
+### Pseudocode
 
 ```text
-useBrandLogo hook:
-  hostname = window.location.hostname
-  if hostname includes 'prikkl' -> return { logo: prikklLogo, name: 'Prikkl' }
-  if hostname includes 'netvice' -> return { logo: netviceLogo, name: 'Netvice' }
-  else -> return null
+if (!appVersion || appVersion === '1.0.0') AND credential.pat:
+  for branchName in ['main', 'trunk']:
+    GET /v1/repositories/{appId}/branches/{branchName}/commits?limit=1
+    if 200:
+      mendixVersion = items[0].mendixVersion   // e.g. "10.21.0.12345"
+      update mendix_apps.version = mendixVersion
+      break
+    if 404:
+      try next branch name
 
-SignIn.tsx:
-  const brand = useBrandLogo()
-  In header: brand ? <img src={brand.logo} /> : <Shield icon />
-
-Dashboard.tsx:
-  const brand = useBrandLogo()
-  In header: brand ? <img src={brand.logo} /> : <Activity icon />
+parse major version from appVersion
+major >= 10 -> GIT endpoint
+major < 10  -> SVN endpoint
 ```
 
-### Files Changed
-1. `src/assets/prikkl_logo.svg` (new - copied from upload)
-2. `src/assets/netvice_logo.webp` (new - copied from upload)
-3. `src/hooks/useBrandLogo.ts` (new)
-4. `src/pages/SignIn.tsx` (add logo above form)
-5. `src/pages/Dashboard.tsx` (replace header icon with logo)
+### Code Detail
 
+The version refresh block becomes:
+
+```typescript
+// Refresh version from Repository API commits (mendixVersion field)
+if ((!appVersion || appVersion === '1.0.0') && credential.pat) {
+  console.log('Version is stale, fetching mendixVersion from latest mainline commit...')
+  const branchNames = ['main', 'trunk']
+  for (const branch of branchNames) {
+    try {
+      const commitUrl = `https://repository.api.mendix.com/v1/repositories/${appId}/branches/${encodeURIComponent(branch)}/commits?limit=1`
+      const commitRes = await fetch(commitUrl, {
+        headers: { 'Authorization': `MxToken ${credential.pat}`, 'Accept': 'application/json' }
+      })
+      if (commitRes.ok) {
+        const commitData = await commitRes.json()
+        const items = commitData.items || []
+        if (items.length > 0 && items[0].mendixVersion) {
+          appVersion = items[0].mendixVersion
+          await supabase
+            .from('mendix_apps')
+            .update({ version: appVersion })
+            .eq('project_id', appId)
+            .eq('user_id', user.id)
+          console.log(`Got mendixVersion from branch '${branch}': ${appVersion}`)
+          break
+        }
+      } else {
+        console.log(`Commits API for branch '${branch}' returned ${commitRes.status}, trying next...`)
+      }
+    } catch (e) {
+      console.log(`Commits fetch for branch '${branch}' failed: ${e}`)
+    }
+  }
+}
+```
+
+The `getMajorVersion` function and the routing logic after it stay exactly the same:
+
+```typescript
+function getMajorVersion(ver?: string): number {
+  if (!ver) return 0
+  const match = ver.match(/^(\d+)\./)
+  return match ? parseInt(match[1], 10) : 0
+}
+
+const majorVersion = getMajorVersion(appVersion)
+const useGit = majorVersion >= 10
+console.log(`App version: ${appVersion ?? 'unknown'}, major: ${majorVersion}, routing: ${useGit ? 'GIT' : 'SVN'}`)
+```
+
+### What Changes
+- Version refresh block (lines 83-113): replaced with Repository API commits call
+- Everything else stays identical
+
+### What Gets Removed
+- The environment API call to `cloud.home.mendix.com` (never returned modelVersion)
+
+### What Stays
+- `getMajorVersion()` function
+- Major version routing logic (>= 10 = GIT, < 10 = SVN)
+- All authentication, policy collection, webhook, Railway ping code
+
+### Expected Logs After Deployment
+For Prikkl Backoffice (Mendix 10+):
+```
+Version is stale, fetching mendixVersion from latest mainline commit...
+Got mendixVersion from branch 'main': 10.21.0.12345
+App version: 10.21.0.12345, major: 10, routing: GIT
+Using GIT endpoint...
+```
+
+For a Mendix 9 app:
+```
+Version is stale, fetching mendixVersion from latest mainline commit...
+Commits API for branch 'main' returned 404, trying next...
+Got mendixVersion from branch 'trunk': 9.24.1.54321
+App version: 9.24.1.54321, major: 9, routing: SVN
+Using SVN endpoint...
+```
