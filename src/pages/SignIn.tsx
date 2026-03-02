@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { User, Lock, Shield, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useBrandLogo } from "@/hooks/useBrandLogo";
 import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 
 interface SignInProps {
