@@ -1,125 +1,73 @@
 
 
-## Fix Git/SVN Detection Using Commits API `mendixVersion`
+## Inactivity Auto-Logout with Configurable Timeout
 
-### Problem
-The environment API never returns `modelVersion`, so the version stays `1.0.0` and every app routes to SVN. We need a reliable source for the Mendix version.
+### Overview
+Implement an automatic logout after a period of inactivity, with a configurable timeout setting stored in the user's profile. Default is 10 minutes. A warning toast appears 1 minute before logout. The timeout value can be changed from a new "General" settings tab.
 
-### Solution
-Use the Repository API commits endpoint (`/v1/repositories/{appId}/branches/{branchName}/commits?limit=1`) which returns `mendixVersion` per commit (e.g., `"8.18.5.18651"` or `"10.21.0.xxxxx"`). Fetch the latest commit from the mainline branch, extract the major version, and route accordingly.
+### Database Change
 
-### Changes
+Add a column to the existing `profiles` table:
+- `inactivity_timeout_minutes` (integer, default 10, not null)
 
-**`supabase/functions/run-linting-checks/index.ts`**
+This avoids creating a new table. The `profiles` table already has RLS for the authenticated user.
 
-Replace the version refresh block (lines 83-113) and `getMajorVersion` function with:
+### New Files
 
-1. **Try to get `mendixVersion` from the latest mainline commit** (requires PAT):
-   - Try branch name `main` first (MX10+ convention)
-   - If that returns 404, try `trunk` (MX9 convention)
-   - Take `mendixVersion` from the first (latest) commit
-   - Update `mendix_apps.version` in the DB with the real version
+**`src/hooks/useInactivityTimeout.ts`**
+- Custom hook that accepts `timeoutMs`, `onWarning`, and `onTimeout` callbacks
+- Listens for `mousemove`, `keydown`, `click`, `scroll`, `touchstart` on `window`
+- Throttles activity detection (once per 30s) to avoid excessive timer resets
+- Sets two timers: warning at `timeoutMs - 60000` and logout at `timeoutMs`
+- Cleans up listeners and timers on unmount
+- Only active when `timeoutMs > 0`
 
-2. **Parse the major version** from the `mendixVersion` string and route:
-   - Major >= 10 --> GIT
-   - Major < 10 --> SVN
+**`src/hooks/useInactivitySettings.ts`**
+- Custom hook that fetches the user's `inactivity_timeout_minutes` from `profiles`
+- Returns the current value and a function to update it
+- Uses React Query for caching
 
-### Pseudocode
+**`src/components/GeneralSettings.tsx`**
+- New settings tab component with a slider (5-60 minutes) and a label showing the current value
+- Saves changes to the `profiles` table
+- Shows a toast on save
+
+### Modified Files
+
+**`src/pages/Index.tsx`**
+- Import and use `useInactivityTimeout` and `useInactivitySettings` when user is authenticated
+- Pass `handleSignOut` as the timeout callback
+- Show warning toast 1 minute before auto-logout: "You will be logged out in 1 minute due to inactivity"
+- On timeout: call `handleSignOut()` and show a toast explaining the logout reason
+
+**`src/pages/Settings.tsx`**
+- Add a new "General" tab (first in the list) containing the `GeneralSettings` component
+- This tab houses the inactivity timeout slider
+
+### Technical Flow
 
 ```text
-if (!appVersion || appVersion === '1.0.0') AND credential.pat:
-  for branchName in ['main', 'trunk']:
-    GET /v1/repositories/{appId}/branches/{branchName}/commits?limit=1
-    if 200:
-      mendixVersion = items[0].mendixVersion   // e.g. "10.21.0.12345"
-      update mendix_apps.version = mendixVersion
-      break
-    if 404:
-      try next branch name
-
-parse major version from appVersion
-major >= 10 -> GIT endpoint
-major < 10  -> SVN endpoint
+1. User logs in -> Index.tsx renders Dashboard
+2. useInactivitySettings fetches profiles.inactivity_timeout_minutes (default: 10)
+3. useInactivityTimeout starts with timeoutMs = minutes * 60000
+4. User activity (mouse/key/click/scroll/touch) resets the timer
+5. At (timeout - 1 min): warning toast appears
+6. At timeout: handleSignOut() is called, user sees "Logged out due to inactivity"
+7. User can change timeout in Settings -> General tab via a slider
+8. Change is saved to profiles table and takes effect immediately
 ```
 
-### Code Detail
+### Migration
 
-The version refresh block becomes:
-
-```typescript
-// Refresh version from Repository API commits (mendixVersion field)
-if ((!appVersion || appVersion === '1.0.0') && credential.pat) {
-  console.log('Version is stale, fetching mendixVersion from latest mainline commit...')
-  const branchNames = ['main', 'trunk']
-  for (const branch of branchNames) {
-    try {
-      const commitUrl = `https://repository.api.mendix.com/v1/repositories/${appId}/branches/${encodeURIComponent(branch)}/commits?limit=1`
-      const commitRes = await fetch(commitUrl, {
-        headers: { 'Authorization': `MxToken ${credential.pat}`, 'Accept': 'application/json' }
-      })
-      if (commitRes.ok) {
-        const commitData = await commitRes.json()
-        const items = commitData.items || []
-        if (items.length > 0 && items[0].mendixVersion) {
-          appVersion = items[0].mendixVersion
-          await supabase
-            .from('mendix_apps')
-            .update({ version: appVersion })
-            .eq('project_id', appId)
-            .eq('user_id', user.id)
-          console.log(`Got mendixVersion from branch '${branch}': ${appVersion}`)
-          break
-        }
-      } else {
-        console.log(`Commits API for branch '${branch}' returned ${commitRes.status}, trying next...`)
-      }
-    } catch (e) {
-      console.log(`Commits fetch for branch '${branch}' failed: ${e}`)
-    }
-  }
-}
+```sql
+ALTER TABLE profiles
+ADD COLUMN inactivity_timeout_minutes integer NOT NULL DEFAULT 10;
 ```
 
-The `getMajorVersion` function and the routing logic after it stay exactly the same:
+### Edge Cases
+- If user sets a very low timeout (5 min), warning still shows at 1 min before
+- The hook is only active on authenticated pages (Index.tsx wraps Dashboard)
+- Settings page also needs the hook -- it will be added at the Index.tsx level which covers the Dashboard, but Settings is a separate route. The hook should also be used in Settings.tsx
+- Navigation between pages within the app does NOT reset the timer (activity events do)
+- If the profiles row doesn't exist yet, fall back to 10 minutes
 
-```typescript
-function getMajorVersion(ver?: string): number {
-  if (!ver) return 0
-  const match = ver.match(/^(\d+)\./)
-  return match ? parseInt(match[1], 10) : 0
-}
-
-const majorVersion = getMajorVersion(appVersion)
-const useGit = majorVersion >= 10
-console.log(`App version: ${appVersion ?? 'unknown'}, major: ${majorVersion}, routing: ${useGit ? 'GIT' : 'SVN'}`)
-```
-
-### What Changes
-- Version refresh block (lines 83-113): replaced with Repository API commits call
-- Everything else stays identical
-
-### What Gets Removed
-- The environment API call to `cloud.home.mendix.com` (never returned modelVersion)
-
-### What Stays
-- `getMajorVersion()` function
-- Major version routing logic (>= 10 = GIT, < 10 = SVN)
-- All authentication, policy collection, webhook, Railway ping code
-
-### Expected Logs After Deployment
-For Prikkl Backoffice (Mendix 10+):
-```
-Version is stale, fetching mendixVersion from latest mainline commit...
-Got mendixVersion from branch 'main': 10.21.0.12345
-App version: 10.21.0.12345, major: 10, routing: GIT
-Using GIT endpoint...
-```
-
-For a Mendix 9 app:
-```
-Version is stale, fetching mendixVersion from latest mainline commit...
-Commits API for branch 'main' returned 404, trying next...
-Got mendixVersion from branch 'trunk': 9.24.1.54321
-App version: 9.24.1.54321, major: 9, routing: SVN
-Using SVN endpoint...
-```
