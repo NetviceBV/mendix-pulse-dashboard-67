@@ -1,0 +1,1 @@
+ALTER TABLE profiles ADD COLUMN inactivity_timeout_minutes integer NOT NULL DEFAULT 10;
