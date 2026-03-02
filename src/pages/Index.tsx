@@ -1,8 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import SignIn from "./SignIn";
 import Dashboard from "./Dashboard";
 import { supabase } from "@/integrations/supabase/client";
 import { User as SupabaseUser, Session } from '@supabase/supabase-js';
+import { useInactivityTimeout } from "@/hooks/useInactivityTimeout";
+import { useInactivitySettings } from "@/hooks/useInactivitySettings";
+import { toast } from "@/hooks/use-toast";
 
 const Index = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
@@ -34,10 +37,36 @@ const Index = () => {
     setSession(session);
   };
 
-  const handleSignOut = async () => {
+  const handleSignOut = useCallback(async () => {
     sessionStorage.removeItem('mendix-apps-synced');
     await supabase.auth.signOut();
-  };
+  }, []);
+
+  const isAuthenticated = !!user && !!session;
+  const { timeoutMinutes } = useInactivitySettings();
+
+  const handleInactivityWarning = useCallback(() => {
+    toast({
+      title: "Session expiring soon",
+      description: "You will be logged out in 1 minute due to inactivity.",
+    });
+  }, []);
+
+  const handleInactivityTimeout = useCallback(() => {
+    toast({
+      title: "Session expired",
+      description: "You have been logged out due to inactivity.",
+    });
+    handleSignOut();
+  }, [handleSignOut]);
+
+  useInactivityTimeout({
+    timeoutMs: timeoutMinutes * 60000,
+    warningMs: 60000,
+    onWarning: handleInactivityWarning,
+    onTimeout: handleInactivityTimeout,
+    enabled: isAuthenticated,
+  });
 
   if (loading) {
     return (
