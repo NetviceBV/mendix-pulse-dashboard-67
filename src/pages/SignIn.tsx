@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { User, Lock, Shield, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useBrandLogo } from "@/hooks/useBrandLogo";
 import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 
 interface SignInProps {
@@ -13,6 +14,7 @@ interface SignInProps {
 }
 
 const SignIn = ({ onAuthSuccess }: SignInProps) => {
+  const brand = useBrandLogo();
   const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
   const [credentials, setCredentials] = useState({
     email: "",
@@ -145,9 +147,13 @@ const SignIn = ({ onAuthSuccess }: SignInProps) => {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md bg-gradient-card shadow-card border-border">
         <CardHeader className="text-center space-y-2">
-          <div className="mx-auto w-12 h-12 bg-gradient-primary rounded-xl flex items-center justify-center shadow-glow">
-            <Shield className="w-6 h-6 text-primary-foreground" />
-          </div>
+          {brand ? (
+            <img src={brand.logo} alt={`${brand.name} logo`} className="mx-auto h-16 w-auto object-contain" />
+          ) : (
+            <div className="mx-auto w-12 h-12 bg-gradient-primary rounded-xl flex items-center justify-center shadow-glow">
+              <Shield className="w-6 h-6 text-primary-foreground" />
+            </div>
+          )}
           <CardTitle className="text-2xl font-bold">
             {mode === 'signup' ? "Sign Up" : mode === 'forgot' ? "Reset Password" : "Sign In"}
           </CardTitle>

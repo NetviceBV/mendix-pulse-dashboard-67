@@ -19,12 +19,14 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useBrandLogo } from "@/hooks/useBrandLogo";
 
 interface DashboardProps {
   onSignOut: () => void;
 }
 
 const Dashboard = ({ onSignOut }: DashboardProps) => {
+  const brand = useBrandLogo();
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState("production");
   const { toast } = useToast();
@@ -138,9 +140,13 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
           <div className="container mx-auto px-4 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
-                  <Activity className="w-4 h-4 text-primary-foreground" />
-                </div>
+                {brand ? (
+                  <img src={brand.logo} alt={`${brand.name} logo`} className="h-8 w-auto object-contain" />
+                ) : (
+                  <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
+                    <Activity className="w-4 h-4 text-primary-foreground" />
+                  </div>
+                )}
                 <div>
                   <h1 className="text-xl font-bold">Mendix Dashboard</h1>
                   <p className="text-sm text-muted-foreground">
@@ -166,9 +172,13 @@ const Dashboard = ({ onSignOut }: DashboardProps) => {
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
-                <Activity className="w-4 h-4 text-primary-foreground" />
-              </div>
+              {brand ? (
+                <img src={brand.logo} alt={`${brand.name} logo`} className="h-8 w-auto object-contain" />
+              ) : (
+                <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
+                  <Activity className="w-4 h-4 text-primary-foreground" />
+                </div>
+              )}
               <div>
                 <h1 className="text-xl font-bold">Mendix Dashboard</h1>
                 <p className="text-sm text-muted-foreground">
