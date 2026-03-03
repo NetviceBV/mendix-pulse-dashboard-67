@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import MendixCredentials, { MendixCredential } from "@/components/MendixCredentials";
@@ -9,10 +9,14 @@ import { EmailTemplates } from "@/components/EmailTemplates";
 import { OWASPSettings } from "@/components/OWASPSettings";
 import { OWASPRunsHistory } from "@/components/OWASPRunsHistory";
 import LintingSettings from "@/components/LintingSettings";
+import GeneralSettings from "@/components/GeneralSettings";
 import { ArrowLeft, Settings as SettingsIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User as SupabaseUser } from '@supabase/supabase-js';
+import { useInactivityTimeout } from "@/hooks/useInactivityTimeout";
+import { useInactivitySettings } from "@/hooks/useInactivitySettings";
+import { toast } from "@/hooks/use-toast";
 
 const Settings = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
@@ -38,10 +42,36 @@ const Settings = () => {
     setMendixCredentials(credentials);
   };
 
-  const handleSignOut = async () => {
+  const handleSignOut = useCallback(async () => {
+    sessionStorage.removeItem('mendix-apps-synced');
     await supabase.auth.signOut();
     navigate("/");
-  };
+  }, [navigate]);
+
+  const { timeoutMinutes } = useInactivitySettings();
+
+  const handleInactivityWarning = useCallback(() => {
+    toast({
+      title: "Session expiring soon",
+      description: "You will be logged out in 1 minute due to inactivity.",
+    });
+  }, []);
+
+  const handleInactivityTimeout = useCallback(() => {
+    toast({
+      title: "Session expired",
+      description: "You have been logged out due to inactivity.",
+    });
+    handleSignOut();
+  }, [handleSignOut]);
+
+  useInactivityTimeout({
+    timeoutMs: timeoutMinutes * 60000,
+    warningMs: 60000,
+    onWarning: handleInactivityWarning,
+    onTimeout: handleInactivityTimeout,
+    enabled: !!user,
+  });
 
   if (loading) {
     return (
@@ -86,8 +116,9 @@ const Settings = () => {
 
       <div className="container mx-auto px-4 py-6">
         <div className="max-w-4xl mx-auto">
-            <Tabs defaultValue="credentials" className="w-full">
+            <Tabs defaultValue="general" className="w-full">
               <TabsList className="flex flex-wrap h-auto gap-1 p-1 w-full">
+                <TabsTrigger value="general">General</TabsTrigger>
                 <TabsTrigger value="credentials">Mendix Credentials</TabsTrigger>
                 <TabsTrigger value="webhooks">Webhook Settings</TabsTrigger>
                 <TabsTrigger value="emails">Email Management</TabsTrigger>
@@ -98,6 +129,10 @@ const Settings = () => {
                 <TabsTrigger value="linting">Linting Rules</TabsTrigger>
               </TabsList>
             
+            <TabsContent value="general" className="mt-6">
+              <GeneralSettings />
+            </TabsContent>
+
             <TabsContent value="credentials" className="mt-6">
               <MendixCredentials 
                 credentials={mendixCredentials}
