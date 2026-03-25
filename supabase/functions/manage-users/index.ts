@@ -62,6 +62,7 @@ Deno.serve(async (req) => {
     }
 
     const { action, email, password, fullName, userId, role } = await req.json();
+    console.log(`Action: ${action}, userId: ${userId}, role: ${role}`);
 
     if (action === "create") {
       if (!email || !password) {
