@@ -183,15 +183,29 @@ const UserManagement = () => {
               <TableBody>
                 {users.map((user) => (
                   <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.email || "—"}</TableCell>
+                   <TableCell className="font-medium">{user.email || "—"}</TableCell>
                     <TableCell>{user.user_metadata?.full_name || "—"}</TableCell>
+                    <TableCell>
+                      {(user.roles || []).map((r) => (
+                        <Badge key={r} variant={r === "admin" ? "default" : "secondary"} className="mr-1">
+                          {r}
+                        </Badge>
+                      ))}
+                    </TableCell>
                     <TableCell>{format(new Date(user.created_at), "MMM d, yyyy")}</TableCell>
                     <TableCell>
                       {user.last_sign_in_at
                         ? format(new Date(user.last_sign_in_at), "MMM d, yyyy HH:mm")
                         : "Never"}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setEditingUser(user)}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
