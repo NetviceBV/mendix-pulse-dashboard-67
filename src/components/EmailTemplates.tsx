@@ -157,7 +157,7 @@ export const EmailTemplates = () => {
       if (error) throw error;
 
       if (!data || data.length === 0) {
-        // Create default templates
+        // No global templates exist yet — create defaults
         await createDefaultTemplates();
         return;
       }
