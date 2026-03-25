@@ -10,6 +10,7 @@ import { OWASPSettings } from "@/components/OWASPSettings";
 import { OWASPRunsHistory } from "@/components/OWASPRunsHistory";
 import LintingSettings from "@/components/LintingSettings";
 import GeneralSettings from "@/components/GeneralSettings";
+import UserManagement from "@/components/UserManagement";
 import { ArrowLeft, Settings as SettingsIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
