@@ -6,6 +6,7 @@ import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import { useInactivityTimeout } from "@/hooks/useInactivityTimeout";
 import { useInactivitySettings } from "@/hooks/useInactivitySettings";
 import { toast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 
 const Index = () => {
   const [user, setUser] = useState<SupabaseUser | null>(null);
