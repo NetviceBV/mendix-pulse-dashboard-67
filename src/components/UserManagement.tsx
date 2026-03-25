@@ -226,6 +226,13 @@ const UserManagement = () => {
           )}
         </CardContent>
       </Card>
+
+      <EditUserDialog
+        open={!!editingUser}
+        onOpenChange={(open) => !open && setEditingUser(null)}
+        user={editingUser}
+        onUpdated={fetchUsers}
+      />
     </div>
   );
 };
