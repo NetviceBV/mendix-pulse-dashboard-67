@@ -43,9 +43,10 @@ const Index = () => {
   };
 
   const handleSignOut = useCallback(async () => {
+    queryClient.clear();
     sessionStorage.removeItem('mendix-apps-synced');
     await supabase.auth.signOut();
-  }, []);
+  }, [queryClient]);
 
   const isAuthenticated = !!user && !!session;
   const { timeoutMinutes } = useInactivitySettings();
