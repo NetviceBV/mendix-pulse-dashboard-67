@@ -216,18 +216,6 @@ export const EmailTemplates = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Check if any templates already exist globally
-      const { data: existing } = await supabase
-        .from('email_templates')
-        .select('id')
-        .limit(1);
-
-      if (existing && existing.length > 0) {
-        // Templates already exist, just reload
-        await loadTemplates();
-        return;
-      }
-
       const defaultTemplates = Object.entries(DEFAULT_TEMPLATES).map(([type, template]) => ({
         user_id: user.id,
         template_type: type,
