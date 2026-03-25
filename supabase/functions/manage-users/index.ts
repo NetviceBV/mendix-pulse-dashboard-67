@@ -39,6 +39,7 @@ Deno.serve(async (req) => {
     }
 
     const callerId = userData.user.id;
+    console.log(`Caller authenticated: ${callerId}`);
 
     // Admin client with service role key
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
