@@ -151,10 +151,11 @@ export const EmailTemplates = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // Delete ALL templates globally (admin-only via RLS)
       const { error } = await supabase
         .from('email_templates')
         .delete()
-        .eq('user_id', user.id);
+        .neq('id', '00000000-0000-0000-0000-000000000000');
 
       if (error) throw error;
 
@@ -214,18 +215,6 @@ export const EmailTemplates = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-
-      // Check if any templates already exist globally
-      const { data: existing } = await supabase
-        .from('email_templates')
-        .select('id')
-        .limit(1);
-
-      if (existing && existing.length > 0) {
-        // Templates already exist, just reload
-        await loadTemplates();
-        return;
-      }
 
       const defaultTemplates = Object.entries(DEFAULT_TEMPLATES).map(([type, template]) => ({
         user_id: user.id,
