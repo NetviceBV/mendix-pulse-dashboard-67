@@ -28,7 +28,7 @@ const UserManagement = () => {
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-
+  const [editingUser, setEditingUser] = useState<AuthUser | null>(null);
   const fetchUsers = async () => {
     setLoadingUsers(true);
     try {
