@@ -1,23 +1,42 @@
 
 
-## Fix: `updateUser` → `updateUserById` in manage-users
+## Add "Reset Templates" Button to EmailTemplates
 
 ### Problem
-The `manage-users` edge function imports `@supabase/supabase-js@2.57.4`. In this version, the admin method to update a user is `updateUserById(userId, attributes)`, not `updateUser(userId, attributes)`.
+Production has corrupted/incorrect email templates. Need a button to delete all existing templates and recreate the correct defaults.
 
-### Change
+### Changes
 
-**`supabase/functions/manage-users/index.ts`** — line ~169:
+#### `src/components/EmailTemplates.tsx`
+1. Add a `resetTemplates` function that:
+   - Deletes ALL rows from `email_templates` for the current user
+   - Calls `createDefaultTemplates()` to recreate from `DEFAULT_TEMPLATES`
+   - Shows success toast
+2. Add a destructive button with confirmation (using AlertDialog) next to the heading — "Reset All Templates"
+3. Import `AlertDialog` components and `RefreshCw` icon
 
-Replace:
+The button will be placed in the header area next to the "Email Templates" title. It will show a confirmation dialog warning that all customizations will be lost.
+
+### Technical Details
+
 ```typescript
-const { error } = await adminClient.auth.admin.updateUser(userId, updatePayload);
+const resetTemplates = async () => {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+  
+  // Delete all templates
+  await supabase.from('email_templates').delete().eq('user_id', user.id);
+  
+  setSelectedTemplate(null);
+  setTemplates([]);
+  
+  // Recreate defaults
+  await createDefaultTemplates();
+  
+  toast({ title: "Templates reset", description: "All templates have been reset to defaults." });
+};
 ```
 
-With:
-```typescript
-const { error } = await adminClient.auth.admin.updateUserById(userId, updatePayload);
-```
-
-One-line fix. No other files affected.
+### Files
+- `src/components/EmailTemplates.tsx` — add reset button with AlertDialog confirmation + `resetTemplates` function
 

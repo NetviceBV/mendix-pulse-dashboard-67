@@ -7,8 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, Send, Eye, Save } from "lucide-react";
+import { Mail, Send, Eye, Save, RefreshCw } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
 interface EmailTemplate {
   id: string;
@@ -141,7 +142,41 @@ export const EmailTemplates = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [testEmail, setTestEmail] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const { toast } = useToast();
+
+  const resetTemplates = async () => {
+    try {
+      setIsResetting(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('email_templates')
+        .delete()
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      setSelectedTemplate(null);
+      setTemplates([]);
+
+      await createDefaultTemplates();
+
+      toast({
+        title: "Templates reset",
+        description: "All templates have been reset to defaults.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error resetting templates",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsResetting(false);
+    }
+  };
 
   useEffect(() => {
     loadTemplates();
@@ -359,9 +394,31 @@ export const EmailTemplates = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <Mail className="h-5 w-5" />
-        <h2 className="text-2xl font-bold">Email Templates</h2>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Mail className="h-5 w-5" />
+          <h2 className="text-2xl font-bold">Email Templates</h2>
+        </div>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="destructive" size="sm" disabled={isResetting}>
+              <RefreshCw className={`h-4 w-4 ${isResetting ? 'animate-spin' : ''}`} />
+              Reset All Templates
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Reset all email templates?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will delete all existing email templates and recreate the defaults. Any customizations will be lost. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={resetTemplates}>Reset Templates</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
