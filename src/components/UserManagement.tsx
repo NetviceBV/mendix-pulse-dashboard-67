@@ -3,11 +3,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
-import { Trash2, UserPlus, RefreshCw, Loader2 } from "lucide-react";
+import { Trash2, UserPlus, RefreshCw, Loader2, Pencil } from "lucide-react";
 import { format } from "date-fns";
+import EditUserDialog from "./EditUserDialog";
 
 interface AuthUser {
   id: string;
@@ -15,6 +17,7 @@ interface AuthUser {
   created_at: string;
   last_sign_in_at?: string;
   user_metadata?: { full_name?: string };
+  roles?: string[];
 }
 
 const UserManagement = () => {
@@ -25,7 +28,7 @@ const UserManagement = () => {
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-
+  const [editingUser, setEditingUser] = useState<AuthUser | null>(null);
   const fetchUsers = async () => {
     setLoadingUsers(true);
     try {
@@ -169,25 +172,40 @@ const UserManagement = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Email</TableHead>
+                 <TableHead>Email</TableHead>
                   <TableHead>Name</TableHead>
+                  <TableHead>Role</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead>Last Sign In</TableHead>
-                  <TableHead className="w-[80px]"></TableHead>
+                  <TableHead className="w-[100px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {users.map((user) => (
                   <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.email || "—"}</TableCell>
+                   <TableCell className="font-medium">{user.email || "—"}</TableCell>
                     <TableCell>{user.user_metadata?.full_name || "—"}</TableCell>
+                    <TableCell>
+                      {(user.roles || []).map((r) => (
+                        <Badge key={r} variant={r === "admin" ? "default" : "secondary"} className="mr-1">
+                          {r}
+                        </Badge>
+                      ))}
+                    </TableCell>
                     <TableCell>{format(new Date(user.created_at), "MMM d, yyyy")}</TableCell>
                     <TableCell>
                       {user.last_sign_in_at
                         ? format(new Date(user.last_sign_in_at), "MMM d, yyyy HH:mm")
                         : "Never"}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setEditingUser(user)}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
@@ -208,6 +226,13 @@ const UserManagement = () => {
           )}
         </CardContent>
       </Card>
+
+      <EditUserDialog
+        open={!!editingUser}
+        onOpenChange={(open) => !open && setEditingUser(null)}
+        user={editingUser}
+        onUpdated={fetchUsers}
+      />
     </div>
   );
 };

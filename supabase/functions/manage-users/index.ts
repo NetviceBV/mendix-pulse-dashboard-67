@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { action, email, password, fullName, userId } = await req.json();
+    const { action, email, password, fullName, userId, role } = await req.json();
 
     if (action === "create") {
       if (!email || !password) {
@@ -118,6 +118,60 @@ Deno.serve(async (req) => {
       }));
 
       return new Response(JSON.stringify({ users: usersWithRoles }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (action === "update") {
+      if (!userId) {
+        return new Response(
+          JSON.stringify({ error: "userId is required" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Build update payload for auth
+      const updatePayload: Record<string, unknown> = {};
+      if (email) updatePayload.email = email;
+      if (password) updatePayload.password = password;
+      if (fullName !== undefined) {
+        updatePayload.user_metadata = { full_name: fullName || null };
+      }
+
+      if (Object.keys(updatePayload).length > 0) {
+        const { error } = await adminClient.auth.admin.updateUser(userId, updatePayload);
+        if (error) {
+          return new Response(JSON.stringify({ error: error.message }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+
+      // Update role if provided
+      if (role && (role === "admin" || role === "user")) {
+        if (userId === callerId) {
+          return new Response(
+            JSON.stringify({ error: "You cannot change your own role" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Delete existing roles and insert new one
+        await adminClient.from("user_roles").delete().eq("user_id", userId);
+        const { error: roleError } = await adminClient
+          .from("user_roles")
+          .insert({ user_id: userId, role });
+
+        if (roleError) {
+          return new Response(JSON.stringify({ error: roleError.message }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+
+      return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
