@@ -1,40 +1,38 @@
 
 
-## Fix: Allow internal edge function calls to send-email-mandrill
+## Fix: manage-users Edge Function Error on Update
 
 ### Problem
-When `run-cloud-actions-v2` completes a cloud action and calls `send-email-mandrill` via `supabase.functions.invoke()`, the service-role token is passed automatically. `send-email-mandrill` tries `supabase.auth.getUser(token)` on it, which fails with "missing sub claim" → 401 → no email sent.
+The `manage-users` edge function has no `console.log` statements, making it impossible to see what happens during request processing. The logs only show "booted" messages. This means any error (auth failure, role insert issue, etc.) is invisible.
 
-Test emails from the UI work because they use a real user JWT.
+### Root Cause (Likely)
+The function works for `list` (users load fine), but fails on `update`. The most probable cause is that when updating a user's role, the `insert` on line 164 passes a plain string (`"admin"` or `"user"`) to the `role` column which uses the `app_role` enum type. While this typically works, if there's any casting issue it would fail silently since there's no logging.
 
 ### Changes
 
-#### 1. `supabase/functions/send-email-mandrill/index.ts`
-Update auth logic (lines 53-65): after extracting the bearer token, check if `token === 'OPS'`. If so, skip `getUser()` and proceed directly to sending the email. Otherwise, validate as normal user JWT.
+#### 1. `supabase/functions/manage-users/index.ts` — Add logging + fix potential issues
+- Add `console.log` statements at key points: action received, auth verified, role check, update processing, role update
+- Cast the role value explicitly when inserting into `user_roles`
+- Improve error details in catch block
 
+Key additions:
 ```typescript
-const token = authHeader.replace('Bearer ', '');
+// After parsing body (line 63):
+console.log(`Action: ${action}, userId: ${userId}, role: ${role}`);
 
-// Allow trusted internal calls with OPS token
-if (token !== 'OPS') {
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-  if (authError || !user) {
-    // return 401
-  }
-  console.log('Email request authorized for user:', user.id);
-} else {
-  console.log('Email request authorized via internal OPS token');
-}
+// Before role delete/insert (line 160):
+console.log(`Updating role for ${userId} to ${role}`);
+
+// After role insert:
+console.log(`Role updated successfully`);
+
+// In catch block (line 212):
+console.error('manage-users error:', err.message, err.stack);
 ```
 
-#### 2. `supabase/functions/run-cloud-actions-v2/index.ts`
-In `sendCloudActionEmail()`, change the `supabase.functions.invoke('send-email-mandrill', ...)` call to pass an explicit `Authorization: Bearer OPS` header so it bypasses user auth.
+#### 2. No client-side changes needed
+The `EditUserDialog.tsx` error handling is correct — it catches both `error` from invoke and `data.error` from the response body.
 
-#### 3. `supabase/functions/monitor-environment-logs/index.ts`
-Same change if it also calls `send-email-mandrill` — pass `Authorization: Bearer OPS`.
-
-### Why this is safe
-- `OPS` is a simple internal marker, not a secret — but `send-email-mandrill` is already behind Supabase's edge function gateway and not publicly routable without a valid anon/service key
-- Frontend test emails continue to use the user's JWT through the normal path
-- No database changes needed
+### Files
+- `supabase/functions/manage-users/index.ts` — add console.log throughout + ensure robust error handling
 
