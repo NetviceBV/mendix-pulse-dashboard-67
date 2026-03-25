@@ -10,6 +10,7 @@ import { OWASPSettings } from "@/components/OWASPSettings";
 import { OWASPRunsHistory } from "@/components/OWASPRunsHistory";
 import LintingSettings from "@/components/LintingSettings";
 import GeneralSettings from "@/components/GeneralSettings";
+import UserManagement from "@/components/UserManagement";
 import { ArrowLeft, Settings as SettingsIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -127,6 +128,7 @@ const Settings = () => {
                 <TabsTrigger value="owasp">OWASP Security</TabsTrigger>
                 <TabsTrigger value="owasp-history">OWASP History</TabsTrigger>
                 <TabsTrigger value="linting">Linting Rules</TabsTrigger>
+                <TabsTrigger value="users">User Management</TabsTrigger>
               </TabsList>
             
             <TabsContent value="general" className="mt-6">
@@ -166,6 +168,10 @@ const Settings = () => {
             
             <TabsContent value="linting" className="mt-6">
               <LintingSettings />
+            </TabsContent>
+            
+            <TabsContent value="users" className="mt-6">
+              <UserManagement />
             </TabsContent>
           </Tabs>
         </div>
