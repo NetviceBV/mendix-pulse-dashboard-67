@@ -1,28 +1,25 @@
 
 
-## Admin User Management - Create Users Only
+## Fix: Stale App Data Shown After User Switch
 
-### Overview
-Add a "User Management" tab to Settings where you can create new users with email + password. No invitation emails -- you share the credentials yourself.
+### Root Cause
+The React Query cache persists across sign-in/sign-out because `queryClient` is a module-level singleton in `App.tsx`. When User B logs in, the cache still holds User A's apps. RLS will return correct data on the next fetch, but the stale cache is shown first.
 
 ### Changes
 
-#### 1. New Edge Function: `supabase/functions/manage-users/index.ts`
-- JWT-authenticated endpoint using `SUPABASE_SERVICE_ROLE_KEY`
-- Actions:
-  - **create**: `auth.admin.createUser({ email, password, email_confirm: true })` -- creates user with confirmed email, no email sent
-  - **list**: `auth.admin.listUsers()` -- returns existing users
-  - **delete**: `auth.admin.deleteUserById()` -- removes a user
+#### 1. Clear React Query cache on sign-out (`src/pages/Index.tsx`)
+- Import and use `useQueryClient()` in the `Index` component
+- Call `queryClient.clear()` in `handleSignOut` before `supabase.auth.signOut()`
+- This removes all cached data immediately so the next user starts fresh
 
-#### 2. New Component: `src/components/UserManagement.tsx`
-- **Create form**: Email + password + optional full name + "Create User" button
-- **Users table**: Lists users with email, created date, last sign-in, delete button
-- Toast notifications for success/error
-- Calls `supabase.functions.invoke('manage-users', ...)`
+#### 2. Clear cache on auth state change (`src/pages/Index.tsx`)
+- In the `onAuthStateChange` listener, when event is `SIGNED_OUT`, call `queryClient.clear()`
+- This catches edge cases like token expiry or external sign-out
 
-#### 3. Update `src/pages/Settings.tsx`
-- Add "User Management" tab trigger and content
+### Technical Detail
+One-line additions:
+- `const queryClient = useQueryClient();` in the Index component
+- `queryClient.clear();` in `handleSignOut` and in the `SIGNED_OUT` event handler
 
-### Key Detail
-Setting `email_confirm: true` in `createUser` marks the email as verified immediately, so the user can sign in right away without any confirmation flow.
+No database or edge function changes needed. The RLS policies are correct -- this is purely a client-side caching issue.
 
