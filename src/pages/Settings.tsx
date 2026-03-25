@@ -128,6 +128,7 @@ const Settings = () => {
                 <TabsTrigger value="owasp">OWASP Security</TabsTrigger>
                 <TabsTrigger value="owasp-history">OWASP History</TabsTrigger>
                 <TabsTrigger value="linting">Linting Rules</TabsTrigger>
+                <TabsTrigger value="users">User Management</TabsTrigger>
               </TabsList>
             
             <TabsContent value="general" className="mt-6">
