@@ -180,6 +180,18 @@ export const EmailTemplates = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // Check if any templates already exist globally
+      const { data: existing } = await supabase
+        .from('email_templates')
+        .select('id')
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        // Templates already exist, just reload
+        await loadTemplates();
+        return;
+      }
+
       const defaultTemplates = Object.entries(DEFAULT_TEMPLATES).map(([type, template]) => ({
         user_id: user.id,
         template_type: type,
@@ -191,10 +203,7 @@ export const EmailTemplates = () => {
 
       const { data, error } = await supabase
         .from('email_templates')
-        .upsert(defaultTemplates, { 
-          onConflict: 'user_id,template_type',
-          ignoreDuplicates: true 
-        })
+        .insert(defaultTemplates)
         .select();
 
       if (error) throw error;
