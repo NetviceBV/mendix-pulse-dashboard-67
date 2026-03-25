@@ -141,7 +141,7 @@ Deno.serve(async (req) => {
       }
 
       if (Object.keys(updatePayload).length > 0) {
-        const { error } = await adminClient.auth.admin.updateUser(userId, updatePayload);
+        const { error } = await adminClient.auth.admin.updateUserById(userId, updatePayload);
         if (error) {
           return new Response(JSON.stringify({ error: error.message }), {
             status: 400,
