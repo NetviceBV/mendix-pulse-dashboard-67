@@ -142,7 +142,41 @@ export const EmailTemplates = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [testEmail, setTestEmail] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const { toast } = useToast();
+
+  const resetTemplates = async () => {
+    try {
+      setIsResetting(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('email_templates')
+        .delete()
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      setSelectedTemplate(null);
+      setTemplates([]);
+
+      await createDefaultTemplates();
+
+      toast({
+        title: "Templates reset",
+        description: "All templates have been reset to defaults.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error resetting templates",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsResetting(false);
+    }
+  };
 
   useEffect(() => {
     loadTemplates();
