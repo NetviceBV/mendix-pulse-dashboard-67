@@ -106,7 +106,7 @@ const handler = async (req: Request): Promise<Response> => {
         from_name: emailRequest.from_name || 'Mendix Monitoring',
         to: emailRequest.to,
         preserve_recipients: true,
-        subaccount: emailRequest.subaccount || undefined,
+        subaccount: emailRequest.subaccount || 'OPS',
       },
     };
 
