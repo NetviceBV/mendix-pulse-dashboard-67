@@ -51,20 +51,26 @@ const handler = async (req: Request): Promise<Response> => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
 
-    if (authError || !user) {
-      console.error('Authentication failed:', authError?.message || 'No user found');
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized', success: false }),
-        {
-          status: 401,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders },
-        }
-      );
+    // Allow trusted internal calls with OPS token (used by run-cloud-actions-v2, monitor-environment-logs)
+    if (token !== 'OPS') {
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+      if (authError || !user) {
+        console.error('Authentication failed:', authError?.message || 'No user found');
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized', success: false }),
+          {
+            status: 401,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          }
+        );
+      }
+
+      console.log('Email request authorized for user:', user.id);
+    } else {
+      console.log('Email request authorized via internal OPS token');
     }
-
-    console.log('Email request authorized for user:', user.id);
 
     const emailRequest: EmailRequest = await req.json();
     console.log('Sending email request:', { 
@@ -106,7 +112,7 @@ const handler = async (req: Request): Promise<Response> => {
         from_name: emailRequest.from_name || 'Mendix Monitoring',
         to: emailRequest.to,
         preserve_recipients: true,
-        subaccount: emailRequest.subaccount || undefined,
+        subaccount: emailRequest.subaccount || 'OPS',
       },
     };
 

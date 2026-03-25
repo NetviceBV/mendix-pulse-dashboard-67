@@ -295,13 +295,13 @@ async function sendLogAlertEmail(supabase: any, user_id: string, environment: an
 
     const appName = appData?.app_name || environment.app_id;
 
-    // Get log alert template
+    // Get log alert template (global, not per-user)
     const { data: template, error: templateError } = await supabase
       .from('email_templates')
       .select('*')
-      .eq('user_id', user_id)
       .eq('template_type', 'log_alert')
-      .single();
+      .limit(1)
+      .maybeSingle();
 
     if (templateError || !template) {
       console.error('Log alert email template not found:', templateError);
@@ -340,6 +340,7 @@ async function sendLogAlertEmail(supabase: any, user_id: string, environment: an
 
     // Send email
     const { error: emailError } = await supabase.functions.invoke('send-email-mandrill', {
+      headers: { Authorization: 'Bearer OPS' },
       body: {
         to: recipients,
         subject: template.subject_template,

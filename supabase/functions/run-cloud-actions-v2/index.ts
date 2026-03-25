@@ -357,14 +357,14 @@ async function sendCloudActionEmail(supabase: any, action: CloudAction, type: 's
 
     const appName = appData?.app_name || action.app_id;
 
-    // Get appropriate template
+    // Get appropriate template (global, not per-user)
     const templateType = type === 'success' ? 'cloud_action_success' : 'cloud_action_failure';
     const { data: template, error: templateError } = await supabase
       .from('email_templates')
       .select('*')
-      .eq('user_id', action.user_id)
       .eq('template_type', templateType)
-      .single();
+      .limit(1)
+      .maybeSingle();
 
     if (templateError || !template) {
       console.error(`${templateType} email template not found:`, templateError);
@@ -419,6 +419,7 @@ async function sendCloudActionEmail(supabase: any, action: CloudAction, type: 's
 
     // Send email
     const { error: emailError } = await supabase.functions.invoke('send-email-mandrill', {
+      headers: { Authorization: 'Bearer OPS' },
       body: {
         to: recipients,
         subject: template.subject_template,
