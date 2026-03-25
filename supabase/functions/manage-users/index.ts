@@ -39,6 +39,7 @@ Deno.serve(async (req) => {
     }
 
     const callerId = userData.user.id;
+    console.log(`Caller authenticated: ${callerId}`);
 
     // Admin client with service role key
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
@@ -61,6 +62,7 @@ Deno.serve(async (req) => {
     }
 
     const { action, email, password, fullName, userId, role } = await req.json();
+    console.log(`Action: ${action}, userId: ${userId}, role: ${role}`);
 
     if (action === "create") {
       if (!email || !password) {
@@ -158,10 +160,15 @@ Deno.serve(async (req) => {
         }
 
         // Delete existing roles and insert new one
-        await adminClient.from("user_roles").delete().eq("user_id", userId);
+        console.log(`Updating role for ${userId} to ${role}`);
+        const { error: deleteRoleError } = await adminClient.from("user_roles").delete().eq("user_id", userId);
+        if (deleteRoleError) {
+          console.error(`Failed to delete existing roles: ${deleteRoleError.message}`);
+        }
         const { error: roleError } = await adminClient
           .from("user_roles")
           .insert({ user_id: userId, role });
+        console.log(roleError ? `Role insert failed: ${roleError.message}` : `Role updated successfully`);
 
         if (roleError) {
           return new Response(JSON.stringify({ error: roleError.message }), {
@@ -210,6 +217,7 @@ Deno.serve(async (req) => {
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
+    console.error('manage-users error:', err.message, err.stack);
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
