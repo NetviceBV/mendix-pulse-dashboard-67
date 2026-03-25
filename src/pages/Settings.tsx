@@ -169,6 +169,10 @@ const Settings = () => {
             <TabsContent value="linting" className="mt-6">
               <LintingSettings />
             </TabsContent>
+            
+            <TabsContent value="users" className="mt-6">
+              <UserManagement />
+            </TabsContent>
           </Tabs>
         </div>
       </div>
