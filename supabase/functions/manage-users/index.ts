@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { action, email, password, fullName, userId } = await req.json();
+    const { action, email, password, fullName, userId, role } = await req.json();
 
     if (action === "create") {
       if (!email || !password) {
