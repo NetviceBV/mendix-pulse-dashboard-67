@@ -340,6 +340,7 @@ async function sendLogAlertEmail(supabase: any, user_id: string, environment: an
 
     // Send email
     const { error: emailError } = await supabase.functions.invoke('send-email-mandrill', {
+      headers: { Authorization: 'Bearer OPS' },
       body: {
         to: recipients,
         subject: template.subject_template,

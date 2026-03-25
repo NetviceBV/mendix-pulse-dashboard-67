@@ -419,6 +419,7 @@ async function sendCloudActionEmail(supabase: any, action: CloudAction, type: 's
 
     // Send email
     const { error: emailError } = await supabase.functions.invoke('send-email-mandrill', {
+      headers: { Authorization: 'Bearer OPS' },
       body: {
         to: recipients,
         subject: template.subject_template,
