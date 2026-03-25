@@ -17,6 +17,7 @@ interface AuthUser {
   created_at: string;
   last_sign_in_at?: string;
   user_metadata?: { full_name?: string };
+  roles?: string[];
 }
 
 const UserManagement = () => {
