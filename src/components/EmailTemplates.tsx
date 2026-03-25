@@ -394,9 +394,31 @@ export const EmailTemplates = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <Mail className="h-5 w-5" />
-        <h2 className="text-2xl font-bold">Email Templates</h2>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Mail className="h-5 w-5" />
+          <h2 className="text-2xl font-bold">Email Templates</h2>
+        </div>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="destructive" size="sm" disabled={isResetting}>
+              <RefreshCw className={`h-4 w-4 ${isResetting ? 'animate-spin' : ''}`} />
+              Reset All Templates
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Reset all email templates?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will delete all existing email templates and recreate the defaults. Any customizations will be lost. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={resetTemplates}>Reset Templates</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
