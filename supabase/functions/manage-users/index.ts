@@ -160,10 +160,15 @@ Deno.serve(async (req) => {
         }
 
         // Delete existing roles and insert new one
-        await adminClient.from("user_roles").delete().eq("user_id", userId);
+        console.log(`Updating role for ${userId} to ${role}`);
+        const { error: deleteRoleError } = await adminClient.from("user_roles").delete().eq("user_id", userId);
+        if (deleteRoleError) {
+          console.error(`Failed to delete existing roles: ${deleteRoleError.message}`);
+        }
         const { error: roleError } = await adminClient
           .from("user_roles")
           .insert({ user_id: userId, role });
+        console.log(roleError ? `Role insert failed: ${roleError.message}` : `Role updated successfully`);
 
         if (roleError) {
           return new Response(JSON.stringify({ error: roleError.message }), {
