@@ -172,11 +172,12 @@ const UserManagement = () => {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Email</TableHead>
+                 <TableHead>Email</TableHead>
                   <TableHead>Name</TableHead>
+                  <TableHead>Role</TableHead>
                   <TableHead>Created</TableHead>
                   <TableHead>Last Sign In</TableHead>
-                  <TableHead className="w-[80px]"></TableHead>
+                  <TableHead className="w-[100px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
