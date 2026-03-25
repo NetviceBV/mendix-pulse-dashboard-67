@@ -151,10 +151,11 @@ export const EmailTemplates = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // Delete ALL templates globally (admin-only via RLS)
       const { error } = await supabase
         .from('email_templates')
         .delete()
-        .eq('user_id', user.id);
+        .neq('id', '00000000-0000-0000-0000-000000000000');
 
       if (error) throw error;
 
