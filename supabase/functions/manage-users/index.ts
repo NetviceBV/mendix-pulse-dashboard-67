@@ -149,9 +149,27 @@ Deno.serve(async (req) => {
       }
 
       // Update role if provided
-      const { role } = await req.json().catch(() => ({}));
-      // role was already destructured above, use it from the original parse
-      const bodyRole = (await Promise.resolve(role)) || undefined;
+      if (role && (role === "admin" || role === "user")) {
+        if (userId === callerId) {
+          return new Response(
+            JSON.stringify({ error: "You cannot change your own role" }),
+            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        // Delete existing roles and insert new one
+        await adminClient.from("user_roles").delete().eq("user_id", userId);
+        const { error: roleError } = await adminClient
+          .from("user_roles")
+          .insert({ user_id: userId, role });
+
+        if (roleError) {
+          return new Response(JSON.stringify({ error: roleError.message }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
 
       return new Response(JSON.stringify({ success: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
