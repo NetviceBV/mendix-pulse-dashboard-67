@@ -6,8 +6,10 @@ import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import { useInactivityTimeout } from "@/hooks/useInactivityTimeout";
 import { useInactivitySettings } from "@/hooks/useInactivitySettings";
 import { toast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
 
 const Index = () => {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<SupabaseUser | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -16,6 +18,9 @@ const Index = () => {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        if (event === 'SIGNED_OUT') {
+          queryClient.clear();
+        }
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
@@ -38,9 +43,10 @@ const Index = () => {
   };
 
   const handleSignOut = useCallback(async () => {
+    queryClient.clear();
     sessionStorage.removeItem('mendix-apps-synced');
     await supabase.auth.signOut();
-  }, []);
+  }, [queryClient]);
 
   const isAuthenticated = !!user && !!session;
   const { timeoutMinutes } = useInactivitySettings();
