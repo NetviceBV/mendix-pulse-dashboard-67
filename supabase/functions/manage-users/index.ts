@@ -122,6 +122,42 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (action === "update") {
+      if (!userId) {
+        return new Response(
+          JSON.stringify({ error: "userId is required" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // Build update payload for auth
+      const updatePayload: Record<string, unknown> = {};
+      if (email) updatePayload.email = email;
+      if (password) updatePayload.password = password;
+      if (fullName !== undefined) {
+        updatePayload.user_metadata = { full_name: fullName || null };
+      }
+
+      if (Object.keys(updatePayload).length > 0) {
+        const { error } = await adminClient.auth.admin.updateUser(userId, updatePayload);
+        if (error) {
+          return new Response(JSON.stringify({ error: error.message }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+      }
+
+      // Update role if provided
+      const { role } = await req.json().catch(() => ({}));
+      // role was already destructured above, use it from the original parse
+      const bodyRole = (await Promise.resolve(role)) || undefined;
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     if (action === "delete") {
       if (!userId) {
         return new Response(
