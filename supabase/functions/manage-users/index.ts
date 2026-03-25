@@ -12,7 +12,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Authenticate the caller
     const authHeader = req.headers.get("Authorization");
     if (!authHeader?.startsWith("Bearer ")) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -31,18 +30,35 @@ Deno.serve(async (req) => {
     });
 
     const token = authHeader.replace("Bearer ", "");
-    const { data: claimsData, error: claimsError } = await callerClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const { data: userData, error: userError } = await callerClient.auth.getUser(token);
+    if (userError || !userData?.user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
+    const callerId = userData.user.id;
+
     // Admin client with service role key
     const adminClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
+
+    // Verify caller is admin
+    const { data: roleData, error: roleError } = await adminClient
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", callerId)
+      .eq("role", "admin")
+      .maybeSingle();
+
+    if (roleError || !roleData) {
+      return new Response(JSON.stringify({ error: "Forbidden: admin role required" }), {
+        status: 403,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const { action, email, password, fullName, userId } = await req.json();
 
@@ -68,6 +84,8 @@ Deno.serve(async (req) => {
         });
       }
 
+      // The trigger auto-assigns 'user' role. No extra insert needed.
+
       return new Response(JSON.stringify({ user: data.user }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -83,7 +101,23 @@ Deno.serve(async (req) => {
         });
       }
 
-      return new Response(JSON.stringify({ users: data.users }), {
+      // Fetch roles for all users
+      const { data: allRoles } = await adminClient
+        .from("user_roles")
+        .select("user_id, role");
+
+      const roleMap: Record<string, string[]> = {};
+      for (const r of allRoles || []) {
+        if (!roleMap[r.user_id]) roleMap[r.user_id] = [];
+        roleMap[r.user_id].push(r.role);
+      }
+
+      const usersWithRoles = data.users.map((u) => ({
+        ...u,
+        roles: roleMap[u.id] || [],
+      }));
+
+      return new Response(JSON.stringify({ users: usersWithRoles }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -96,8 +130,7 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Prevent self-deletion
-      if (userId === claimsData.claims.sub) {
+      if (userId === callerId) {
         return new Response(
           JSON.stringify({ error: "You cannot delete your own account" }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }

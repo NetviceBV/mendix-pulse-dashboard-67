@@ -11,12 +11,14 @@ import { OWASPRunsHistory } from "@/components/OWASPRunsHistory";
 import LintingSettings from "@/components/LintingSettings";
 import GeneralSettings from "@/components/GeneralSettings";
 import UserManagement from "@/components/UserManagement";
+import ChangePassword from "@/components/ChangePassword";
 import { ArrowLeft, Settings as SettingsIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { User as SupabaseUser } from '@supabase/supabase-js';
 import { useInactivityTimeout } from "@/hooks/useInactivityTimeout";
 import { useInactivitySettings } from "@/hooks/useInactivitySettings";
+import { useUserRole } from "@/hooks/useUserRole";
 import { toast } from "@/hooks/use-toast";
 
 const Settings = () => {
@@ -24,8 +26,8 @@ const Settings = () => {
   const [loading, setLoading] = useState(true);
   const [mendixCredentials, setMendixCredentials] = useState<MendixCredential[]>([]);
   const navigate = useNavigate();
+  const { isAdmin, isLoading: roleLoading } = useUserRole();
 
-  // Check authentication status
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) {
@@ -37,8 +39,6 @@ const Settings = () => {
     });
   }, [navigate]);
 
-  // Credentials are managed by MendixCredentials component via Supabase
-  // State is kept here only for prop drilling
   const handleCredentialsChange = (credentials: MendixCredential[]) => {
     setMendixCredentials(credentials);
   };
@@ -74,7 +74,7 @@ const Settings = () => {
     enabled: !!user,
   });
 
-  if (loading) {
+  if (loading || roleLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
@@ -85,9 +85,10 @@ const Settings = () => {
     );
   }
 
+  const defaultTab = isAdmin ? "general" : "credentials";
+
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
@@ -117,23 +118,26 @@ const Settings = () => {
 
       <div className="container mx-auto px-4 py-6">
         <div className="max-w-4xl mx-auto">
-            <Tabs defaultValue="general" className="w-full">
+            <Tabs defaultValue={defaultTab} className="w-full">
               <TabsList className="flex flex-wrap h-auto gap-1 p-1 w-full">
-                <TabsTrigger value="general">General</TabsTrigger>
+                {isAdmin && <TabsTrigger value="general">General</TabsTrigger>}
                 <TabsTrigger value="credentials">Mendix Credentials</TabsTrigger>
-                <TabsTrigger value="webhooks">Webhook Settings</TabsTrigger>
-                <TabsTrigger value="emails">Email Management</TabsTrigger>
-                <TabsTrigger value="templates">Email Templates</TabsTrigger>
-                <TabsTrigger value="monitoring">Log Monitoring</TabsTrigger>
-                <TabsTrigger value="owasp">OWASP Security</TabsTrigger>
-                <TabsTrigger value="owasp-history">OWASP History</TabsTrigger>
-                <TabsTrigger value="linting">Linting Rules</TabsTrigger>
-                <TabsTrigger value="users">User Management</TabsTrigger>
+                <TabsTrigger value="password">Change Password</TabsTrigger>
+                {isAdmin && <TabsTrigger value="webhooks">Webhook Settings</TabsTrigger>}
+                {isAdmin && <TabsTrigger value="emails">Email Management</TabsTrigger>}
+                {isAdmin && <TabsTrigger value="templates">Email Templates</TabsTrigger>}
+                {isAdmin && <TabsTrigger value="monitoring">Log Monitoring</TabsTrigger>}
+                {isAdmin && <TabsTrigger value="owasp">OWASP Security</TabsTrigger>}
+                {isAdmin && <TabsTrigger value="owasp-history">OWASP History</TabsTrigger>}
+                {isAdmin && <TabsTrigger value="linting">Linting Rules</TabsTrigger>}
+                {isAdmin && <TabsTrigger value="users">User Management</TabsTrigger>}
               </TabsList>
             
-            <TabsContent value="general" className="mt-6">
-              <GeneralSettings />
-            </TabsContent>
+            {isAdmin && (
+              <TabsContent value="general" className="mt-6">
+                <GeneralSettings />
+              </TabsContent>
+            )}
 
             <TabsContent value="credentials" className="mt-6">
               <MendixCredentials 
@@ -141,38 +145,58 @@ const Settings = () => {
                 onCredentialsChange={handleCredentialsChange}
               />
             </TabsContent>
-            
-            <TabsContent value="webhooks" className="mt-6">
-              <WebhookManagement />
+
+            <TabsContent value="password" className="mt-6">
+              <ChangePassword />
             </TabsContent>
             
-            <TabsContent value="emails" className="mt-6">
-              <EmailManagement />
-            </TabsContent>
+            {isAdmin && (
+              <TabsContent value="webhooks" className="mt-6">
+                <WebhookManagement />
+              </TabsContent>
+            )}
             
-            <TabsContent value="templates" className="mt-6">
-              <EmailTemplates />
-            </TabsContent>
+            {isAdmin && (
+              <TabsContent value="emails" className="mt-6">
+                <EmailManagement />
+              </TabsContent>
+            )}
             
-            <TabsContent value="monitoring" className="mt-6">
-              <LogMonitoringSettings />
-            </TabsContent>
+            {isAdmin && (
+              <TabsContent value="templates" className="mt-6">
+                <EmailTemplates />
+              </TabsContent>
+            )}
             
-            <TabsContent value="owasp" className="mt-6">
-              <OWASPSettings />
-            </TabsContent>
+            {isAdmin && (
+              <TabsContent value="monitoring" className="mt-6">
+                <LogMonitoringSettings />
+              </TabsContent>
+            )}
             
-            <TabsContent value="owasp-history" className="mt-6">
-              <OWASPRunsHistory />
-            </TabsContent>
+            {isAdmin && (
+              <TabsContent value="owasp" className="mt-6">
+                <OWASPSettings />
+              </TabsContent>
+            )}
             
-            <TabsContent value="linting" className="mt-6">
-              <LintingSettings />
-            </TabsContent>
+            {isAdmin && (
+              <TabsContent value="owasp-history" className="mt-6">
+                <OWASPRunsHistory />
+              </TabsContent>
+            )}
             
-            <TabsContent value="users" className="mt-6">
-              <UserManagement />
-            </TabsContent>
+            {isAdmin && (
+              <TabsContent value="linting" className="mt-6">
+                <LintingSettings />
+              </TabsContent>
+            )}
+            
+            {isAdmin && (
+              <TabsContent value="users" className="mt-6">
+                <UserManagement />
+              </TabsContent>
+            )}
           </Tabs>
         </div>
       </div>
