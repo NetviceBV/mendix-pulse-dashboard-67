@@ -1,0 +1,1 @@
+ALTER TABLE public.mendix_credentials ADD COLUMN IF NOT EXISTS fake_checks_enabled boolean NOT NULL DEFAULT false;
