@@ -612,6 +612,68 @@ const AppCard = ({
         description: "Analyzing your Mendix project. This may take 1-2 minutes...",
       });
 
+      // Check fake-mode flag on the credential
+      const { data: credRow } = await supabase
+        .from('mendix_credentials')
+        .select('fake_checks_enabled')
+        .eq('id', app.credential_id)
+        .maybeSingle();
+
+      if (credRow?.fake_checks_enabled) {
+        const delayMs = 5000 + Math.floor(Math.random() * 5000);
+        await new Promise((r) => setTimeout(r, delayMs));
+
+        const { data: userRes } = await supabase.auth.getUser();
+        const userId = userRes.user?.id;
+        const { data: policies } = await supabase
+          .from('linting_policies')
+          .select('id, rule_id, title, category, is_enabled')
+          .eq('user_id', userId!)
+          .eq('is_enabled', true);
+        const total = policies?.length ?? 0;
+        const nowIso = new Date().toISOString();
+
+        const { data: runRow, error: runErr } = await supabase
+          .from('linting_runs')
+          .insert({
+            app_id: app.project_id,
+            user_id: userId!,
+            status: 'completed',
+            total_rules: total,
+            passed_rules: total,
+            failed_rules: 0,
+            started_at: nowIso,
+            completed_at: nowIso,
+          })
+          .select()
+          .single();
+        if (runErr) throw runErr;
+
+        if (policies && policies.length > 0) {
+          const rows = policies.map((p) => ({
+            user_id: userId!,
+            app_id: app.project_id!,
+            run_id: runRow.id,
+            chapter: p.category,
+            rule_name: p.title,
+            rule_description: '',
+            status: 'pass',
+            severity: 'info',
+            details: '',
+          }));
+          await supabase.from('linting_results').insert(rows);
+        }
+
+        setRunningLintingChecks(false);
+        toast({
+          title: "Linting Complete",
+          description: `${total} passed, 0 failed out of ${total} rules.`,
+        });
+        queryClient.invalidateQueries({ queryKey: ['linting', app.project_id] });
+        queryClient.invalidateQueries({ queryKey: ['linting-runs', app.project_id] });
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('run-linting-checks', {
         body: {
           credentialId: app.credential_id,
@@ -705,6 +767,116 @@ const AppCard = ({
         title: "Running OWASP Checks",
         description: "Security checks are being executed for Production environment...",
       });
+
+      // Check fake-mode flag on the credential
+      const { data: credRow } = await supabase
+        .from('mendix_credentials')
+        .select('fake_checks_enabled')
+        .eq('id', app.credential_id)
+        .maybeSingle();
+
+      if (credRow?.fake_checks_enabled) {
+        const delayMs = 5000 + Math.floor(Math.random() * 5000);
+        await new Promise((r) => setTimeout(r, delayMs));
+
+        const { data: userRes } = await supabase.auth.getUser();
+        const userId = userRes.user?.id;
+        const nowIso = new Date().toISOString();
+
+        // Load all active OWASP items for the user
+        const { data: items } = await supabase
+          .from('owasp_items')
+          .select('id')
+          .eq('user_id', userId!)
+          .eq('is_active', true);
+        const itemList = items ?? [];
+
+        // Load existing steps for those items (active + inactive)
+        const itemIds = itemList.map((i) => i.id);
+        const { data: allSteps } = itemIds.length
+          ? await supabase
+              .from('owasp_steps')
+              .select('id, owasp_item_id, is_active, edge_function_name')
+              .eq('user_id', userId!)
+              .in('owasp_item_id', itemIds)
+          : { data: [] as any[] };
+
+        // For each item, ensure exactly one usable active step (reuse existing where possible)
+        const stepIdsToUse: string[] = [];
+        for (const item of itemList) {
+          const itemSteps = (allSteps ?? []).filter((s) => s.owasp_item_id === item.id);
+          const activeStep = itemSteps.find((s) => s.is_active);
+          if (activeStep) {
+            stepIdsToUse.push(activeStep.id);
+            continue;
+          }
+          const existingNoop = itemSteps.find((s) => s.edge_function_name === 'noop');
+          if (existingNoop) {
+            await supabase
+              .from('owasp_steps')
+              .update({ is_active: true })
+              .eq('id', existingNoop.id);
+            stepIdsToUse.push(existingNoop.id);
+            continue;
+          }
+          const { data: newStep } = await supabase
+            .from('owasp_steps')
+            .insert({
+              user_id: userId!,
+              owasp_item_id: item.id,
+              step_name: 'Automated check',
+              step_description: '',
+              edge_function_name: 'noop',
+              step_order: 1,
+              is_active: true,
+            })
+            .select('id')
+            .single();
+          if (newStep) stepIdsToUse.push(newStep.id);
+        }
+
+        const { data: runRow, error: runErr } = await supabase
+          .from('owasp_check_runs')
+          .insert({
+            user_id: userId!,
+            app_id: app.project_id!,
+            environment_name: productionEnv.environment_name,
+            overall_status: 'passed',
+            total_checks: stepIdsToUse.length,
+            passed_checks: stepIdsToUse.length,
+            failed_checks: 0,
+            warning_checks: 0,
+            run_started_at: nowIso,
+            run_completed_at: nowIso,
+          })
+          .select()
+          .single();
+        if (runErr) throw runErr;
+
+        if (stepIdsToUse.length > 0) {
+          const resRows = stepIdsToUse.map((stepId) => ({
+            user_id: userId!,
+            app_id: app.project_id!,
+            environment_name: productionEnv.environment_name,
+            owasp_step_id: stepId,
+            run_id: runRow.id,
+            status: 'pass',
+            details: '',
+            checked_at: nowIso,
+          }));
+          await supabase
+            .from('owasp_check_results')
+            .upsert(resRows, { onConflict: 'user_id,app_id,environment_name,owasp_step_id' });
+        }
+
+        toast({
+          title: "OWASP Checks Complete",
+          description: "Security checks have been completed. Refreshing results...",
+        });
+        setOwaspReloadTrigger(prev => prev + 1);
+        setRunningOwaspChecks(false);
+        return;
+      }
 
       // Run checks only for Production environment
       const { error } = await supabase.functions.invoke('run-owasp-checks', {

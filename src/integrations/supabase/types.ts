@@ -516,6 +516,7 @@ export type Database = {
         Row: {
           api_key: string | null
           created_at: string
+          fake_checks_enabled: boolean
           id: string
           name: string
           password: string | null
@@ -527,6 +528,7 @@ export type Database = {
         Insert: {
           api_key?: string | null
           created_at?: string
+          fake_checks_enabled?: boolean
           id?: string
           name: string
           password?: string | null
@@ -538,6 +540,7 @@ export type Database = {
         Update: {
           api_key?: string | null
           created_at?: string
+          fake_checks_enabled?: boolean
           id?: string
           name?: string
           password?: string | null
