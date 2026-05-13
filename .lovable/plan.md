@@ -1,33 +1,45 @@
+## Doel
 
+Een checkbox (zonder label) toevoegen onder het "Mendix Password" veld in de credential-formulieren (zowel toevoegen als bewerken). Wanneer deze aanstaat voor een credential, gedragen de knoppen **Run OWASP** en **Run Linting** zich alsof alle checks zijn geslaagd — zonder dat er daadwerkelijk een analyse wordt uitgevoerd.
 
-## Fix: Global Email Templates Access
+## Wijzigingen
 
-### Problem
-Three issues combine to break email templates for all users except the original creator:
+### 1. Database
 
-1. **RLS policies** are per-user (`auth.uid() = user_id`), so only user `fa7cf1c9-...` can see/edit the templates
-2. **Unique constraint** on `template_type` (without `user_id`) prevents other users from creating their own copies
-3. **Reset button** exists in code but doesn't help because `createDefaultTemplates` checks for existing templates globally (via service query) but can't see them due to RLS, then fails on the unique constraint when inserting
+Nieuwe migratie die een kolom toevoegt aan `mendix_credentials`:
 
-### Solution
-Make templates truly global as intended by the architecture memory. Update RLS so all authenticated users can read templates, and admins can manage them.
+- `fake_checks_enabled boolean not null default false`
 
-### Changes
+### 2. UI — `src/components/MendixCredentials.tsx`
 
-#### 1. Migration: Update RLS policies on `email_templates`
-- **DROP** all four existing per-user RLS policies
-- **CREATE** new policies:
-  - `SELECT` for `authenticated`: `USING (true)` — all authenticated users can read
-  - `INSERT` for `authenticated`: `WITH CHECK (has_role(auth.uid(), 'admin'))` — only admins can create
-  - `UPDATE` for `authenticated`: `USING (has_role(auth.uid(), 'admin'))` — only admins can update
-  - `DELETE` for `authenticated`: `USING (has_role(auth.uid(), 'admin'))` — only admins can delete
+- State `newCredential` en `editCredential` uitbreiden met `fake_checks_enabled: boolean`.
+- Direct onder het Mendix Password veld een ongelabelde `<Checkbox>` (shadcn) tonen, alleen in edit formulier.
+- Update queries naar Supabase meegeven met de nieuwe vlag.
+- `MendixCredential` interface uitbreiden.
 
-#### 2. `src/components/EmailTemplates.tsx` — Fix reset and creation logic
-- Remove `user_id` filtering from `resetTemplates` (delete all templates, not just current user's)
-- In `createDefaultTemplates`, skip the user check and just insert templates (the unique constraint will prevent duplicates, and the admin RLS will enforce permissions)
-- Always show the Reset button (it's already there but templates fail to load for non-owners, so the whole component appears empty)
+### 3. Run-knoppen — `src/components/AppCard.tsx`
 
-### Files
-- New migration SQL — update RLS policies on `email_templates`
-- `src/components/EmailTemplates.tsx` — adjust delete/create logic to work with global templates
+In `handleRunLintingChecks` en `handleRunOwaspChecks`: vóór het aanroepen van de edge function de credential ophalen (`mendix_credentials.fake_checks_enabled`). Als `true`:
 
+**Linting (fake):**
+
+- Sla een nieuwe rij op in `linting_runs` met `status='completed'`, `total_rules` = aantal enabled policies (of 1), `passed_rules = total_rules`, `failed_rules = 0`, `started_at` en `completed_at` op nu.
+- Voor elke enabled policy een rij in `linting_run_results` met `passed=true` (schema verifiëren tijdens implementatie).
+- Toon success toast en invalideer queries — geen edge function call.
+
+**OWASP (fake):**
+
+- Roep edge function niet aan. In plaats daarvan: alle bestaande OWASP-resultaten voor deze app+production environment markeren als `pass` (of nieuwe pass-records schrijven afhankelijk van schema, te bevestigen tijdens implementatie via een korte schema-check op `owasp_*` tabellen).
+- Trigger `setOwaspReloadTrigger(prev => prev + 1)` zodat de UI de groene status toont.
+
+Graag een delay inbouwen die variabel tussen de 5 en 10 seconden laadtijd nabootst.
+
+### 4. Types
+
+`src/integrations/supabase/types.ts` wordt automatisch bijgewerkt door de migratie.
+
+## Technische notities
+
+- De vlag staat per credential, dus verschillende credentials kunnen onafhankelijk in "fake mode" staan.
+- De feature is volledig client-side voor de run-knoppen — geen edge function aanpassingen nodig — wat rollback eenvoudig maakt.
+- Tijdens implementatie eerst schemata van `linting_run_results` en de OWASP resultaattabellen inlezen om de juiste velden te schrijven.
