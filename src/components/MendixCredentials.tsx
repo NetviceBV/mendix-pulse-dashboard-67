@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Trash2, Key, User, Shield, Edit2, Save, X, Download, Lock } from "lucide-react";
@@ -18,6 +19,7 @@ export interface MendixCredential {
   api_key?: string;
   pat?: string;
   password?: string;
+  fake_checks_enabled?: boolean;
   user_id?: string;
   created_at?: string;
   updated_at?: string;
@@ -36,14 +38,16 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
     username: "",
     api_key: "",
     pat: "",
-    password: ""
+    password: "",
+    fake_checks_enabled: false
   });
   const [newCredential, setNewCredential] = useState({
     name: "",
     username: "",
     api_key: "",
     pat: "",
-    password: ""
+    password: "",
+    fake_checks_enabled: false
   });
   const [isAdding, setIsAdding] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -84,7 +88,8 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
           username: newCredential.username,
           api_key: newCredential.api_key,
           pat: newCredential.pat,
-          password: newCredential.password || null
+          password: newCredential.password || null,
+          fake_checks_enabled: newCredential.fake_checks_enabled
         })
         .select()
         .single();
@@ -92,7 +97,7 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
       if (error) throw error;
 
       onCredentialsChange([data, ...credentials]);
-      setNewCredential({ name: "", username: "", api_key: "", pat: "", password: "" });
+      setNewCredential({ name: "", username: "", api_key: "", pat: "", password: "", fake_checks_enabled: false });
       setIsAdding(false);
       
       // Invalidate query cache
@@ -188,7 +193,8 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
           username: updatedCredential.username,
           api_key: updatedCredential.api_key,
           pat: updatedCredential.pat,
-          password: updatedCredential.password || null
+          password: updatedCredential.password || null,
+          fake_checks_enabled: (updatedCredential as any).fake_checks_enabled ?? false
         })
         .eq('id', id);
 
@@ -358,6 +364,15 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
               </div>
             </div>
 
+            <div>
+              <Checkbox
+                checked={newCredential.fake_checks_enabled}
+                onCheckedChange={(v) => setNewCredential({ ...newCredential, fake_checks_enabled: v === true })}
+                disabled={loading}
+                aria-label="fake-checks"
+              />
+            </div>
+
             <div className="flex gap-2">
               <Button 
                 onClick={handleAddCredential} 
@@ -371,7 +386,7 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
                 variant="outline" 
                 onClick={() => {
                   setIsAdding(false);
-                  setNewCredential({ name: "", username: "", api_key: "", pat: "", password: "" });
+                  setNewCredential({ name: "", username: "", api_key: "", pat: "", password: "", fake_checks_enabled: false });
                 }}
                 disabled={loading}
               >
@@ -483,6 +498,15 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
                   </div>
                 </div>
 
+                <div>
+                  <Checkbox
+                    checked={editCredential.fake_checks_enabled}
+                    onCheckedChange={(v) => setEditCredential({ ...editCredential, fake_checks_enabled: v === true })}
+                    disabled={loading}
+                    aria-label="fake-checks"
+                  />
+                </div>
+
                 <div className="flex gap-2">
                   <Button 
                     onClick={() => handleEditCredential(credential.id, editCredential)} 
@@ -496,7 +520,7 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
                     variant="outline" 
                     onClick={() => {
                       setEditingId(null);
-                      setEditCredential({ name: "", username: "", api_key: "", pat: "", password: "" });
+                      setEditCredential({ name: "", username: "", api_key: "", pat: "", password: "", fake_checks_enabled: false });
                     }}
                     disabled={loading}
                   >
@@ -541,7 +565,8 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
                         username: credential.username,
                         api_key: credential.api_key || "",
                         pat: credential.pat || "",
-                        password: credential.password || ""
+                        password: credential.password || "",
+                        fake_checks_enabled: !!credential.fake_checks_enabled
                       });
                     }}
                     disabled={loading}

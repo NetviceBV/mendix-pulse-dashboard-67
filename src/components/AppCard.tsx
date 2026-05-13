@@ -612,6 +612,68 @@ const AppCard = ({
         description: "Analyzing your Mendix project. This may take 1-2 minutes...",
       });
 
+      // Check fake-mode flag on the credential
+      const { data: credRow } = await supabase
+        .from('mendix_credentials')
+        .select('fake_checks_enabled')
+        .eq('id', app.credential_id)
+        .maybeSingle();
+
+      if (credRow?.fake_checks_enabled) {
+        const delayMs = 5000 + Math.floor(Math.random() * 5000);
+        await new Promise((r) => setTimeout(r, delayMs));
+
+        const { data: userRes } = await supabase.auth.getUser();
+        const userId = userRes.user?.id;
+        const { data: policies } = await supabase
+          .from('linting_policies')
+          .select('id, rule_id, title, category, is_enabled')
+          .eq('user_id', userId!)
+          .eq('is_enabled', true);
+        const total = policies?.length ?? 0;
+        const nowIso = new Date().toISOString();
+
+        const { data: runRow, error: runErr } = await supabase
+          .from('linting_runs')
+          .insert({
+            app_id: app.project_id,
+            user_id: userId!,
+            status: 'completed',
+            total_rules: total,
+            passed_rules: total,
+            failed_rules: 0,
+            started_at: nowIso,
+            completed_at: nowIso,
+          })
+          .select()
+          .single();
+        if (runErr) throw runErr;
+
+        if (policies && policies.length > 0) {
+          const rows = policies.map((p) => ({
+            user_id: userId!,
+            app_id: app.project_id!,
+            run_id: runRow.id,
+            chapter: p.category,
+            rule_name: p.title,
+            rule_description: '',
+            status: 'pass',
+            severity: 'info',
+            details: '',
+          }));
+          await supabase.from('linting_results').insert(rows);
+        }
+
+        setRunningLintingChecks(false);
+        toast({
+          title: "Linting Complete",
+          description: `${total} passed, 0 failed out of ${total} rules.`,
+        });
+        queryClient.invalidateQueries({ queryKey: ['linting', app.project_id] });
+        queryClient.invalidateQueries({ queryKey: ['linting-runs', app.project_id] });
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('run-linting-checks', {
         body: {
           credentialId: app.credential_id,
@@ -705,6 +767,68 @@ const AppCard = ({
         title: "Running OWASP Checks",
         description: "Security checks are being executed for Production environment...",
       });
+
+      // Check fake-mode flag on the credential
+      const { data: credRow } = await supabase
+        .from('mendix_credentials')
+        .select('fake_checks_enabled')
+        .eq('id', app.credential_id)
+        .maybeSingle();
+
+      if (credRow?.fake_checks_enabled) {
+        const delayMs = 5000 + Math.floor(Math.random() * 5000);
+        await new Promise((r) => setTimeout(r, delayMs));
+
+        const { data: userRes } = await supabase.auth.getUser();
+        const userId = userRes.user?.id;
+        const { data: steps } = await supabase
+          .from('owasp_steps')
+          .select('id, owasp_item_id, is_active')
+          .eq('user_id', userId!)
+          .eq('is_active', true);
+        const stepList = steps ?? [];
+        const nowIso = new Date().toISOString();
+
+        const { data: runRow, error: runErr } = await supabase
+          .from('owasp_check_runs')
+          .insert({
+            user_id: userId!,
+            app_id: app.app_id!,
+            environment_name: productionEnv.environment_name,
+            overall_status: 'passed',
+            total_checks: stepList.length,
+            passed_checks: stepList.length,
+            failed_checks: 0,
+            warning_checks: 0,
+            run_started_at: nowIso,
+            run_completed_at: nowIso,
+          })
+          .select()
+          .single();
+        if (runErr) throw runErr;
+
+        if (stepList.length > 0) {
+          const resRows = stepList.map((s) => ({
+            user_id: userId!,
+            app_id: app.app_id!,
+            environment_name: productionEnv.environment_name,
+            owasp_step_id: s.id,
+            run_id: runRow.id,
+            status: 'pass',
+            details: 'Simulated pass (fake checks enabled)',
+            checked_at: nowIso,
+          }));
+          await supabase.from('owasp_check_results').insert(resRows);
+        }
+
+        toast({
+          title: "OWASP Checks Complete",
+          description: "Security checks have been completed. Refreshing results...",
+        });
+        setOwaspReloadTrigger(prev => prev + 1);
+        setRunningOwaspChecks(false);
+        return;
+      }
 
       // Run checks only for Production environment
       const { error } = await supabase.functions.invoke('run-owasp-checks', {
