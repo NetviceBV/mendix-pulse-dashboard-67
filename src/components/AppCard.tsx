@@ -793,7 +793,7 @@ const AppCard = ({
           .from('owasp_check_runs')
           .insert({
             user_id: userId!,
-            app_id: app.app_id!,
+            app_id: app.project_id!,
             environment_name: productionEnv.environment_name,
             overall_status: 'passed',
             total_checks: stepList.length,
@@ -810,7 +810,7 @@ const AppCard = ({
         if (stepList.length > 0) {
           const resRows = stepList.map((s) => ({
             user_id: userId!,
-            app_id: app.app_id!,
+            app_id: app.project_id!,
             environment_name: productionEnv.environment_name,
             owasp_step_id: s.id,
             run_id: runRow.id,
@@ -818,7 +818,9 @@ const AppCard = ({
             details: 'Simulated pass (fake checks enabled)',
             checked_at: nowIso,
           }));
-          await supabase.from('owasp_check_results').insert(resRows);
+          await supabase
+            .from('owasp_check_results')
+            .upsert(resRows, { onConflict: 'user_id,app_id,environment_name,owasp_step_id' });
         }
 
         toast({
