@@ -11,6 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useCredentialsQuery } from "@/hooks/useCredentialsQuery";
 import { queryKeys } from "@/lib/queryKeys";
 import { CredentialsSkeleton } from "@/components/CredentialsSkeleton";
+import { seedAllAppsLinting, seedAllAppsOwasp } from "@/lib/seedHistory";
 
 export interface MendixCredential {
   id: string;
@@ -51,6 +52,8 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
   });
   const [isAdding, setIsAdding] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [seedingLinting, setSeedingLinting] = useState(false);
+  const [seedingOwasp, setSeedingOwasp] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -252,6 +255,46 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
     }
   };
 
+  const handleSeedLinting = async () => {
+    setSeedingLinting(true);
+    try {
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) throw new Error("Not authenticated");
+      const { ok, fail } = await seedAllAppsLinting(u.user.id);
+      queryClient.invalidateQueries({ queryKey: ["linting"] });
+      queryClient.invalidateQueries({ queryKey: ["linting-runs"] });
+      toast({
+        title: "Linting history gevuld",
+        description: `${ok} app(s) gevuld${fail > 0 ? `, ${fail} mislukt` : ""}`,
+      });
+    } catch (e) {
+      console.error(e);
+      toast({ title: "Fout bij vullen linting history", variant: "destructive" });
+    } finally {
+      setSeedingLinting(false);
+    }
+  };
+
+  const handleSeedOwasp = async () => {
+    setSeedingOwasp(true);
+    try {
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) throw new Error("Not authenticated");
+      const { ok, fail } = await seedAllAppsOwasp(u.user.id);
+      queryClient.invalidateQueries({ queryKey: queryKeys.owaspItems("") });
+      queryClient.invalidateQueries();
+      toast({
+        title: "OWASP history gevuld",
+        description: `${ok} app(s) gevuld${fail > 0 ? `, ${fail} mislukt` : ""}`,
+      });
+    } catch (e) {
+      console.error(e);
+      toast({ title: "Fout bij vullen OWASP history", variant: "destructive" });
+    } finally {
+      setSeedingOwasp(false);
+    }
+  };
+
   // Show skeleton while loading
   if (isQueryLoading && credentials.length === 0) {
     return <CredentialsSkeleton count={2} />;
@@ -371,6 +414,15 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
                 disabled={loading}
                 aria-label="fake-checks"
               />
+            </div>
+
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={handleSeedLinting} disabled={seedingLinting}>
+                {seedingLinting ? "Bezig..." : "Vul Linting History"}
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleSeedOwasp} disabled={seedingOwasp}>
+                {seedingOwasp ? "Bezig..." : "Vul OWASP History"}
+              </Button>
             </div>
 
             <div className="flex gap-2">
@@ -505,6 +557,15 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
                     disabled={loading}
                     aria-label="fake-checks"
                   />
+                </div>
+
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={handleSeedLinting} disabled={seedingLinting}>
+                    {seedingLinting ? "Bezig..." : "Vul Linting History"}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={handleSeedOwasp} disabled={seedingOwasp}>
+                    {seedingOwasp ? "Bezig..." : "Vul OWASP History"}
+                  </Button>
                 </div>
 
                 <div className="flex gap-2">
