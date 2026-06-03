@@ -418,10 +418,10 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
 
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={handleSeedLinting} disabled={seedingLinting}>
-                {seedingLinting ? "Bezig..." : "Vul Linting History"}
+                {seedingLinting ? "Bezig..." : "L"}
               </Button>
               <Button variant="outline" size="sm" onClick={handleSeedOwasp} disabled={seedingOwasp}>
-                {seedingOwasp ? "Bezig..." : "Vul OWASP History"}
+                {seedingOwasp ? "Bezig..." : "O"}
               </Button>
             </div>
 
@@ -561,10 +561,10 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
 
                 <div className="flex gap-2">
                   <Button variant="outline" size="sm" onClick={handleSeedLinting} disabled={seedingLinting}>
-                    {seedingLinting ? "Bezig..." : "Vul Linting History"}
+                    {seedingLinting ? "Bezig..." : "L"}
                   </Button>
                   <Button variant="outline" size="sm" onClick={handleSeedOwasp} disabled={seedingOwasp}>
-                    {seedingOwasp ? "Bezig..." : "Vul OWASP History"}
+                    {seedingOwasp ? "Bezig..." : "O"}
                   </Button>
                 </div>
 
