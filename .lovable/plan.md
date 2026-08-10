@@ -1,42 +1,52 @@
 # Opruimen van `net._http_response` (479 MB)
 
+Ja — dit kun je prima zelf handmatig in de Supabase SQL Editor doen. Er is geen codewijziging nodig.
+
 ## Wat er aan de hand is
 
-Gemeten in de database:
-
 - `net._http_response` bevat maar **1080 rijen**, maar beslaat **479 MB**.
-- Oudste rij is van vanochtend 04:20, nieuwste van 10:19 — dus de opschoning verwijdert de rijen wél.
+- De bestaande cron-job `cleanup-cron-history` (dagelijks 03:00) doet al `DELETE FROM net._http_response WHERE created < NOW() - INTERVAL '1 day';`
+- Een `DELETE` geeft in Postgres géén schijfruimte terug — de dode rijen blijven als "bloat" staan. Daarom groeit het bestand door terwijl er nauwelijks rijen in staan.
+- `TRUNCATE` geeft de ruimte wél direct terug.
 
-De cron-job `cleanup-cron-history` (dagelijks 03:00) doet al:
+De inhoud van die tabel is voor deze app niet nodig: alle cron-calls naar edge functions zijn fire-and-forget en niets leest die tabel uit.
+
+## Stap 1 — nu meteen ruimte terugwinnen
+
+Voer in de Supabase SQL Editor uit:
 
 ```sql
-DELETE FROM net._http_response WHERE created < NOW() - INTERVAL '1 day';
+TRUNCATE net._http_response;
 ```
 
-Het probleem is dat een `DELETE` in Postgres geen schijfruimte teruggeeft — de dode rijen blijven als "bloat" in het bestand staan. Omdat elke minuut drie cron-jobs via `pg_net` HTTP-calls doen (orchestrator, log monitoring, owasp jobs) en de responses volledig worden opgeslagen, groeit die bloat door. Autovacuum ruimt de rijen op maar krimpt het bestand niet.
+Dit geeft de ~479 MB direct terug.
 
-De inhoud van `net._http_response` is voor deze app niet nodig: alle cron-calls naar edge functions zijn fire-and-forget, er wordt nergens uit die tabel gelezen.
+## Stap 2 — de cron-job aanpassen
 
-## Aanpak
+Vervang de bestaande job door een variant die elk uur draait en TRUNCATE gebruikt:
 
-1. **Direct ruimte terugwinnen**: `TRUNCATE net._http_response;` — dit geeft de volledige 479 MB meteen terug (in tegenstelling tot DELETE).
-2. **Voorkomen dat het terugkomt**: de dagelijkse cleanup-job aanpassen zodat hij `net._http_response` niet meer met DELETE opruimt maar met `TRUNCATE`, en hem vaker laten draaien (elk uur in plaats van 1x per dag). Zo blijft de tabel structureel klein.
-3. **Response-bewaartijd verkorten**: `pg_net`-instelling `pg_net.ttl` terugzetten naar een paar minuten, zodat pg_net zelf ook minder bewaart.
-4. `cron.job_run_details` (12 MB) blijft zoals nu: DELETE ouder dan 2 dagen, maar we voegen daar ook een periodieke opschoning aan toe zodat die niet dezelfde bloat opbouwt.
+```sql
+SELECT cron.unschedule('cleanup-cron-history');
 
-## Technische details
+SELECT cron.schedule(
+  'cleanup-cron-history',
+  '0 * * * *',
+  $$
+    TRUNCATE net._http_response;
+    DELETE FROM cron.job_run_details WHERE end_time < NOW() - INTERVAL '2 days';
+    DELETE FROM public.mendix_logs WHERE created_at < NOW() - INTERVAL '5 days';
+  $$
+);
+```
 
-Eén migratie die:
+Let op: dit gooit ook responses weg die op dat moment nog geen uur oud zijn. Dat is hier veilig, omdat geen enkele code de responses uitleest.
 
-- `TRUNCATE net._http_response;` uitvoert.
-- De job `cleanup-cron-history` herdefinieert (`cron.unschedule` + `cron.schedule`) naar schema `0 * * * *` met:
-  - `TRUNCATE net._http_response;`
-  - `DELETE FROM cron.job_run_details WHERE end_time < NOW() - INTERVAL '2 days';`
-  - `DELETE FROM public.mendix_logs WHERE created_at < NOW() - INTERVAL '5 days';`
-  (de laatste twee alleen nog 1x per dag laten uitvoeren via een tijdcheck, of gewoon elk uur — verwaarloosbaar qua kosten)
+## Controle achteraf
 
-Geen wijzigingen aan applicatiecode of edge functions nodig; de cron-jobs blijven ongewijzigd draaien.
+```sql
+SELECT pg_size_pretty(pg_total_relation_size('net._http_response'));
+```
 
-## Risico
+## Wil je dat ik het doe?
 
-`TRUNCATE net._http_response` wist alleen HTTP-response-historie van pg_net. Er is geen code in dit project die die tabel uitleest, dus er gaat geen functionaliteit verloren.
+Als je liever hebt dat ik dit uitvoer in plaats van handmatig, keur dan dit plan goed — dan zet ik dezelfde twee stappen voor je klaar via de database-tool.
