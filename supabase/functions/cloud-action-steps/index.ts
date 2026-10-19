@@ -1,3 +1,4 @@
+import { mendixAuthHeaders } from '../_shared/mendix-auth.ts';
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
@@ -289,8 +290,7 @@ async function createPackage(credential: any, app: any, action: CloudAction): Pr
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Mendix-Username': credential.username,
-        'Mendix-ApiKey': credential.api_key || credential.pat || ''
+        ...mendixAuthHeaders(credential),
       },
       body: JSON.stringify({
         Branch: branch,
@@ -349,8 +349,7 @@ async function waitPackageBuild(credential: any, app: any, action: CloudAction):
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Mendix-Username': credential.username,
-        'Mendix-ApiKey': credential.api_key || credential.pat || ''
+        ...mendixAuthHeaders(credential),
       }
     });
 
@@ -396,8 +395,7 @@ async function transportPackage(credential: any, app: any, action: CloudAction, 
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Mendix-Username': credential.username,
-        'Mendix-ApiKey': credential.api_key || credential.pat || ''
+        ...mendixAuthHeaders(credential),
       },
       body: JSON.stringify({
         PackageId: action.package_id
@@ -429,8 +427,7 @@ async function createBackup(credential: any, app: any, action: CloudAction, envi
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Mendix-Username': credential.username,
-        'Mendix-ApiKey': credential.api_key || credential.pat || ''
+        ...mendixAuthHeaders(credential),
       },
       body: JSON.stringify({
         Comment: `Automated backup before deployment - ${new Date().toISOString()}`
@@ -475,8 +472,7 @@ async function waitBackupComplete(credential: any, app: any, action: CloudAction
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Mendix-Username': credential.username,
-        'Mendix-ApiKey': credential.api_key || credential.pat || ''
+        ...mendixAuthHeaders(credential),
       }
     });
 
@@ -529,8 +525,7 @@ async function retrieveSourcePackage(credential: any, app: any, action: CloudAct
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'Mendix-Username': credential.username,
-        'Mendix-ApiKey': credential.api_key || credential.pat || ''
+        ...mendixAuthHeaders(credential),
       }
     });
 
@@ -570,8 +565,7 @@ async function callMendix(action: string, credential: any, appSlug: string, envi
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Mendix-Username': credential.username,
-        'Mendix-ApiKey': credential.api_key || credential.pat || ''
+        ...mendixAuthHeaders(credential),
       },
       body: body
     });
