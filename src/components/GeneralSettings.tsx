@@ -56,7 +56,7 @@ export default function GeneralSettings() {
       <CardContent className="space-y-6">
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Inactivity timeout</span>
+            <span className="text-sm font-medium">Inactivity Timeout</span>
             <span className="text-sm text-muted-foreground font-mono">
               {localValue} min
             </span>
