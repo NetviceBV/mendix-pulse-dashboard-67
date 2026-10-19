@@ -1,3 +1,4 @@
+import { mendixAuthHeaders } from '../_shared/mendix-auth.ts';
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 
@@ -104,17 +105,7 @@ serve(async (req) => {
     console.log(`Using project_id: ${projectId} for app: ${appId}, environment: ${actualEnvironmentId}`);
 
     // Prepare headers for Mendix API call
-    const headers: Record<string, string> = {
-      'Mendix-Username': credential.username,
-    };
-
-    if (credential.api_key) {
-      headers['Mendix-ApiKey'] = credential.api_key;
-    }
-
-    if (credential.pat) {
-      headers['Authorization'] = `MxToken ${credential.pat}`;
-    }
+    const headers: Record<string, string> = { ...mendixAuthHeaders(credential) };
 
     // Use V4 API exclusively for environment status retrieval with project_id (UUID)
     const mendixResponse = await fetch(`https://cloud.home.mendix.com/api/v4/apps/${projectId}/environments/${actualEnvironmentId}`, {
