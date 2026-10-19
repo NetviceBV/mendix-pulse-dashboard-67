@@ -1,3 +1,4 @@
+import { mendixAuthHeaders } from '../_shared/mendix-auth.ts';
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 
@@ -129,8 +130,7 @@ serve(async (req) => {
             method: "POST",
             headers: {
               Accept: "application/json",
-              "Mendix-Username": credential.username,
-              "Mendix-ApiKey": credential.api_key || credential.pat || "",
+              ...mendixAuthHeaders(credential),
               "Content-Type": "application/json",
             },
             body: body,
@@ -370,8 +370,7 @@ serve(async (req) => {
               method: "POST",
               headers: {
                 Accept: "application/json",
-                "Mendix-Username": credential.username,
-                "Mendix-ApiKey": credential.api_key || credential.pat || "",
+                ...mendixAuthHeaders(credential),
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
@@ -417,8 +416,7 @@ serve(async (req) => {
                 method: "GET",
                 headers: {
                   Accept: "application/json",
-                  "Mendix-Username": credential.username,
-                  "Mendix-ApiKey": credential.api_key || credential.pat || "",
+                  ...mendixAuthHeaders(credential),
                 },
               });
 
@@ -464,8 +462,7 @@ serve(async (req) => {
               method: "POST",
               headers: {
                 Accept: "application/json",
-                "Mendix-Username": credential.username,
-                "Mendix-ApiKey": credential.api_key || credential.pat || "",
+                ...mendixAuthHeaders(credential),
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
@@ -505,8 +502,7 @@ serve(async (req) => {
                 method: "GET",
                 headers: {
                   Accept: "application/json",
-                  "Mendix-Username": credential.username,
-                  "Mendix-ApiKey": credential.api_key || credential.pat || "",
+                  ...mendixAuthHeaders(credential),
                 },
               });
 
@@ -552,8 +548,7 @@ serve(async (req) => {
               method: "POST",
               headers: {
                 Accept: "application/json",
-                "Mendix-Username": credential.username,
-                "Mendix-ApiKey": credential.api_key || credential.pat || "",
+                ...mendixAuthHeaders(credential),
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
@@ -596,8 +591,7 @@ serve(async (req) => {
                 method: "GET",
                 headers: {
                   Accept: "application/json",
-                  "Mendix-Username": credential.username,
-                  "Mendix-ApiKey": credential.api_key || credential.pat || "",
+                  ...mendixAuthHeaders(credential),
                 },
               });
 
@@ -657,8 +651,7 @@ serve(async (req) => {
               method: "POST",
               headers: {
                 Accept: "application/json",
-                "Mendix-Username": credential.username,
-                "Mendix-ApiKey": credential.api_key || credential.pat || "",
+                ...mendixAuthHeaders(credential),
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
@@ -698,8 +691,7 @@ serve(async (req) => {
                 method: "GET",
                 headers: {
                   Accept: "application/json",
-                  "Mendix-Username": credential.username,
-                  "Mendix-ApiKey": credential.api_key || credential.pat || "",
+                  ...mendixAuthHeaders(credential),
                 },
               });
 

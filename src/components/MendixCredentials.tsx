@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, Key, User, Shield, Edit2, Save, X, Download, Lock } from "lucide-react";
+import { Plus, Trash2, Key, User, Shield, Edit2, Save, X, Download, Lock, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCredentialsQuery } from "@/hooks/useCredentialsQuery";
@@ -369,6 +369,13 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
                   disabled={loading}
                 />
               </div>
+              <p className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+                <span>
+                  API keys are deprecated. Mendix ends support on January 1, 2027 — use a
+                  Personal Access Token (PAT) instead.
+                </span>
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -512,6 +519,13 @@ const MendixCredentials = ({ credentials, onCredentialsChange }: MendixCredentia
                       disabled={loading}
                     />
                   </div>
+                  <p className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+                    <span>
+                      API keys are deprecated. Mendix ends support on January 1, 2027 — use a
+                      Personal Access Token (PAT) instead.
+                    </span>
+                  </p>
                 </div>
 
                 <div className="space-y-2">
